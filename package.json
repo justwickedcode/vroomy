@@ -1,0 +1,18 @@
+{
+  "name": "vroomy",
+  "private": true,
+  "scripts": {
+    "prepare": "husky || true",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.3.2",
+    "prettier": "^3.8.1"
+  },
+  "lint-staged": {
+    "frontend/**/*.{js,ts,vue}": "bunx eslint --fix --config frontend/eslint.config.mjs",
+    "**/*.{js,ts,vue,css,json,md}": "prettier --write"
+  }
+}
