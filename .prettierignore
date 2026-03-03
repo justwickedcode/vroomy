@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Nuxt generated
+frontend/.nuxt/
+frontend/.output/
+frontend/.cache/
+
+# Build
+dist/
+
+# Logs
+*.log
+
+# Environment
+.env*
+
+# Go
+*.sum
+vendor/
