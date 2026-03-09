@@ -6,6 +6,6 @@
 - You also got WebStorm for free (non-commercial use) here:
   - [WebStorm](https://www.jetbrains.com/de-de/webstorm)
 
-- eslint-staged annoying you on commits => git commit -m".." --no-verify
+- eslint-staged annoying you on commits => git commit -m"bla bla" --no-verify
 
 - main branch ahead of your branch? => `git pull --rebase` (You can look online what rebase does and how to solve merge conflicts)
