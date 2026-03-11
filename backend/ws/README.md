@@ -1,7 +1,7 @@
 # Websocket Server
 
-- Implement our server and connect the clients to a room
+TODO: Later
 
-# For Max:
+Suggestion:
 
 - [socket.io](https://www.npmjs.com/package/socket.io)
