@@ -6,7 +6,7 @@
     "prettier": "^3.8.1"
   },
   "lint-staged": {
-    "frontend/**/*.{js,ts,vue}": "bunx eslint --config frontend/eslint.config.mjs",
+    "frontend/**/*.{js,ts,vue}": "eslint --config frontend/eslint.config.mjs",
     "**/*.{js,ts,vue,css,json,md}": "prettier --write"
   },
   "private": true,
