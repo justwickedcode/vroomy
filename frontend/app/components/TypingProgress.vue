@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+// import { ref, computed } from 'vue'
 
-const text = ref("");
+// const text = ref("");
 
-const charCount = computed(() => {
-  return text.value.length
-})
-
+// const charCount = computed(() => {
+//   return text.value.length
+// })
 </script>
 
 <template>
