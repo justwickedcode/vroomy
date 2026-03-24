@@ -1,6 +1,6 @@
 # Nuxt Minimal Starter
 
-Frontend for `Vroomy`
+Frontend for `Vroomy` on branch `4-input-field`
 
 Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
 
