@@ -1,6 +1,7 @@
+<script setup lang="ts">
+</script>
 <template>
   <div>
-    <NuxtRouteAnnouncer />
-    <NuxtWelcome />
+    <TypingProgress />
   </div>
 </template>
