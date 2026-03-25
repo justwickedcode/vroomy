@@ -17,4 +17,4 @@ dist/
 
 # Go
 *.sum
-vendor/
+vendor//frontend/app/components/typing/TypeRacer.vue
