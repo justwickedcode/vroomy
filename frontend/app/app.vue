@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import TypeRacer from '~/components/typing/TypeRacer.vue'
+import TypingRacer from '~/components/typing/TypingRacer.client.vue'
 </script>
 <template>
   <div>
-    <TypeRacer />
+    <ClientOnly>
+      <TypingRacer />
+    </ClientOnly>
   </div>
 </template>

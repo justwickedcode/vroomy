@@ -15,14 +15,14 @@
     "@nuxt/eslint": "1.15.2",
     "@pinia/nuxt": "^0.11.3",
     "@tailwindcss/vite": "^4.2.2",
-    "nuxt": "^4.3.1",
-    "vue": "^3.5.29",
+    "nuxt": "^4.4.2",
+    "vue": "^3.5.32",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
     "autoprefixer": "^10.4.27",
-    "eslint": "^10.1.0",
+    "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2"

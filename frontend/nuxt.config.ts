@@ -11,4 +11,10 @@ export default defineNuxtConfig({
     plugins: [tailwindcss() as any],
   },
   css: ['~/assets/css/main.css'],
+  components: {
+    dirs: [],
+  },
+  imports: {
+    autoImport: false,
+  },
 })

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { useTypingStore } from '~/stores/typing'
-import WordPending from '~/components/typing/WordPending.vue'
-import WordActive from '~/components/typing/WordActive.vue'
 import WordCompleted from '~/components/typing/WordCompleted.vue'
+import WordPending from '~/components/typing/WordPending.vue'
 import StatsBar from '~/components/typing/StatsBar.vue'
+import WordActive from '~/components/typing/WordActive.vue'
+import { useTypingStore } from '#imports'
 
 const store = useTypingStore()
 </script>
@@ -20,7 +20,7 @@ const store = useTypingStore()
           <WordCompleted
             v-if="wi < store.currentWordIndex"
             :word
-            :status="store.completedWords[wi]"
+            :status="store.completedWords[wi]!"
           />
           <WordActive
             v-else-if="wi === store.currentWordIndex"
@@ -46,14 +46,11 @@ const store = useTypingStore()
         :value="store.currentInput"
         placeholder="type the highlighted word..."
         autocomplete="off"
-        autocorrect="off"
         autocapitalize="off"
         spellcheck="false"
         class="w-full font-mono text-sm p-4 rounded-lg bg-background border text-text-primary placeholder-text-secondary outline-none transition-colors"
         :class="
-          store.hasError
-            ? 'border-red-500 bg-red-500/5'
-            : 'border-border focus:border-[var(--color-accent)]'
+          store.hasError ? 'border-red-500 bg-red-500/5' : 'border-border focus:border-accent'
         "
         @input="store.onInput(($event.target as HTMLInputElement).value)"
       />
