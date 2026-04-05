@@ -1,7 +1,7 @@
 //routing
 import { Hono } from 'hono'
 import { db } from './db'
-import { quotes } from './db/schema'
+import { quotes } from './db/schema.ts'
 import { eq } from 'drizzle-orm'
 
 const app = new Hono()
