@@ -14,5 +14,9 @@
   "lint-staged": {
     "frontend/**/*.{js,ts,vue}": "bunx eslint --fix --config frontend/eslint.config.mjs",
     "**/*.{js,ts,vue,css,json,md}": "prettier --write"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.10"
   }
 }
