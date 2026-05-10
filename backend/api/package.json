@@ -17,6 +17,7 @@
   "dependencies": {
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.10",
-    "postgres": "^3.4.8"
+    "postgres": "^3.4.8",
+    "zod": "^4.4.3"
   }
 }
