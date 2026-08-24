@@ -15,12 +15,11 @@ Thumbs.db
 .vscode/
 .fleet/
 
-# Nuxt
-frontend/.nuxt/
+# TanStack Start (frontend has its own .gitignore too)
 frontend/.output/
 frontend/.nitro/
-frontend/.data/
-frontend/.cache/
+frontend/.tanstack/
+frontend/.vinxi/
 frontend/dist/
 
 # Logs
@@ -30,3 +29,4 @@ logs/
 # Go (scraper)
 backend/scraper/vendor/
 *.sum
+*.exe
