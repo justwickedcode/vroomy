@@ -1,10 +1,11 @@
 # Dependencies
 node_modules/
 
-# Nuxt generated
-frontend/.nuxt/
+# TanStack Start generated
 frontend/.output/
-frontend/.cache/
+frontend/.nitro/
+frontend/.tanstack/
+frontend/.vinxi/
 
 # Build
 dist/
