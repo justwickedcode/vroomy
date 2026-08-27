@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getRandomSentence } from './sentences'
 
 const TICK_MS = 100
@@ -25,8 +25,17 @@ export function computeWordSpans(text: string): Array<WordSpan> {
   return spans
 }
 
-export function useTypingRace() {
-  const [text, setText] = useState(() => getRandomSentence())
+export function useTypingRace(
+  getText: (exclude?: string) => string = getRandomSentence,
+) {
+  // Starts empty rather than calling getText() directly in useState's
+  // initializer — that would run once during SSR and again on client
+  // hydration, and a Math.random()-backed generator gives two different
+  // strings each time, which is a hydration mismatch. Real text is
+  // generated client-side only, right after mount.
+  const getTextRef = useRef(getText)
+  getTextRef.current = getText
+  const [text, setText] = useState('')
   const [typed, setTyped] = useState('')
   // Which word is "current" is tracked as its own piece of state, advanced
   // only by an explicit, verified space-commit — never re-derived from raw
@@ -43,6 +52,10 @@ export function useTypingRace() {
 
   const spans = useMemo(() => computeWordSpans(text), [text])
   const finished = finishedAt !== null
+
+  useEffect(() => {
+    setText(getTextRef.current())
+  }, [])
 
   useEffect(() => {
     if (!startedAt || finished) return
@@ -157,7 +170,7 @@ export function useTypingRace() {
   }
 
   function reset() {
-    setText((current) => getRandomSentence(current))
+    setText((current) => getTextRef.current(current))
     setTyped('')
     setWordIndex(0)
     setTotalTyped(0)

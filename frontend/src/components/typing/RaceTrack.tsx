@@ -1,6 +1,6 @@
-import { Flag } from 'lucide-react'
 import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
+import type { CarModel } from '#/components/typing/CarIcon'
 
 export interface Racer {
   id: string
@@ -10,11 +10,12 @@ export interface Racer {
   isYou?: boolean
   finished?: boolean
   color?: string
+  model?: CarModel
 }
 
 function carLeft(racer: Racer) {
-  if (racer.finished) return 95
-  return Math.min(Math.max(racer.progress * 100, 5), 90)
+  if (racer.finished) return 91
+  return Math.min(Math.max(racer.progress * 100, 6), 88)
 }
 
 function Lane({ racer }: { racer: Racer }) {
@@ -40,7 +41,12 @@ function Lane({ racer }: { racer: Racer }) {
       </div>
 
       <div className="race-track">
-        <div className="race-track-inner">
+        <div
+          className={cn(
+            'race-track-inner',
+            racing && 'race-track-inner--moving',
+          )}
+        >
           <div
             className="race-track-fill"
             style={{ width: `${Math.min(racer.progress, 1) * 100}%` }}
@@ -48,16 +54,19 @@ function Lane({ racer }: { racer: Racer }) {
           <div className="race-track-start" />
         </div>
 
-        <CarIcon
-          color={color}
-          className={cn(
-            'race-car h-9 w-16 drop-shadow-[0_4px_6px_rgb(0_0_0/0.45)]',
-            racing && 'race-car-bob',
-          )}
-          style={{ left: `${carLeft(racer)}%` }}
-        />
+        <div className="race-car-wrap" style={{ left: `${carLeft(racer)}%` }}>
+          {racing && <span className="race-nitro" aria-hidden="true" />}
+          <CarIcon
+            color={color}
+            model={racer.model ?? 'sport'}
+            className={cn(
+              'race-car-svg aspect-[8/5] w-28 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]',
+              racing && 'race-car-bob',
+            )}
+          />
+        </div>
 
-        <Flag className="race-flag size-6 text-white/70" />
+        <span className="race-flag-checkered" aria-hidden="true" />
       </div>
     </div>
   )

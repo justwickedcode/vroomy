@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { CAR_MODELS } from '#/components/typing/CarIcon'
+import type { CarModel } from '#/components/typing/CarIcon'
 
 // Placeholder opponent until real multiplayer (backend-driven) races exist.
 const BOT_NAMES = [
@@ -31,6 +33,7 @@ interface BotConfig {
   id: string
   name: string
   color: string
+  model: CarModel
   baseWpm: number
   seed: number
 }
@@ -39,6 +42,7 @@ export interface BotRacer {
   id: string
   name: string
   color: string
+  model: CarModel
   progress: number
   wpm: number
   finished: boolean
@@ -54,6 +58,7 @@ function generateBots(
     id: `bot-${i}`,
     name: names[i],
     color: BOT_COLORS[i % BOT_COLORS.length],
+    model: CAR_MODELS[i % CAR_MODELS.length].id,
     baseWpm: Math.round(min + Math.random() * (max - min)),
     seed: Math.random() * 1000,
   }))
@@ -98,6 +103,7 @@ export function useBotRacers({
         id: bot.id,
         name: bot.name,
         color: bot.color,
+        model: bot.model,
         progress: 0,
         wpm: 0,
         finished: false,
@@ -113,6 +119,7 @@ export function useBotRacers({
       id: bot.id,
       name: bot.name,
       color: bot.color,
+      model: bot.model,
       progress,
       wpm: Math.round(effectiveWpm),
       finished: progress >= 1,
