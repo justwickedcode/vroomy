@@ -12,23 +12,15 @@ function GaragePage() {
   const { carModel, carColor, setCarModel, setCarColor } = useProfile()
 
   return (
-    <main className="px-4 py-8 sm:py-10">
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
         <div className="mb-8">
           <div
             className="livery-stripe mb-4 w-16 rounded-full"
             aria-hidden="true"
           />
-          <h1 className="word-stack gap-x-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            <span className="word-rise" style={{ ['--i' as string]: 0 }}>
-              Pick
-            </span>
-            <span className="word-rise" style={{ ['--i' as string]: 1 }}>
-              your
-            </span>
-            <span className="word-rise" style={{ ['--i' as string]: 2 }}>
-              ride.
-            </span>
+          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
+            Pick your ride.
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Saved automatically.

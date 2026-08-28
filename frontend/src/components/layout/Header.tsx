@@ -14,14 +14,14 @@ export default function Header() {
   return (
     <header className="site-header">
       <div className="page-wrap flex h-14 items-center justify-between gap-6">
-        <Link to="/" className="flex items-center gap-2 shrink-0">
+        <Link to="/" className="flex shrink-0 items-center gap-2">
           <span
             aria-hidden="true"
-            className="inline-block h-3.5 w-3.5 rotate-45 bg-primary"
-          />
-          <span className="text-base font-extrabold tracking-tight">
-            VROOMY
+            className="flex size-6 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground"
+          >
+            V
           </span>
+          <span className="text-base font-bold tracking-tight">Vroomy</span>
         </Link>
 
         <nav className="flex items-center gap-5 sm:gap-7">

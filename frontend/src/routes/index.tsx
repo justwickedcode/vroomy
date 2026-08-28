@@ -1,25 +1,29 @@
 import { createFileRoute } from '@tanstack/react-router'
 import {
+  Award,
   Bot,
   BookOpen,
   CalendarDays,
   FileText,
+  Palette,
+  PlayCircle,
   Trophy,
+  UserPlus,
   Users,
   Wrench,
 } from 'lucide-react'
-import { Card, CardContent } from '#/components/ui/card'
-import ModeTile from '#/components/typing/ModeTile'
+import BentoTile from '#/components/typing/BentoTile'
 
 export const Route = createFileRoute('/')({ component: App })
 
-const TILES = [
+const FEATURED = [
   {
     to: '/race/solo',
     title: 'Solo vs AI',
     status: 'ready',
     ready: true,
     icon: Bot,
+    hue: 'var(--color-primary)',
   },
   {
     to: '/race/multiplayer',
@@ -27,13 +31,18 @@ const TILES = [
     status: 'soon',
     ready: false,
     icon: Users,
+    hue: '#a78bfa',
   },
+] as const
+
+const MORE = [
   {
     to: '/daily-challenge',
     title: 'Daily challenge',
     status: 'soon',
     ready: false,
     icon: CalendarDays,
+    hue: '#fbbf24',
   },
   {
     to: '/custom-text',
@@ -41,6 +50,7 @@ const TILES = [
     status: 'soon',
     ready: false,
     icon: FileText,
+    hue: '#34d399',
   },
   {
     to: '/leaderboards',
@@ -48,6 +58,7 @@ const TILES = [
     status: 'soon',
     ready: false,
     icon: Trophy,
+    hue: '#fb7185',
   },
   {
     to: '/garage-upgrades',
@@ -55,6 +66,7 @@ const TILES = [
     status: 'soon',
     ready: false,
     icon: Wrench,
+    hue: '#2dd4bf',
   },
   {
     to: '/guide',
@@ -62,31 +74,57 @@ const TILES = [
     status: 'guide',
     ready: true,
     icon: BookOpen,
+    hue: '#818cf8',
+  },
+  {
+    to: '/achievements',
+    title: 'Achievements',
+    status: 'soon',
+    ready: false,
+    icon: Award,
+    hue: '#a3e635',
+  },
+  {
+    to: '/themes',
+    title: 'Themes',
+    status: 'soon',
+    ready: false,
+    icon: Palette,
+    hue: '#f472b6',
+  },
+  {
+    to: '/friends',
+    title: 'Friends',
+    status: 'soon',
+    ready: false,
+    icon: UserPlus,
+    hue: '#22d3ee',
+  },
+  {
+    to: '/replays',
+    title: 'Replays',
+    status: 'soon',
+    ready: false,
+    icon: PlayCircle,
+    hue: '#e879f9',
   },
 ] as const
 
 function App() {
   return (
-    <main className="px-4 py-8 sm:py-10">
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
       <div className="page-wrap">
-        <h1 className="rise-in mb-8 text-4xl font-extrabold tracking-tight sm:text-6xl">
-          Type fast. Win the race.
-        </h1>
-        <Card className="rise-in overflow-hidden">
-          <CardContent className="flex flex-col gap-1 p-3">
-            {TILES.map(({ to, title, status, ready, icon }, i) => (
-              <ModeTile
-                key={to}
-                to={to}
-                index={String(i + 1).padStart(2, '0')}
-                title={title}
-                status={status}
-                ready={ready}
-                icon={icon}
-              />
-            ))}
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {FEATURED.map((tile) => (
+            <BentoTile key={tile.to} {...tile} wide />
+          ))}
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+          {MORE.map((tile) => (
+            <BentoTile key={tile.to} {...tile} />
+          ))}
+        </div>
       </div>
     </main>
   )

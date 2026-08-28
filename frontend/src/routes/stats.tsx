@@ -19,20 +19,15 @@ function StatsPage() {
   const { hydrated, stats, races } = useProfile()
 
   return (
-    <main className="px-4 py-8 sm:py-10">
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
         <div className="mb-8">
           <div
             className="livery-stripe mb-4 w-16 rounded-full"
             aria-hidden="true"
           />
-          <h1 className="word-stack gap-x-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-            <span className="word-rise" style={{ ['--i' as string]: 0 }}>
-              Your
-            </span>
-            <span className="word-rise" style={{ ['--i' as string]: 1 }}>
-              stats.
-            </span>
+          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
+            Your stats.
           </h1>
         </div>
 

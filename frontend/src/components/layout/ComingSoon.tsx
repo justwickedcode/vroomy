@@ -12,7 +12,7 @@ export default function ComingSoon({
   title: string
 }) {
   return (
-    <main className="px-4 py-8 sm:py-10">
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
       <div className="page-wrap">
         <Card className="rise-in overflow-hidden">
           <CardContent className="flex flex-col items-start gap-4 pt-6">
