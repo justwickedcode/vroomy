@@ -83,7 +83,7 @@ function Practice() {
 
 function GuidePage() {
   return (
-    <main className="px-4 py-8 sm:py-10">
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
         <h1 className="rise-in mb-8 text-3xl font-extrabold tracking-tight sm:text-4xl">
           Type faster.

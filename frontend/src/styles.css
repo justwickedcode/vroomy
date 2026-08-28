@@ -33,32 +33,34 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Arcade neon is a dark aesthetic by nature — glow only reads against a
-   near-black surface, the same reason Nitro Type and every other racing
-   game never bothers with a light mode. One committed dark theme instead
-   of a light/dark toggle that would fight the whole premise. */
+/* A shadcn-style dark theme (tweakcn "sky" flavor): neutral zinc-ish
+   surfaces, one saturated accent (sky blue) reserved for primary actions
+   and focus states, everything else flat. `accent` is the semantically
+   correct shadcn token — a *neutral* hover tint, not a second brand
+   color — so ghost buttons and row-hover states stay subtle instead of
+   flashing a bright hue. */
 :root {
-  --radius: 0.85rem;
+  --radius: 0.625rem;
 
   --background: oklch(0.1 0.012 264);
   --foreground: oklch(0.97 0.006 95);
   --card: oklch(0.16 0.014 264);
   --card-foreground: oklch(0.97 0.006 95);
-  --primary: oklch(0.7 0.19 41);
-  --primary-foreground: oklch(0.13 0.02 41);
+  --primary: oklch(0.75 0.14 232);
+  --primary-foreground: oklch(0.15 0.03 232);
   --secondary: oklch(0.24 0.016 264);
   --secondary-foreground: oklch(0.97 0.006 95);
   --muted: oklch(0.22 0.014 264);
   --muted-foreground: oklch(0.65 0.02 260);
-  --accent: oklch(0.72 0.15 210);
-  --accent-foreground: oklch(0.12 0.03 210);
+  --accent: oklch(0.27 0.015 264);
+  --accent-foreground: oklch(0.97 0.006 95);
   --destructive: oklch(0.65 0.21 15);
   --destructive-foreground: oklch(0.97 0.006 95);
   --success: oklch(0.78 0.19 148);
   --success-foreground: oklch(0.14 0.03 148);
   --border: oklch(0.3 0.016 264);
   --input: oklch(0.3 0.016 264);
-  --ring: oklch(0.7 0.19 41 / 0.55);
+  --ring: oklch(0.75 0.14 232 / 0.5);
 }
 
 * {
@@ -99,7 +101,7 @@ body::before {
 }
 
 .page-wrap {
-  width: min(1040px, calc(100% - 2rem));
+  width: min(1280px, calc(100% - 3rem));
   margin-inline: auto;
 }
 
@@ -189,42 +191,11 @@ body::before {
   transform: scaleX(1);
 }
 
-/* Diagonal two-tone accent bar, the closest thing this design has to a
-   "logo mark" repeated as a motif — used sparingly (hero, section breaks),
-   never as decoration on every card the way the old checkered strip was. */
+/* A small flat accent bar above a headline — used sparingly, never as
+   decoration on every card. */
 .livery-stripe {
-  --stripe-a: var(--color-primary);
-  --stripe-b: var(--color-accent);
-  height: 0.4rem;
-  background: linear-gradient(
-    100deg,
-    var(--stripe-a) 0 38%,
-    var(--stripe-b) 38% 42%,
-    transparent 42%
-  );
-}
-
-/* Word-by-word headline reveal — each word is its own inline-block with
-   animation-delay driven by an index custom property set inline, so the
-   heading assembles left to right instead of fading up as one block. */
-.word-stack {
-  display: inline-flex;
-  flex-wrap: wrap;
-}
-
-.word-rise {
-  display: inline-block;
-  opacity: 0;
-  transform: translateY(0.5em) rotateZ(2deg);
-  animation: word-rise 640ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: calc(var(--i, 0) * 70ms);
-}
-
-@keyframes word-rise {
-  to {
-    opacity: 1;
-    transform: translateY(0) rotateZ(0deg);
-  }
+  height: 0.25rem;
+  background: var(--color-primary);
 }
 
 /* Mouse-tracked tilt: JS sets --rx/--ry (from pointer position) as inline
@@ -280,32 +251,19 @@ body::before {
 }
 
 .btn-primary-glow {
-  background-image: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--color-primary) 82%, white),
-    var(--color-primary) 55%,
-    color-mix(in oklab, var(--color-primary) 82%, black)
-  );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, white 25%, transparent),
-    0 10px 24px -8px color-mix(in oklab, var(--color-primary) 65%, transparent);
+  background: var(--color-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
   transition:
     filter 150ms ease,
-    transform 150ms ease,
     box-shadow 150ms ease;
 }
 
 .btn-primary-glow:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, white 30%, transparent),
-    0 14px 30px -8px color-mix(in oklab, var(--color-primary) 75%, transparent);
+  filter: brightness(1.06);
 }
 
 .btn-primary-glow:active {
-  transform: translateY(0);
-  filter: brightness(0.96);
+  filter: brightness(0.95);
 }
 
 .gauge {
@@ -338,9 +296,6 @@ body::before {
   stroke: var(--color-primary);
   stroke-width: 7;
   stroke-linecap: round;
-  filter: drop-shadow(
-    0 0 5px color-mix(in oklab, var(--color-primary) 75%, transparent)
-  );
   transition: stroke-dashoffset 200ms ease;
 }
 
@@ -389,14 +344,11 @@ body::before {
 }
 
 .speed-option:hover {
-  transform: translateY(-1px);
   border-color: color-mix(
     in oklab,
     var(--color-primary) 55%,
     var(--color-border)
   );
-  box-shadow: 0 8px 20px -10px
-    color-mix(in oklab, var(--color-primary) 55%, transparent);
 }
 
 .race-track {
@@ -585,7 +537,7 @@ body::before {
   --color-success: oklch(0.5 0.15 152);
   --color-destructive: oklch(0.58 0.22 20);
   --color-destructive-foreground: oklch(0.98 0.006 90);
-  --color-primary: oklch(0.62 0.2 41);
+  --color-primary: oklch(0.52 0.15 232);
   background: oklch(0.96 0.004 90);
   border: 1px solid oklch(0.87 0.008 90);
   box-shadow: 0 20px 44px -18px rgb(0 0 0 / 80%);

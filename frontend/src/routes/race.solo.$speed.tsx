@@ -15,7 +15,7 @@ function SoloRace() {
   const speedRange = Route.useLoaderData()
 
   return (
-    <main className="px-4 py-8 sm:py-10">
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
       <div className="page-wrap">
         <TypingRace speedRange={speedRange} />
       </div>

@@ -10,13 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AchievementsRouteImport } from './routes/achievements'
 import { Route as CustomTextRouteImport } from './routes/custom-text'
 import { Route as DailyChallengeRouteImport } from './routes/daily-challenge'
+import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as GarageRouteImport } from './routes/garage'
 import { Route as GarageUpgradesRouteImport } from './routes/garage-upgrades'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
+import { Route as ReplaysRouteImport } from './routes/replays'
 import { Route as StatsRouteImport } from './routes/stats'
+import { Route as ThemesRouteImport } from './routes/themes'
 import { Route as RaceMultiplayerRouteImport } from './routes/race.multiplayer'
 import { Route as RaceSoloRouteImport } from './routes/race.solo'
 import { Route as RaceSoloIndexRouteImport } from './routes/race.solo.index'
@@ -27,6 +31,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AchievementsRoute = AchievementsRouteImport.update({
+  id: '/achievements',
+  path: '/achievements',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CustomTextRoute = CustomTextRouteImport.update({
   id: '/custom-text',
   path: '/custom-text',
@@ -35,6 +44,11 @@ const CustomTextRoute = CustomTextRouteImport.update({
 const DailyChallengeRoute = DailyChallengeRouteImport.update({
   id: '/daily-challenge',
   path: '/daily-challenge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FriendsRoute = FriendsRouteImport.update({
+  id: '/friends',
+  path: '/friends',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GarageRoute = GarageRouteImport.update({
@@ -57,9 +71,19 @@ const LeaderboardsRoute = LeaderboardsRouteImport.update({
   path: '/leaderboards',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReplaysRoute = ReplaysRouteImport.update({
+  id: '/replays',
+  path: '/replays',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StatsRoute = StatsRouteImport.update({
   id: '/stats',
   path: '/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThemesRoute = ThemesRouteImport.update({
+  id: '/themes',
+  path: '/themes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RaceMultiplayerRoute = RaceMultiplayerRouteImport.update({
@@ -85,13 +109,17 @@ const RaceSoloSpeedRoute = RaceSoloSpeedRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
   '/custom-text': typeof CustomTextRoute
   '/daily-challenge': typeof DailyChallengeRoute
+  '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
   '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
+  '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
+  '/themes': typeof ThemesRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
   '/race/solo': typeof RaceSoloRouteWithChildren
   '/race/solo/$speed': typeof RaceSoloSpeedRoute
@@ -99,13 +127,17 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
   '/custom-text': typeof CustomTextRoute
   '/daily-challenge': typeof DailyChallengeRoute
+  '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
   '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
+  '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
+  '/themes': typeof ThemesRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
   '/race/solo/$speed': typeof RaceSoloSpeedRoute
   '/race/solo': typeof RaceSoloIndexRoute
@@ -113,13 +145,17 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
   '/custom-text': typeof CustomTextRoute
   '/daily-challenge': typeof DailyChallengeRoute
+  '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
   '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
+  '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
+  '/themes': typeof ThemesRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
   '/race/solo': typeof RaceSoloRouteWithChildren
   '/race/solo/$speed': typeof RaceSoloSpeedRoute
@@ -129,13 +165,17 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/achievements'
     | '/custom-text'
     | '/daily-challenge'
+    | '/friends'
     | '/garage'
     | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
+    | '/replays'
     | '/stats'
+    | '/themes'
     | '/race/multiplayer'
     | '/race/solo'
     | '/race/solo/$speed'
@@ -143,26 +183,34 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/achievements'
     | '/custom-text'
     | '/daily-challenge'
+    | '/friends'
     | '/garage'
     | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
+    | '/replays'
     | '/stats'
+    | '/themes'
     | '/race/multiplayer'
     | '/race/solo/$speed'
     | '/race/solo'
   id:
     | '__root__'
     | '/'
+    | '/achievements'
     | '/custom-text'
     | '/daily-challenge'
+    | '/friends'
     | '/garage'
     | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
+    | '/replays'
     | '/stats'
+    | '/themes'
     | '/race/multiplayer'
     | '/race/solo'
     | '/race/solo/$speed'
@@ -171,13 +219,17 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AchievementsRoute: typeof AchievementsRoute
   CustomTextRoute: typeof CustomTextRoute
   DailyChallengeRoute: typeof DailyChallengeRoute
+  FriendsRoute: typeof FriendsRoute
   GarageRoute: typeof GarageRoute
   GarageUpgradesRoute: typeof GarageUpgradesRoute
   GuideRoute: typeof GuideRoute
   LeaderboardsRoute: typeof LeaderboardsRoute
+  ReplaysRoute: typeof ReplaysRoute
   StatsRoute: typeof StatsRoute
+  ThemesRoute: typeof ThemesRoute
   RaceMultiplayerRoute: typeof RaceMultiplayerRoute
   RaceSoloRoute: typeof RaceSoloRouteWithChildren
 }
@@ -189,6 +241,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/achievements': {
+      id: '/achievements'
+      path: '/achievements'
+      fullPath: '/achievements'
+      preLoaderRoute: typeof AchievementsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/custom-text': {
@@ -203,6 +262,13 @@ declare module '@tanstack/react-router' {
       path: '/daily-challenge'
       fullPath: '/daily-challenge'
       preLoaderRoute: typeof DailyChallengeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/friends': {
+      id: '/friends'
+      path: '/friends'
+      fullPath: '/friends'
+      preLoaderRoute: typeof FriendsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/garage': {
@@ -233,11 +299,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeaderboardsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/replays': {
+      id: '/replays'
+      path: '/replays'
+      fullPath: '/replays'
+      preLoaderRoute: typeof ReplaysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/stats': {
       id: '/stats'
       path: '/stats'
       fullPath: '/stats'
       preLoaderRoute: typeof StatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/themes': {
+      id: '/themes'
+      path: '/themes'
+      fullPath: '/themes'
+      preLoaderRoute: typeof ThemesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/race/multiplayer': {
@@ -287,13 +367,17 @@ const RaceSoloRouteWithChildren = RaceSoloRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AchievementsRoute: AchievementsRoute,
   CustomTextRoute: CustomTextRoute,
   DailyChallengeRoute: DailyChallengeRoute,
+  FriendsRoute: FriendsRoute,
   GarageRoute: GarageRoute,
   GarageUpgradesRoute: GarageUpgradesRoute,
   GuideRoute: GuideRoute,
   LeaderboardsRoute: LeaderboardsRoute,
+  ReplaysRoute: ReplaysRoute,
   StatsRoute: StatsRoute,
+  ThemesRoute: ThemesRoute,
   RaceMultiplayerRoute: RaceMultiplayerRoute,
   RaceSoloRoute: RaceSoloRouteWithChildren,
 }
