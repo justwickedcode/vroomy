@@ -85,9 +85,18 @@ function GuidePage() {
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <h1 className="rise-in mb-8 text-3xl font-extrabold tracking-tight sm:text-4xl">
-          Type faster.
-        </h1>
+        <div className="mb-8">
+          <div
+            className="livery-stripe mb-4 w-16 rounded-full"
+            aria-hidden="true"
+          />
+          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
+            Type faster.
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Drill real words, one key at a time.
+          </p>
+        </div>
 
         <Practice />
       </div>

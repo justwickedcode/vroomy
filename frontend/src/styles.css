@@ -103,6 +103,7 @@ body::before {
 .page-wrap {
   width: min(1280px, calc(100% - 3rem));
   margin-inline: auto;
+  min-height: 0;
 }
 
 .glass-panel {
@@ -153,6 +154,7 @@ body::before {
   position: relative;
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   padding-block: 0.35rem;
   font-family: var(--font-mono);
   font-size: 0.78rem;
@@ -196,6 +198,63 @@ body::before {
 .livery-stripe {
   height: 0.25rem;
   background: var(--color-primary);
+}
+
+/* Sidebar nav row — the same underline-grow mechanic as `.nav-link`,
+   rotated 90° into a left-edge bar instead of an underline. */
+.sidebar-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--color-muted-foreground);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+}
+
+.sidebar-link::before {
+  content: '';
+  position: absolute;
+  left: -1rem;
+  top: 0.3rem;
+  bottom: 0.3rem;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  transform: scaleY(0);
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-link:hover,
+.sidebar-link[data-active='true'] {
+  color: var(--color-foreground);
+  background: var(--color-secondary);
+}
+
+.sidebar-link:hover::before,
+.sidebar-link[data-active='true']::before {
+  transform: scaleY(1);
+}
+
+.sidebar-link[data-collapsed='true'] {
+  justify-content: center;
+  gap: 0;
+  padding-inline: 0;
+}
+
+/* Instrument-cluster number treatment — mono, bold, tabular figures, used
+   for the primary readout wherever a stat is the point of the row (not
+   every incidental number on a page). */
+.stat-figure {
+  font-family: var(--font-mono);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* Mouse-tracked tilt: JS sets --rx/--ry (from pointer position) as inline
@@ -268,9 +327,22 @@ body::before {
 
 .gauge {
   position: relative;
+  width: 4.25rem;
+  height: 4.25rem;
+  flex-shrink: 0;
+}
+
+.gauge--lg {
   width: 5.5rem;
   height: 5.5rem;
-  flex-shrink: 0;
+}
+
+.gauge--lg .gauge-value {
+  font-size: 1.3rem;
+}
+
+.gauge--lg .gauge-label {
+  font-size: 0.55rem;
 }
 
 .gauge-svg {
@@ -310,26 +382,34 @@ body::before {
 
 .gauge-value {
   font-family: var(--font-mono);
-  font-size: 1.15rem;
+  font-size: 0.95rem;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
   line-height: 1;
 }
 
 .gauge-label {
-  margin-top: 0.15rem;
-  font-size: 0.55rem;
+  margin-top: 0.1rem;
+  font-size: 0.5rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-muted-foreground);
 }
 
-.race-you-badge {
-  border-radius: 999px;
-  background: color-mix(in oklab, var(--color-primary) 22%, transparent);
-  color: var(--color-primary);
-  padding: 0.05rem 0.4rem;
-  font-size: 0.6rem;
+/* One console-style bar holding the gauges + divider + action button —
+   a shared background ties them together instead of three differently
+   shaped things (pill, bare line, rectangle) floating side by side. */
+.race-footer-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-xl);
+  background: color-mix(in oklab, black 30%, var(--color-secondary));
+  border: 1px solid var(--color-border);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 40%);
 }
 
 .speed-option {
@@ -351,6 +431,9 @@ body::before {
   );
 }
 
+/* Single-lane "showcase" track — the big car preview on the garage page
+   and homepage hero, distinct from the multi-racer .race-track-panel
+   used during an actual race. */
 .race-track {
   position: relative;
   height: 6.75rem;
@@ -415,83 +498,6 @@ body::before {
   opacity: 0.9;
 }
 
-.race-car-wrap {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  transition: left 240ms ease;
-  z-index: 1;
-}
-
-.race-car-svg {
-  display: block;
-  position: relative;
-}
-
-.race-car-bob {
-  animation: race-car-bob 460ms ease-in-out infinite;
-}
-
-@keyframes race-car-bob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-2px);
-  }
-}
-
-/* Trails off the rear of the car (nose faces right, so the flame sits at
-   the wrapper's left edge) — only rendered while a racer is actively
-   moving, see the `racing` guard in RaceTrack.tsx. */
-.race-nitro {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 2.4rem;
-  height: 0.65rem;
-  border-radius: 999px;
-  transform-origin: right center;
-  transform: translateY(-50%);
-  filter: blur(2px);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in oklab, #ffd23f 88%, transparent) 45%,
-    color-mix(in oklab, var(--color-primary) 85%, transparent)
-  );
-  animation: nitro-flicker 220ms ease-in-out infinite alternate;
-}
-
-@keyframes nitro-flicker {
-  from {
-    transform: translateY(-50%) scaleX(0.82);
-    opacity: 0.6;
-  }
-  to {
-    transform: translateY(-50%) scaleX(1.15);
-    opacity: 0.95;
-  }
-}
-
-/* Dashed lane divider scrolls backward while a racer is moving, so the
-   "road" reads as passing under a car that's actually stationary on
-   screen — the car only ever moves via its own `left`, this is pure
-   ambient motion flavor layered on top. */
-.race-track-inner--moving::before {
-  animation: race-road-scroll 480ms linear infinite;
-}
-
-@keyframes race-road-scroll {
-  from {
-    background-position-x: 0;
-  }
-  to {
-    background-position-x: -24px;
-  }
-}
-
 .race-flag-checkered {
   position: absolute;
   right: 0.9rem;
@@ -525,6 +531,547 @@ body::before {
   border-radius: 1px;
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   RACE TRACK — NitroType-faithful rebuild
+   Layout: race-track-panel (flex col) → grandstand → sponsor strip
+   → top curb → lanes → bottom curb. Finish band is absolute over all.
+   ══════════════════════════════════════════════════════════════════ */
+
+.race-track-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip; /* clip horizontally; labels bleed vertically */
+}
+
+/* ── Grandstand ──────────────────────────────────────────────────── */
+
+.race-grandstand {
+  position: relative;
+  flex-shrink: 0;
+  height: 132px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #060910 0%, #0d1322 50%, #172038 100%);
+}
+
+/* Triangle flag bunting — 8 colours, 208px tile, always scrolling */
+.race-flags-band {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  z-index: 5;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='208' height='26'%3E%3Cpolygon points='0,0 26,0 13,26' fill='%23ef4444'/%3E%3Cpolygon points='26,0 52,0 39,26' fill='%233b82f6'/%3E%3Cpolygon points='52,0 78,0 65,26' fill='%23facc15'/%3E%3Cpolygon points='78,0 104,0 91,26' fill='%238b5cf6'/%3E%3Cpolygon points='104,0 130,0 117,26' fill='%2322c55e'/%3E%3Cpolygon points='130,0 156,0 143,26' fill='%23f97316'/%3E%3Cpolygon points='156,0 182,0 169,26' fill='%2306b6d4'/%3E%3Cpolygon points='182,0 208,0 195,26' fill='%23ec4899'/%3E%3Cline x1='0' y1='1.5' x2='208' y2='1.5' stroke='rgba(255,255,255,.4)' stroke-width='2'/%3E%3C/svg%3E");
+  background-size: 208px 26px;
+  background-repeat: repeat-x;
+  animation: flags-scroll 2.56s linear infinite;
+}
+.race-flags-band::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, transparent 70%);
+}
+@keyframes flags-scroll {
+  to {
+    background-position: -208px 0;
+  }
+}
+
+/* Crowd SVG — 2200px wide (2× 1100px tile); translateX(-1100px) loops */
+.race-crowd-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: crowd-slide 13.53s linear infinite;
+}
+@keyframes crowd-slide {
+  to {
+    transform: translateX(-1100px);
+  }
+}
+
+@keyframes fan-wave {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+.race-crowd-svg circle:not(.cf) {
+  animation: fan-wave 2.2s ease-in-out infinite;
+}
+.race-crowd-svg circle:not(.cf):nth-child(4n + 2) {
+  animation-delay: -0.55s;
+}
+.race-crowd-svg circle:not(.cf):nth-child(4n + 3) {
+  animation-delay: -1.1s;
+}
+.race-crowd-svg circle:not(.cf):nth-child(4n + 4) {
+  animation-delay: -1.65s;
+}
+
+@keyframes cam {
+  0%,
+  88%,
+  100% {
+    opacity: 0;
+  }
+  93% {
+    opacity: 1;
+  }
+}
+.race-crowd-svg .cf {
+  animation: cam var(--d, 3s) var(--delay, 0s) linear infinite;
+}
+
+/* ── Sponsor strip ───────────────────────────────────────────────── */
+
+.race-sponsor-strip {
+  flex-shrink: 0;
+  height: 42px;
+  overflow: hidden;
+  border-top: 2px solid #c8930f;
+  border-bottom: 2px solid #c8930f;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 2px 12px rgba(200, 147, 15, 0.22);
+}
+
+.race-sponsor-inner {
+  display: flex;
+  width: max-content;
+  animation: sponsor-scroll 18s linear infinite;
+}
+
+@keyframes sponsor-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.race-sponsor-block {
+  flex: 0 0 183px;
+  width: 183px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.95);
+  border-right: 1px solid rgba(0, 0, 0, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.race-sponsor-block::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.02) 50%,
+    rgba(0, 0, 0, 0.12) 100%
+  );
+  pointer-events: none;
+}
+
+.race-sponsor-block::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.race-sponsor-logo {
+  font-size: 15px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
+}
+
+.race-sponsor-name {
+  line-height: 1.05;
+  font-size: 9px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+
+.race-sponsor-tag {
+  font-size: 5.8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  opacity: 0.62;
+  display: block;
+  margin-top: 2.5px;
+}
+
+/* ── Curbs ───────────────────────────────────────────────────────── */
+
+.race-curb {
+  position: relative;
+  z-index: 3; /* above finish band at z-index:2 */
+  flex-shrink: 0;
+  height: 9px;
+  background: repeating-linear-gradient(
+    90deg,
+    #dc2626 0 18px,
+    #f5f5f5 18px 36px
+  );
+  animation: curb-scroll 0.44s linear infinite;
+  animation-play-state: var(--lane-scroll-state, paused);
+}
+
+@keyframes curb-scroll {
+  to {
+    background-position: -36px 0;
+  }
+}
+
+/* ── Lanes ───────────────────────────────────────────────────────── */
+
+.race-lane {
+  position: relative;
+  height: 56px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+}
+
+.race-lane:nth-child(odd) {
+  background: linear-gradient(180deg, #585d6a 0%, #525763 100%);
+}
+.race-lane:nth-child(even) {
+  background: linear-gradient(180deg, #4d5260 0%, #484d5a 100%);
+}
+.race-lane + .race-lane {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Asphalt texture — subtle light-band shimmer, scrolls at world speed */
+.race-lane::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0px 120px,
+    rgba(255, 255, 255, 0.018) 120px 240px
+  );
+  animation: asphalt-scroll 2.95s linear infinite;
+  animation-play-state: var(--lane-scroll-state, paused);
+}
+
+@keyframes asphalt-scroll {
+  to {
+    background-position: -240px 0;
+  }
+}
+
+/* Centre dashes — synced to world speed */
+.race-lane::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  z-index: 1;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.22) 0 20px,
+    transparent 20px 40px
+  );
+  animation: dash-scroll 0.49s linear infinite;
+  animation-play-state: var(--lane-scroll-state, paused);
+}
+
+@keyframes dash-scroll {
+  to {
+    background-position: -40px 0;
+  }
+}
+
+/* ── Name tag — floats above car, lives inside .race-car-wrap ────── */
+
+.race-name-tag {
+  position: absolute;
+  bottom: calc(100% + 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(10, 12, 22, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 8.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #c9cdd8;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.race-name-tag--you {
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+/* ── WPM readout ─────────────────────────────────────────────────── */
+
+.race-wpm {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Lanes area — relative container for curbs, lanes, finish band ── */
+
+.race-lanes-area {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Finish band ─────────────────────────────────────────────────── */
+
+.race-finish-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  transform: translateX(-12px) scaleX(var(--finish-scale, 0));
+  transform-origin: center;
+  background-color: #111;
+  background-image: conic-gradient(
+    #fff 90deg,
+    transparent 90deg 180deg,
+    #fff 180deg 270deg,
+    transparent 270deg
+  );
+  background-size: 12px 12px;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 0 22px 4px color-mix(in oklab, var(--color-primary) 40%, transparent);
+  opacity: var(--finish-opacity, 0);
+  transition:
+    opacity 1s ease,
+    transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Car wrap & car ──────────────────────────────────────────────── */
+
+.race-car-wrap {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  transition: left 300ms ease;
+  z-index: 4;
+  overflow: visible;
+}
+
+.race-car-svg {
+  display: block;
+  position: relative;
+}
+
+.race-car-bob {
+  animation: race-car-bob 460ms ease-in-out infinite;
+}
+
+@keyframes race-car-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* Trails off the rear of the car (nose faces right, so the flame sits at
+   the wrapper's left edge) — only rendered while a racer is actively
+   moving, see the `racing` guard in RaceTrack.tsx. */
+.race-nitro {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 1.1rem;
+  height: 0.3rem;
+  border-radius: 999px;
+  transform-origin: right center;
+  transform: translateY(-50%);
+  filter: blur(2px);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, #ffd23f 88%, transparent) 45%,
+    color-mix(in oklab, var(--color-primary) 85%, transparent)
+  );
+  animation: nitro-flicker 220ms ease-in-out infinite alternate;
+}
+
+@keyframes nitro-flicker {
+  from {
+    transform: translateY(-50%) scaleX(0.82);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(-50%) scaleX(1.15);
+    opacity: 0.95;
+  }
+}
+
+/* Bots cycle through three trail effects — colorful orbs, a smoke puff,
+   a lightning spark — so the pack reads as varied racers with their own
+   gear, not five copies of one effect. */
+.race-trail-orbs {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 2.1rem;
+  height: 1rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-orbs span {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #fbbf24;
+  box-shadow: 0 0 6px 1px rgb(251 191 36 / 80%);
+  animation: orb-twinkle 650ms ease-in-out infinite;
+}
+
+.race-trail-orbs span:nth-child(1) {
+  top: 5%;
+  left: 68%;
+  animation-delay: 0ms;
+}
+
+.race-trail-orbs span:nth-child(2) {
+  top: 55%;
+  left: 38%;
+  animation-delay: 150ms;
+  background: #f472b6;
+  box-shadow: 0 0 6px 1px rgb(244 114 182 / 80%);
+}
+
+.race-trail-orbs span:nth-child(3) {
+  top: 25%;
+  left: 8%;
+  animation-delay: 300ms;
+  background: #38bdf8;
+  box-shadow: 0 0 6px 1px rgb(56 189 248 / 80%);
+}
+
+@keyframes orb-twinkle {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+.race-trail-smoke {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 2.6rem;
+  height: 1.4rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-smoke span {
+  position: absolute;
+  top: 50%;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 22%);
+  filter: blur(3px);
+  animation: smoke-puff 700ms ease-out infinite;
+}
+
+.race-trail-smoke span:nth-child(1) {
+  right: 60%;
+  width: 0.85rem;
+  height: 0.85rem;
+  animation-delay: 0ms;
+}
+
+.race-trail-smoke span:nth-child(2) {
+  right: 20%;
+  width: 0.6rem;
+  height: 0.6rem;
+  animation-delay: 250ms;
+}
+
+@keyframes smoke-puff {
+  0% {
+    opacity: 0.5;
+    transform: translateY(-50%) scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-90%) scale(1.4);
+  }
+}
+
+.race-trail-spark {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 1.6rem;
+  height: 0.9rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgb(56 189 248 / 80%));
+  animation: spark-flicker 180ms step-end infinite;
+}
+
+@keyframes spark-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 /* A fixed light "readout" regardless of how dark the rest of the page is —
    Nitro Type's text box stays light on a dark track, so it reads as the
    one thing you're focused on. Re-declaring the tokens locally (rather
@@ -532,43 +1079,66 @@ body::before {
    pending/correct/incorrect text, the caret — legible against it
    automatically. */
 .race-words {
-  --color-foreground: oklch(0.22 0.02 260);
-  --color-muted-foreground: oklch(0.55 0.02 260);
-  --color-success: oklch(0.5 0.15 152);
-  --color-destructive: oklch(0.58 0.22 20);
-  --color-destructive-foreground: oklch(0.98 0.006 90);
-  --color-primary: oklch(0.52 0.15 232);
-  background: oklch(0.96 0.004 90);
-  border: 1px solid oklch(0.87 0.008 90);
-  box-shadow: 0 20px 44px -18px rgb(0 0 0 / 80%);
-  color: var(--color-foreground);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: clamp(155px, 22vh, 210px);
+  /* Dark navy surface — same family as the rest of the app */
+  background: oklch(0.19 0.018 264);
+  border: none;
+  border-top: 1px solid oklch(0.28 0.016 264);
+  box-shadow:
+    4px 0 28px oklch(0.75 0.14 232 / 0.14),
+    -4px 0 28px oklch(0.75 0.14 232 / 0.14),
+    0 16px 36px oklch(0.75 0.14 232 / 0.1),
+    inset 4px 0 18px oklch(0.75 0.14 232 / 0.07),
+    inset -4px 0 18px oklch(0.75 0.14 232 / 0.07),
+    inset 0 -10px 28px oklch(0.75 0.14 232 / 0.06);
+  color: oklch(0.92 0.008 264);
   font-family: var(--font-mono);
-  font-size: clamp(1.05rem, 2.2vw, 1.35rem);
-  line-height: 2;
-  letter-spacing: 0;
+  font-size: 1.5rem;
+  line-height: 1.8;
+  padding: 1.75rem 2.5rem;
+  border-radius: 0;
+}
+
+.race-words-inner {
+  /* outer .race-words overflow:hidden already clips the content */
+  overflow: visible;
 }
 
 .race-word {
   display: inline-block;
   margin: 0 0.35rem 0.35rem 0;
+  border-radius: 4px;
+}
+
+.race-word-active {
+  /* Amber stadium-light glow — warm and unmistakable on dark */
+  background: oklch(0.85 0.16 80 / 0.15);
+  box-shadow:
+    0 0 0 6px oklch(0.85 0.16 80 / 0.15),
+    0 0 20px oklch(0.85 0.16 80 / 0.12);
+  border-radius: 5px;
+  color: oklch(0.96 0.006 90);
 }
 
 .race-word-pending {
-  color: var(--color-muted-foreground);
-  opacity: 0.6;
-}
-
-.race-word-correct {
-  color: var(--color-success);
+  color: oklch(0.5 0.016 264);
 }
 
 .race-char-pending {
-  color: var(--color-muted-foreground);
-  opacity: 0.6;
+  color: oklch(0.5 0.016 264);
+}
+
+.race-word-correct {
+  color: oklch(0.72 0.2 152);
 }
 
 .race-char-correct {
-  color: var(--color-success);
+  color: oklch(0.48 0.16 152);
 }
 
 .race-char-incorrect {
@@ -578,23 +1148,33 @@ body::before {
 }
 
 [data-caret-marker] {
+  position: relative;
   display: inline-block;
   width: 0;
   height: 1.15em;
   vertical-align: -0.25em;
 }
 
-.race-caret {
+[data-caret-marker]::after {
+  content: '';
   position: absolute;
   top: 0;
-  left: 0;
+  left: -1px;
   width: 2px;
-  height: 1.15em;
+  height: 100%;
   border-radius: 1px;
-  background: var(--color-primary);
-  transition: transform 100ms ease;
+  background: oklch(0.55 0.2 152);
+  box-shadow: 0 0 8px 2px oklch(0.55 0.2 152 / 0.6);
   animation: race-caret-blink 1s step-end infinite;
-  pointer-events: none;
+}
+
+[data-caret-marker='error']::after {
+  background: var(--color-destructive);
+  box-shadow: 0 0 10px 3px
+    color-mix(in oklab, var(--color-destructive) 65%, transparent);
+  animation:
+    race-caret-error 0.22s ease,
+    race-caret-blink 1s step-end 0.22s infinite;
 }
 
 @keyframes race-caret-blink {
@@ -603,33 +1183,66 @@ body::before {
   }
 }
 
+@keyframes race-caret-error {
+  0% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-4px);
+  }
+  45% {
+    transform: translateX(4px);
+  }
+  70% {
+    transform: translateX(-3px);
+  }
+  90% {
+    transform: translateX(2px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Sits over the sentence and blurs it — the passage stays hidden until
+   the count hits GO, so nobody can read ahead before the race starts. */
 .countdown-overlay {
   position: absolute;
   inset: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: inherit;
-  background: oklch(0.96 0.004 90 / 85%);
-  backdrop-filter: blur(3px);
+  background: oklch(0.96 0.004 90 / 55%);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
 }
 
-.countdown-number {
+.countdown-card {
+  min-width: 3.25rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgb(255 255 255 / 12%);
+  background: rgb(0 0 0 / 72%);
+  box-shadow: 0 10px 24px -8px rgb(0 0 0 / 60%);
   font-family: var(--font-mono);
-  font-size: 3rem;
+  font-size: 1.75rem;
   font-weight: 800;
-  color: var(--color-primary);
-  animation: countdown-pop 650ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  color: #fff;
+  text-align: center;
+  animation: countdown-pop 300ms ease-out both;
+}
+
+.countdown-card--go {
+  color: color-mix(in oklab, var(--color-success) 70%, white);
+  border-color: color-mix(in oklab, var(--color-success) 45%, transparent);
 }
 
 @keyframes countdown-pop {
   from {
     opacity: 0;
-    transform: scale(0.6);
-  }
-  30% {
-    opacity: 1;
-    transform: scale(1.08);
+    transform: scale(0.82);
   }
   to {
     opacity: 1;

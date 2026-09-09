@@ -1,19 +1,13 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Gauge, Medal, Target, Trophy, Zap } from 'lucide-react'
+import { Gauge, Target, Trophy, Zap } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import StatTile from '#/components/stats/StatTile'
 import WpmTrend from '#/components/stats/WpmTrend'
+import RaceHistoryRow from '#/components/stats/RaceHistoryRow'
 import { useProfile } from '#/lib/profile/useProfile'
-import { ordinal } from '#/lib/utils'
 
 export const Route = createFileRoute('/stats')({ component: StatsPage })
-
-const MEDAL_COLORS: Record<number, string> = {
-  1: '#facc15',
-  2: '#cbd5e1',
-  3: '#c2703d',
-}
 
 function StatsPage() {
   const { hydrated, stats, races } = useProfile()
@@ -88,32 +82,7 @@ function StatsPage() {
             <CardContent className="pt-0 pb-6">
               <div className="flex flex-col gap-1">
                 {races.slice(0, 10).map((race) => (
-                  <div
-                    key={race.id}
-                    className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-accent/30"
-                  >
-                    <span className="flex items-center gap-2 truncate font-semibold text-muted-foreground">
-                      {race.placement <= 3 && (
-                        <Medal
-                          className="size-3.5 shrink-0"
-                          style={{ color: MEDAL_COLORS[race.placement] }}
-                        />
-                      )}
-                      {new Date(race.date).toLocaleDateString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
-                    </span>
-                    <span className="font-mono font-bold tabular-nums">
-                      {race.wpm} wpm
-                    </span>
-                    <span className="hidden tabular-nums text-muted-foreground sm:inline">
-                      {race.accuracy}% acc
-                    </span>
-                    <span className="tabular-nums whitespace-nowrap text-muted-foreground">
-                      {ordinal(race.placement)} of {race.racerCount}
-                    </span>
-                  </div>
+                  <RaceHistoryRow key={race.id} race={race} />
                 ))}
               </div>
             </CardContent>

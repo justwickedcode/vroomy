@@ -5,7 +5,7 @@ import {
   createRootRouteWithContext,
 } from '@tanstack/react-router'
 import { Flag } from 'lucide-react'
-import Header from '#/components/layout/Header'
+import AppShell from '#/components/layout/AppShell'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 
@@ -53,10 +53,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body className="font-sans antialiased">
-        <div className="flex min-h-svh flex-col">
-          <Header />
-          <div className="flex flex-1 flex-col">{children}</div>
-        </div>
+        <AppShell>{children}</AppShell>
         <Scripts />
       </body>
     </html>
