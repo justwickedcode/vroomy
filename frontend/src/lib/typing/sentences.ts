@@ -22,3 +22,22 @@ export function getRandomSentence(exclude?: string): string {
   const candidates = pool.length > 0 ? pool : SENTENCE_POOL
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
+
+// Deterministic, not random — the same passage for everyone on the same
+// calendar day, hashed from the local date so it's stable across a page
+// reload (and identical on the server and client, unlike Math.random()).
+export function todayKey(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
+export function getDailySentence(): string {
+  const key = todayKey()
+  let hash = 0
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0
+  }
+  return SENTENCE_POOL[hash % SENTENCE_POOL.length]
+}

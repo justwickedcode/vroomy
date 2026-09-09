@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from '@tanstack/react-router'
 import {
   Gauge as GaugeIcon,
   Medal,
@@ -14,7 +13,7 @@ import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import { Card, CardContent } from '#/components/ui/card'
 import { cn, ordinal } from '#/lib/utils'
 import RaceTrack from '#/components/typing/RaceTrack'
 import Gauge from '#/components/typing/Gauge'
@@ -54,7 +53,9 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     wpm,
     accuracy,
     progress,
+    errorSeq,
     handleInputChange,
+    start,
     reset,
   } = useTypingRace()
 
@@ -67,7 +68,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     textLength: text.length,
     playerFinished: finished,
     wpmRange: speedRange.wpm,
-    count: 1,
+    count: 4,
   })
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -85,8 +86,11 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   const locked = phase !== 'ready'
 
   useEffect(() => {
-    if (!locked) inputRef.current?.focus()
-  }, [finished, locked])
+    if (!locked) {
+      const frame = requestAnimationFrame(() => inputRef.current?.focus())
+      return () => cancelAnimationFrame(frame)
+    }
+  }, [finished, locked, phase])
 
   // Races start from a server-broadcast event in the real design — every
   // player in the room gets the same countdown at once, nobody clicks to
@@ -105,13 +109,14 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     if (countdown === 0) {
       const t = setTimeout(() => {
         setPhase('ready')
+        start()
         inputRef.current?.focus()
       }, 450)
       return () => clearTimeout(t)
     }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000)
     return () => clearTimeout(t)
-  }, [phase, countdown])
+  }, [phase, countdown, start])
 
   const racers: Array<Racer> = [
     {
@@ -168,45 +173,34 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     profile.stats.racesPlayed,
   ])
 
-  return (
-    <Card className="rise-in overflow-hidden">
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 py-6">
-        <div>
-          <p className="kicker mb-1">Solo vs AI</p>
-          <Link
-            to="/race/solo"
-            className="text-sm font-semibold text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
-          >
-            change speed
-          </Link>
-        </div>
-        <div className="flex gap-3">
-          <Gauge
-            icon={GaugeIcon}
-            label="wpm"
-            value={String(wpm)}
-            progress={Math.min(wpm / WPM_GAUGE_MAX, 1)}
-          />
-          <Gauge
-            icon={Target}
-            label="accuracy"
-            value={`${accuracy}%`}
-            progress={accuracy / 100}
-          />
-          <Gauge
-            icon={Timer}
-            label="time"
-            value={formatTime(elapsedMs)}
-            progress={null}
-          />
-        </div>
-      </CardHeader>
-      <div className="glass-divider" />
+  const analytics = (
+    <div className="flex items-center gap-4">
+      <Gauge
+        icon={GaugeIcon}
+        label="wpm"
+        value={String(wpm)}
+        progress={Math.min(wpm / WPM_GAUGE_MAX, 1)}
+        size="lg"
+      />
+      <Gauge
+        icon={Target}
+        label="accuracy"
+        value={`${accuracy}%`}
+        progress={accuracy / 100}
+      />
+      <Gauge
+        icon={Timer}
+        label="time"
+        value={formatTime(elapsedMs)}
+        progress={null}
+      />
+    </div>
+  )
 
-      <CardContent className="pt-6">
-        <div className="mb-6">
-          <RaceTrack racers={racers} />
-        </div>
+  return (
+    <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">
+      <CardContent className="flex flex-col p-0">
+        <RaceTrack racers={racers} className="flex-shrink-0" />
 
         <TypingWords
           spans={spans}
@@ -214,63 +208,69 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
           activeWordIndex={activeWordIndex}
           finished={finished}
           locked={locked}
+          errorSeq={errorSeq}
           onInputChange={handleInputChange}
           inputRef={inputRef}
-          className="mb-5"
+          className="shrink-0"
           overlay={
-            locked && (
+            (locked || finished) && (
               <div className="countdown-overlay">
-                <span className="countdown-number" key={countdown}>
-                  {countdown === 0 ? 'GO!' : countdown}
-                </span>
+                {phase === 'counting' && (
+                  <span
+                    className={cn(
+                      'countdown-card',
+                      countdown === 0 && 'countdown-card--go',
+                    )}
+                    key={countdown}
+                  >
+                    {countdown === 0 ? 'GO!' : countdown}
+                  </span>
+                )}
+                {finished && (
+                  <Button
+                    onClick={reset}
+                    size="lg"
+                    className="pointer-events-auto"
+                  >
+                    <RotateCcw />
+                    Race Again
+                  </Button>
+                )}
               </div>
             )
           }
         />
+      </CardContent>
 
-        {finished ? (
-          <div
-            className={cn(
-              'flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4',
-              'border-success/30 bg-success/10',
+      {finished && <div className="glass-divider" />}
+
+      {finished ? (
+        <div className="flex flex-wrap items-center justify-between gap-5 bg-success/10 p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            {place && place <= 3 ? (
+              <Medal
+                className="size-6 shrink-0"
+                style={{ color: MEDAL_COLORS[place] }}
+              />
+            ) : (
+              <Trophy className="size-6 shrink-0 text-success" />
             )}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="flex items-center gap-2 text-sm">
-                {place && place <= 3 ? (
-                  <Medal
-                    className="size-4"
-                    style={{ color: MEDAL_COLORS[place] }}
-                  />
-                ) : (
-                  <Trophy className="size-4 text-success" />
-                )}
+            <div className="flex flex-col gap-1">
+              <p className="text-base leading-none">
                 Finished <strong>{place && ordinal(place)}</strong> of{' '}
-                {bots.length + 1} in <strong>{formatTime(elapsedMs)}</strong> at{' '}
-                <strong>{wpm} wpm</strong> with <strong>{accuracy}%</strong>{' '}
-                accuracy.
+                {bots.length + 1} in <strong>{formatTime(elapsedMs)}</strong>
               </p>
               {newBest && (
-                <Badge variant="success" className="gap-1">
+                <Badge variant="success" className="w-fit gap-1">
                   <Sparkles className="size-3" />
                   New personal best
                 </Badge>
               )}
             </div>
-            <Button onClick={reset}>
-              <RotateCcw />
-              Race Again
-            </Button>
           </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3">
-            <p className="kicker">{started ? 'Racing…' : 'Get ready…'}</p>
-            <Button variant="outline" onClick={reset} disabled={locked}>
-              New Sentence
-            </Button>
-          </div>
-        )}
-      </CardContent>
+          <div className="race-footer-controls">{analytics}</div>
+        </div>
+      ) : null}
     </Card>
   )
 }

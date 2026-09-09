@@ -9,17 +9,19 @@ export default function Gauge({
   label,
   progress,
   icon: Icon,
+  size,
 }: {
   value: string
   label: string
   progress: number | null
   icon: LucideIcon
+  size?: 'lg'
 }) {
   const clamped = progress === null ? 0 : Math.max(0, Math.min(progress, 1))
   const offset = CIRCUMFERENCE * (1 - clamped)
 
   return (
-    <div className="gauge">
+    <div className={cn('gauge', size === 'lg' && 'gauge--lg')}>
       <svg viewBox="0 0 100 100" className="gauge-svg">
         <circle cx="50" cy="50" r="46" className="gauge-face" />
         <circle cx="50" cy="50" r={RADIUS} className="gauge-track" />
