@@ -200,7 +200,12 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   return (
     <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">
       <CardContent className="flex flex-col p-0">
-        <RaceTrack racers={racers} className="flex-shrink-0" />
+        <RaceTrack
+          racers={racers}
+          countdown={countdown}
+          phase={phase}
+          className="flex-shrink-0"
+        />
 
         <TypingWords
           spans={spans}
@@ -213,29 +218,16 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
           inputRef={inputRef}
           className="shrink-0"
           overlay={
-            (locked || finished) && (
+            finished && (
               <div className="countdown-overlay">
-                {phase === 'counting' && (
-                  <span
-                    className={cn(
-                      'countdown-card',
-                      countdown === 0 && 'countdown-card--go',
-                    )}
-                    key={countdown}
-                  >
-                    {countdown === 0 ? 'GO!' : countdown}
-                  </span>
-                )}
-                {finished && (
-                  <Button
-                    onClick={reset}
-                    size="lg"
-                    className="pointer-events-auto"
-                  >
-                    <RotateCcw />
-                    Race Again
-                  </Button>
-                )}
+                <Button
+                  onClick={reset}
+                  size="lg"
+                  className="pointer-events-auto"
+                >
+                  <RotateCcw />
+                  Race Again
+                </Button>
               </div>
             )
           }
