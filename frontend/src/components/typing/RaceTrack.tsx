@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import type { CSSProperties } from 'react'
@@ -320,23 +321,79 @@ function Lane({
 
 export default function RaceTrack({
   racers,
+  countdown,
+  phase,
   className,
 }: {
   racers: Array<Racer>
+  countdown?: number
+  phase?: 'waiting' | 'counting' | 'ready'
   className?: string
 }) {
   const player = racers.find((r) => r.isYou) ?? racers[0]
-  const scrollDuration = Math.max(0.3, 1.9 - player.wpm / 110)
-  const showFinish = racers.some((r) => r.progress >= 0.72 || r.finished)
-  const trackStyle = {
-    '--lane-scroll-state': !player.finished ? 'running' : 'paused',
-    '--lane-scroll-duration': `${scrollDuration}s`,
-    '--finish-opacity': showFinish ? '1' : '0',
-    '--finish-scale': showFinish ? '1' : '0',
-  } as CSSProperties
+  const showFinish = racers.some((r) => r.progress >= 0.88 || r.finished)
+
+  const trackRef = useRef<HTMLDivElement>(null)
+  const brakingRef = useRef(false)
+  // Base speed in px/s — derived from wpm so faster typing = faster world scroll.
+  // Kept in a ref so the rAF loop always reads the latest value without re-mounting.
+  const basePxPerSecRef = useRef(36 / Math.max(0.44, 1.9 - player.wpm / 110))
+  basePxPerSecRef.current = 36 / Math.max(0.44, 1.9 - player.wpm / 110)
+
+  // Tile widths for seamless looping — crowd SVG is 2×1100px, sponsor inner is 8×183px
+  const CROWD_TILE = 1100
+  const SPONSOR_TILE = 1464
+
+  // rAF-driven scroll: runs once for the lifetime of this component instance.
+  // All road elements (curbs, dashes, flags, crowd, sponsors) share the same
+  // roadPos so they're always locked in sync. Crowd and sponsor use CSS vars
+  // with JS modulo so the container never drifts to huge negative values.
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+    const el: HTMLDivElement = track
+
+    let velocity = basePxPerSecRef.current
+    let roadPos = 0
+    let lastTime = performance.now()
+    let rafId = 0
+
+    function tick(now: number) {
+      const dt = Math.min((now - lastTime) / 1000, 0.05)
+      lastTime = now
+
+      if (brakingRef.current) {
+        // Exponential drag: halves every ~0.16 s → effectively stopped in ~1 s
+        velocity *= Math.pow(0.01, dt)
+        if (velocity < 0.15) velocity = 0
+      } else {
+        // Gently chase the wpm-based target speed so wpm changes feel organic
+        velocity += (basePxPerSecRef.current - velocity) * Math.min(dt * 6, 1)
+      }
+
+      roadPos += velocity * dt
+      el.style.setProperty('--road-pos', `${roadPos}px`)
+      el.style.setProperty('--crowd-pos', `${roadPos % CROWD_TILE}px`)
+      el.style.setProperty('--sponsor-pos', `${roadPos % SPONSOR_TILE}px`)
+      rafId = requestAnimationFrame(tick)
+    }
+
+    rafId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(rafId)
+  }, [])
+
+  useEffect(() => {
+    brakingRef.current = showFinish
+    if (!showFinish) {
+      // Race reset — snap world position back to 0
+      trackRef.current?.style.setProperty('--road-pos', '0px')
+      trackRef.current?.style.setProperty('--crowd-pos', '0px')
+      trackRef.current?.style.setProperty('--sponsor-pos', '0px')
+    }
+  }, [showFinish])
 
   return (
-    <div className={cn('race-track-panel', className)} style={trackStyle}>
+    <div className={cn('race-track-panel', className)} ref={trackRef}>
       <Grandstand />
       <SponsorStrip />
       <div className="race-lanes-area">
@@ -356,6 +413,20 @@ export default function RaceTrack({
           aria-hidden="true"
         />
       </div>
+
+      {phase === 'counting' && countdown !== undefined && (
+        <div className="race-countdown-overlay" aria-live="assertive">
+          <span
+            key={countdown}
+            className={cn(
+              'race-countdown-number',
+              countdown === 0 && 'race-countdown-number--go',
+            )}
+          >
+            {countdown === 0 ? 'GO!' : countdown}
+          </span>
+        </div>
+      )}
     </div>
   )
 }

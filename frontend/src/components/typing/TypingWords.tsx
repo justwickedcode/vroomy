@@ -5,6 +5,40 @@ import type { WordSpan } from '#/lib/typing/useTypingRace'
 
 type WordState = 'pending' | 'active' | 'correct'
 
+// Space character between words — highlighted when it's the next key to press
+function SpaceChar({
+  span,
+  isActiveWord,
+  typed,
+  errorSeq = 0,
+}: {
+  span: WordSpan
+  isActiveWord: boolean
+  typed: string
+  errorSeq?: number
+}) {
+  const spaceTyped = typed.length > span.end
+  const waitingForSpace = isActiveWord && typed.length === span.end
+  const hasError = waitingForSpace && errorSeq > 0
+
+  let cls = 'race-char-space'
+  if (spaceTyped) cls += ' race-char-correct'
+  else if (waitingForSpace)
+    cls += hasError
+      ? ' race-char-current race-char-current--error'
+      : ' race-char-current'
+  else cls += ' race-char-pending'
+
+  return (
+    <>
+      {waitingForSpace && (
+        <span key={errorSeq} data-caret-marker={hasError ? 'error' : ''} />
+      )}
+      <span className={cls}>&nbsp;</span>
+    </>
+  )
+}
+
 function Word({
   span,
   typed,
@@ -20,15 +54,24 @@ function Word({
     const chars = span.word.split('')
     const caretPos = typed.length - span.start
     const hasError = errorSeq > 0
+    const wordFullyTyped = caretPos >= chars.length
     return (
       <span className="race-word race-word-active">
         {chars.map((char, i) => {
           const index = span.start + i
-          const className =
-            index >= typed.length ? 'race-char-pending' : 'race-char-correct'
+          let className: string
+          if (index < typed.length) {
+            className = 'race-char-correct'
+          } else if (i === caretPos) {
+            className = hasError
+              ? 'race-char-current race-char-current--error'
+              : 'race-char-current'
+          } else {
+            className = 'race-char-pending'
+          }
           return (
             <Fragment key={i}>
-              {i === caretPos && (
+              {i === caretPos && !wordFullyTyped && (
                 <span
                   key={errorSeq}
                   data-caret-marker={hasError ? 'error' : ''}
@@ -38,9 +81,6 @@ function Word({
             </Fragment>
           )
         })}
-        {caretPos >= chars.length && (
-          <span key={errorSeq} data-caret-marker={hasError ? 'error' : ''} />
-        )}
       </span>
     )
   }
@@ -48,9 +88,6 @@ function Word({
   return <span className={`race-word race-word-${state}`}>{span.word}</span>
 }
 
-// The same flowing word-by-word display used by the race screen — reused
-// here by the practice drill too, rather than a bespoke widget, so both
-// look and behave identically.
 export default function TypingWords({
   spans,
   typed,
@@ -95,11 +132,14 @@ export default function TypingWords({
         if (!locked && !finished) inputRef.current?.focus()
       }}
     >
-      <div className="race-words-inner">
+      <div
+        className={cn(
+          'race-words-inner',
+          locked && 'race-words-inner--blurred',
+        )}
+      >
         {spans.map((span, index) => {
-          // Words are only ever committed once typed exactly right, so
-          // anything behind the active word (or the whole passage, once
-          // finished) is always correct — no incorrect-and-locked state.
+          const isLast = index === spans.length - 1
           const state: WordState =
             index === activeWordIndex && !finished
               ? 'active'
@@ -107,13 +147,22 @@ export default function TypingWords({
                 ? 'correct'
                 : 'pending'
           return (
-            <Word
-              key={index}
-              span={span}
-              typed={typed}
-              state={state}
-              errorSeq={state === 'active' ? errorSeq : 0}
-            />
+            <Fragment key={index}>
+              <Word
+                span={span}
+                typed={typed}
+                state={state}
+                errorSeq={state === 'active' ? errorSeq : 0}
+              />
+              {!isLast && (
+                <SpaceChar
+                  span={span}
+                  isActiveWord={state === 'active'}
+                  typed={typed}
+                  errorSeq={state === 'active' ? errorSeq : 0}
+                />
+              )}
+            </Fragment>
           )
         })}
       </div>

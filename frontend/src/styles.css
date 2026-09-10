@@ -566,7 +566,7 @@ body::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='208' height='26'%3E%3Cpolygon points='0,0 26,0 13,26' fill='%23ef4444'/%3E%3Cpolygon points='26,0 52,0 39,26' fill='%233b82f6'/%3E%3Cpolygon points='52,0 78,0 65,26' fill='%23facc15'/%3E%3Cpolygon points='78,0 104,0 91,26' fill='%238b5cf6'/%3E%3Cpolygon points='104,0 130,0 117,26' fill='%2322c55e'/%3E%3Cpolygon points='130,0 156,0 143,26' fill='%23f97316'/%3E%3Cpolygon points='156,0 182,0 169,26' fill='%2306b6d4'/%3E%3Cpolygon points='182,0 208,0 195,26' fill='%23ec4899'/%3E%3Cline x1='0' y1='1.5' x2='208' y2='1.5' stroke='rgba(255,255,255,.4)' stroke-width='2'/%3E%3C/svg%3E");
   background-size: 208px 26px;
   background-repeat: repeat-x;
-  animation: flags-scroll 2.56s linear infinite;
+  background-position: calc(-1 * var(--road-pos, 0px)) 0;
 }
 .race-flags-band::after {
   content: '';
@@ -574,23 +574,13 @@ body::before {
   inset: 0;
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, transparent 70%);
 }
-@keyframes flags-scroll {
-  to {
-    background-position: -208px 0;
-  }
-}
 
-/* Crowd SVG — 2200px wide (2× 1100px tile); translateX(-1100px) loops */
+/* Crowd SVG — 2200px wide (2× 1100px tile); driven by rAF --crowd-pos (modulo 1100) */
 .race-crowd-svg {
   position: absolute;
   top: 0;
   left: 0;
-  animation: crowd-slide 13.53s linear infinite;
-}
-@keyframes crowd-slide {
-  to {
-    transform: translateX(-1100px);
-  }
+  transform: translateX(calc(-1 * var(--crowd-pos, 0px)));
 }
 
 @keyframes fan-wave {
@@ -642,16 +632,11 @@ body::before {
   box-shadow: 0 2px 12px rgba(200, 147, 15, 0.22);
 }
 
+/* Sponsor inner — 8 blocks × 183px = 1464px per half; driven by rAF --sponsor-pos (modulo 1464) */
 .race-sponsor-inner {
   display: flex;
   width: max-content;
-  animation: sponsor-scroll 18s linear infinite;
-}
-
-@keyframes sponsor-scroll {
-  to {
-    transform: translateX(-50%);
-  }
+  transform: translateX(calc(-1 * var(--sponsor-pos, 0px)));
 }
 
 .race-sponsor-block {
@@ -728,14 +713,7 @@ body::before {
     #dc2626 0 18px,
     #f5f5f5 18px 36px
   );
-  animation: curb-scroll 0.44s linear infinite;
-  animation-play-state: var(--lane-scroll-state, paused);
-}
-
-@keyframes curb-scroll {
-  to {
-    background-position: -36px 0;
-  }
+  background-position: calc(-1 * var(--road-pos, 0px)) 0;
 }
 
 /* ── Lanes ───────────────────────────────────────────────────────── */
@@ -771,14 +749,7 @@ body::before {
     rgba(255, 255, 255, 0) 0px 120px,
     rgba(255, 255, 255, 0.018) 120px 240px
   );
-  animation: asphalt-scroll 2.95s linear infinite;
-  animation-play-state: var(--lane-scroll-state, paused);
-}
-
-@keyframes asphalt-scroll {
-  to {
-    background-position: -240px 0;
-  }
+  background-position: calc(-1 * var(--road-pos, 0px)) 0;
 }
 
 /* Centre dashes — synced to world speed */
@@ -797,14 +768,7 @@ body::before {
     rgba(255, 255, 255, 0.22) 0 20px,
     transparent 20px 40px
   );
-  animation: dash-scroll 0.49s linear infinite;
-  animation-play-state: var(--lane-scroll-state, paused);
-}
-
-@keyframes dash-scroll {
-  to {
-    background-position: -40px 0;
-  }
+  background-position: calc(-1 * var(--road-pos, 0px)) 0;
 }
 
 /* ── Name tag — floats above car, lives inside .race-car-wrap ────── */
@@ -865,8 +829,7 @@ body::before {
   top: 0;
   bottom: 0;
   width: 24px;
-  transform: translateX(-12px) scaleX(var(--finish-scale, 0));
-  transform-origin: center;
+  transform: translateX(-12px);
   background-color: #111;
   background-image: conic-gradient(
     #fff 90deg,
@@ -878,10 +841,6 @@ body::before {
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.18),
     0 0 22px 4px color-mix(in oklab, var(--color-primary) 40%, transparent);
-  opacity: var(--finish-opacity, 0);
-  transition:
-    opacity 1s ease,
-    transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
   pointer-events: none;
   z-index: 2;
 }
@@ -1072,12 +1031,6 @@ body::before {
   }
 }
 
-/* A fixed light "readout" regardless of how dark the rest of the page is —
-   Nitro Type's text box stays light on a dark track, so it reads as the
-   one thing you're focused on. Re-declaring the tokens locally (rather
-   than just a light background) keeps every descendant color —
-   pending/correct/incorrect text, the caret — legible against it
-   automatically. */
 .race-words {
   position: relative;
   overflow: hidden;
@@ -1085,60 +1038,101 @@ body::before {
   flex-direction: column;
   justify-content: center;
   min-height: clamp(155px, 22vh, 210px);
-  /* Dark navy surface — same family as the rest of the app */
-  background: oklch(0.19 0.018 264);
+  background: oklch(0.99 0.002 264);
   border: none;
-  border-top: 1px solid oklch(0.28 0.016 264);
+  border-top: 3px solid oklch(0.62 0.2 232);
+  border-left: 2px solid oklch(0.62 0.2 232 / 0.55);
+  border-right: 2px solid oklch(0.62 0.2 232 / 0.55);
+  border-bottom: 2px solid oklch(0.62 0.2 232 / 0.3);
   box-shadow:
-    4px 0 28px oklch(0.75 0.14 232 / 0.14),
-    -4px 0 28px oklch(0.75 0.14 232 / 0.14),
-    0 16px 36px oklch(0.75 0.14 232 / 0.1),
-    inset 4px 0 18px oklch(0.75 0.14 232 / 0.07),
-    inset -4px 0 18px oklch(0.75 0.14 232 / 0.07),
-    inset 0 -10px 28px oklch(0.75 0.14 232 / 0.06);
-  color: oklch(0.92 0.008 264);
+    6px 0 40px oklch(0.62 0.2 232 / 0.32),
+    -6px 0 40px oklch(0.62 0.2 232 / 0.32),
+    0 8px 24px oklch(0.62 0.2 232 / 0.12),
+    inset 6px 0 30px oklch(0.62 0.2 232 / 0.07),
+    inset -6px 0 30px oklch(0.62 0.2 232 / 0.07);
+  color: oklch(0.22 0.015 264);
   font-family: var(--font-mono);
   font-size: 1.5rem;
-  line-height: 1.8;
+  line-height: 1.9;
   padding: 1.75rem 2.5rem;
   border-radius: 0;
+  letter-spacing: 0.02em;
 }
 
 .race-words-inner {
-  /* outer .race-words overflow:hidden already clips the content */
   overflow: visible;
+  transition: filter 0.3s ease;
+}
+
+.race-words-inner--blurred {
+  filter: blur(6px);
+  user-select: none;
+  pointer-events: none;
 }
 
 .race-word {
   display: inline-block;
-  margin: 0 0.35rem 0.35rem 0;
+  margin: 0 0 0.35rem 0;
   border-radius: 4px;
 }
 
+.race-char-space {
+  display: inline-block;
+  width: 0.55ch;
+  margin: 0 0 0.35rem 0;
+}
+
 .race-word-active {
-  /* Amber stadium-light glow — warm and unmistakable on dark */
-  background: oklch(0.85 0.16 80 / 0.15);
+  color: oklch(0.22 0.015 264);
+}
+
+/* ── Current character — blue keycap, NitroType style ───────────── */
+.race-char-current {
+  color: #fff;
+  background: oklch(0.58 0.2 232);
+  border-radius: 4px;
+  padding: 0 2px;
   box-shadow:
-    0 0 0 6px oklch(0.85 0.16 80 / 0.15),
-    0 0 20px oklch(0.85 0.16 80 / 0.12);
-  border-radius: 5px;
-  color: oklch(0.96 0.006 90);
+    0 2px 0 oklch(0.38 0.18 232),
+    0 0 14px oklch(0.58 0.2 232 / 0.5);
+  animation: char-key-breathe 1.1s ease-in-out infinite;
+}
+
+@keyframes char-key-breathe {
+  0%,
+  100% {
+    box-shadow:
+      0 2px 0 oklch(0.38 0.18 232),
+      0 0 10px oklch(0.58 0.2 232 / 0.4);
+  }
+  50% {
+    box-shadow:
+      0 2px 0 oklch(0.38 0.18 232),
+      0 0 22px oklch(0.58 0.2 232 / 0.7);
+  }
+}
+
+/* Error: wrong key — red keycap */
+.race-char-current--error {
+  color: #fff;
+  background: oklch(0.52 0.22 20);
+  box-shadow:
+    0 2px 0 oklch(0.34 0.18 20),
+    0 0 14px oklch(0.52 0.22 20 / 0.6);
+  animation: none;
 }
 
 .race-word-pending {
-  color: oklch(0.5 0.016 264);
+  color: oklch(0.62 0.01 264);
 }
-
 .race-char-pending {
-  color: oklch(0.5 0.016 264);
+  color: oklch(0.62 0.01 264);
 }
-
 .race-word-correct {
-  color: oklch(0.72 0.2 152);
+  color: oklch(0.42 0.16 152);
 }
-
 .race-char-correct {
-  color: oklch(0.48 0.16 152);
+  color: oklch(0.42 0.16 152);
 }
 
 .race-char-incorrect {
@@ -1163,8 +1157,8 @@ body::before {
   width: 2px;
   height: 100%;
   border-radius: 1px;
-  background: oklch(0.55 0.2 152);
-  box-shadow: 0 0 8px 2px oklch(0.55 0.2 152 / 0.6);
+  background: oklch(0.58 0.2 232);
+  box-shadow: 0 0 10px 2px oklch(0.58 0.2 232 / 0.7);
   animation: race-caret-blink 1s step-end infinite;
 }
 
@@ -1206,6 +1200,7 @@ body::before {
 
 /* Sits over the sentence and blurs it — the passage stays hidden until
    the count hits GO, so nobody can read ahead before the race starts. */
+/* ── Text-area overlay (Race Again button) ───────────────────────── */
 .countdown-overlay {
   position: absolute;
   inset: 0;
@@ -1214,39 +1209,70 @@ body::before {
   align-items: center;
   justify-content: center;
   border-radius: inherit;
-  background: oklch(0.96 0.004 90 / 55%);
-  backdrop-filter: blur(6px);
+  background: oklch(0.99 0.002 264 / 75%);
+  backdrop-filter: blur(4px);
   pointer-events: none;
 }
 
-.countdown-card {
-  min-width: 3.25rem;
-  padding: 0.55rem 1.1rem;
-  border-radius: var(--radius-lg);
-  border: 1px solid rgb(255 255 255 / 12%);
-  background: rgb(0 0 0 / 72%);
-  box-shadow: 0 10px 24px -8px rgb(0 0 0 / 60%);
-  font-family: var(--font-mono);
-  font-size: 1.75rem;
-  font-weight: 800;
+/* ── Big race-track countdown (numbers on the track) ────────────── */
+.race-countdown-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* golden radial burst behind the number */
+  background: radial-gradient(
+    ellipse 30% 55% at 50% 50%,
+    oklch(0.88 0.25 82 / 0.28) 0%,
+    transparent 70%
+  );
+}
+
+.race-countdown-number {
+  font-family: var(--font-sans);
+  font-size: clamp(5rem, 16vw, 9rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
   color: #fff;
-  text-align: center;
-  animation: countdown-pop 300ms ease-out both;
+  text-shadow:
+    0 0 24px oklch(0.88 0.25 82 / 0.9),
+    0 0 56px oklch(0.88 0.25 82 / 0.55),
+    0 4px 0 oklch(0.45 0.18 82);
+  animation: race-countdown-pop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-.countdown-card--go {
-  color: color-mix(in oklab, var(--color-success) 70%, white);
-  border-color: color-mix(in oklab, var(--color-success) 45%, transparent);
+.race-countdown-number--go {
+  color: oklch(0.92 0.22 82);
+  text-shadow:
+    0 0 28px oklch(0.88 0.25 82),
+    0 0 64px oklch(0.88 0.25 82 / 0.7),
+    0 4px 0 oklch(0.45 0.18 82);
+  animation: race-countdown-go 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
-@keyframes countdown-pop {
+@keyframes race-countdown-pop {
   from {
+    transform: scale(2.2);
     opacity: 0;
-    transform: scale(0.82);
   }
   to {
-    opacity: 1;
     transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes race-countdown-go {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 
