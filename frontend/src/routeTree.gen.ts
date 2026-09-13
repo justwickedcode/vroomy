@@ -10,33 +10,254 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AchievementsRouteImport } from './routes/achievements'
+import { Route as DailyChallengeRouteImport } from './routes/daily-challenge'
+import { Route as FriendsRouteImport } from './routes/friends'
+import { Route as GarageRouteImport } from './routes/garage'
+import { Route as GarageUpgradesRouteImport } from './routes/garage-upgrades'
+import { Route as GuideRouteImport } from './routes/guide'
+import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
+import { Route as PlayRouteImport } from './routes/play'
+import { Route as ReplaysRouteImport } from './routes/replays'
+import { Route as StatsRouteImport } from './routes/stats'
+import { Route as ThemesRouteImport } from './routes/themes'
+import { Route as RaceRoomCodeRouteImport } from './routes/race.$roomCode'
+import { Route as RaceFriendsRouteImport } from './routes/race.friends'
+import { Route as RaceMultiplayerRouteImport } from './routes/race.multiplayer'
+import { Route as RaceSoloRouteImport } from './routes/race.solo'
+import { Route as RaceSoloIndexRouteImport } from './routes/race.solo.index'
+import { Route as RaceSoloSpeedRouteImport } from './routes/race.solo.$speed'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AchievementsRoute = AchievementsRouteImport.update({
+  id: '/achievements',
+  path: '/achievements',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DailyChallengeRoute = DailyChallengeRouteImport.update({
+  id: '/daily-challenge',
+  path: '/daily-challenge',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FriendsRoute = FriendsRouteImport.update({
+  id: '/friends',
+  path: '/friends',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GarageRoute = GarageRouteImport.update({
+  id: '/garage',
+  path: '/garage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GarageUpgradesRoute = GarageUpgradesRouteImport.update({
+  id: '/garage-upgrades',
+  path: '/garage-upgrades',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GuideRoute = GuideRouteImport.update({
+  id: '/guide',
+  path: '/guide',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeaderboardsRoute = LeaderboardsRouteImport.update({
+  id: '/leaderboards',
+  path: '/leaderboards',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlayRoute = PlayRouteImport.update({
+  id: '/play',
+  path: '/play',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReplaysRoute = ReplaysRouteImport.update({
+  id: '/replays',
+  path: '/replays',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatsRoute = StatsRouteImport.update({
+  id: '/stats',
+  path: '/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThemesRoute = ThemesRouteImport.update({
+  id: '/themes',
+  path: '/themes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RaceRoomCodeRoute = RaceRoomCodeRouteImport.update({
+  id: '/race/$roomCode',
+  path: '/race/$roomCode',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RaceFriendsRoute = RaceFriendsRouteImport.update({
+  id: '/race/friends',
+  path: '/race/friends',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RaceMultiplayerRoute = RaceMultiplayerRouteImport.update({
+  id: '/race/multiplayer',
+  path: '/race/multiplayer',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RaceSoloRoute = RaceSoloRouteImport.update({
+  id: '/race/solo',
+  path: '/race/solo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RaceSoloIndexRoute = RaceSoloIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RaceSoloRoute,
+} as any)
+const RaceSoloSpeedRoute = RaceSoloSpeedRouteImport.update({
+  id: '/$speed',
+  path: '/$speed',
+  getParentRoute: () => RaceSoloRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
+  '/daily-challenge': typeof DailyChallengeRoute
+  '/friends': typeof FriendsRoute
+  '/garage': typeof GarageRoute
+  '/garage-upgrades': typeof GarageUpgradesRoute
+  '/guide': typeof GuideRoute
+  '/leaderboards': typeof LeaderboardsRoute
+  '/play': typeof PlayRoute
+  '/replays': typeof ReplaysRoute
+  '/stats': typeof StatsRoute
+  '/themes': typeof ThemesRoute
+  '/race/$roomCode': typeof RaceRoomCodeRoute
+  '/race/friends': typeof RaceFriendsRoute
+  '/race/multiplayer': typeof RaceMultiplayerRoute
+  '/race/solo': typeof RaceSoloRouteWithChildren
+  '/race/solo/$speed': typeof RaceSoloSpeedRoute
+  '/race/solo/': typeof RaceSoloIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
+  '/daily-challenge': typeof DailyChallengeRoute
+  '/friends': typeof FriendsRoute
+  '/garage': typeof GarageRoute
+  '/garage-upgrades': typeof GarageUpgradesRoute
+  '/guide': typeof GuideRoute
+  '/leaderboards': typeof LeaderboardsRoute
+  '/play': typeof PlayRoute
+  '/replays': typeof ReplaysRoute
+  '/stats': typeof StatsRoute
+  '/themes': typeof ThemesRoute
+  '/race/$roomCode': typeof RaceRoomCodeRoute
+  '/race/friends': typeof RaceFriendsRoute
+  '/race/multiplayer': typeof RaceMultiplayerRoute
+  '/race/solo/$speed': typeof RaceSoloSpeedRoute
+  '/race/solo': typeof RaceSoloIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/achievements': typeof AchievementsRoute
+  '/daily-challenge': typeof DailyChallengeRoute
+  '/friends': typeof FriendsRoute
+  '/garage': typeof GarageRoute
+  '/garage-upgrades': typeof GarageUpgradesRoute
+  '/guide': typeof GuideRoute
+  '/leaderboards': typeof LeaderboardsRoute
+  '/play': typeof PlayRoute
+  '/replays': typeof ReplaysRoute
+  '/stats': typeof StatsRoute
+  '/themes': typeof ThemesRoute
+  '/race/$roomCode': typeof RaceRoomCodeRoute
+  '/race/friends': typeof RaceFriendsRoute
+  '/race/multiplayer': typeof RaceMultiplayerRoute
+  '/race/solo': typeof RaceSoloRouteWithChildren
+  '/race/solo/$speed': typeof RaceSoloSpeedRoute
+  '/race/solo/': typeof RaceSoloIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/achievements'
+    | '/daily-challenge'
+    | '/friends'
+    | '/garage'
+    | '/garage-upgrades'
+    | '/guide'
+    | '/leaderboards'
+    | '/play'
+    | '/replays'
+    | '/stats'
+    | '/themes'
+    | '/race/$roomCode'
+    | '/race/friends'
+    | '/race/multiplayer'
+    | '/race/solo'
+    | '/race/solo/$speed'
+    | '/race/solo/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/achievements'
+    | '/daily-challenge'
+    | '/friends'
+    | '/garage'
+    | '/garage-upgrades'
+    | '/guide'
+    | '/leaderboards'
+    | '/play'
+    | '/replays'
+    | '/stats'
+    | '/themes'
+    | '/race/$roomCode'
+    | '/race/friends'
+    | '/race/multiplayer'
+    | '/race/solo/$speed'
+    | '/race/solo'
+  id:
+    | '__root__'
+    | '/'
+    | '/achievements'
+    | '/daily-challenge'
+    | '/friends'
+    | '/garage'
+    | '/garage-upgrades'
+    | '/guide'
+    | '/leaderboards'
+    | '/play'
+    | '/replays'
+    | '/stats'
+    | '/themes'
+    | '/race/$roomCode'
+    | '/race/friends'
+    | '/race/multiplayer'
+    | '/race/solo'
+    | '/race/solo/$speed'
+    | '/race/solo/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AchievementsRoute: typeof AchievementsRoute
+  DailyChallengeRoute: typeof DailyChallengeRoute
+  FriendsRoute: typeof FriendsRoute
+  GarageRoute: typeof GarageRoute
+  GarageUpgradesRoute: typeof GarageUpgradesRoute
+  GuideRoute: typeof GuideRoute
+  LeaderboardsRoute: typeof LeaderboardsRoute
+  PlayRoute: typeof PlayRoute
+  ReplaysRoute: typeof ReplaysRoute
+  StatsRoute: typeof StatsRoute
+  ThemesRoute: typeof ThemesRoute
+  RaceRoomCodeRoute: typeof RaceRoomCodeRoute
+  RaceFriendsRoute: typeof RaceFriendsRoute
+  RaceMultiplayerRoute: typeof RaceMultiplayerRoute
+  RaceSoloRoute: typeof RaceSoloRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +269,159 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/achievements': {
+      id: '/achievements'
+      path: '/achievements'
+      fullPath: '/achievements'
+      preLoaderRoute: typeof AchievementsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/daily-challenge': {
+      id: '/daily-challenge'
+      path: '/daily-challenge'
+      fullPath: '/daily-challenge'
+      preLoaderRoute: typeof DailyChallengeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/friends': {
+      id: '/friends'
+      path: '/friends'
+      fullPath: '/friends'
+      preLoaderRoute: typeof FriendsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/garage': {
+      id: '/garage'
+      path: '/garage'
+      fullPath: '/garage'
+      preLoaderRoute: typeof GarageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/garage-upgrades': {
+      id: '/garage-upgrades'
+      path: '/garage-upgrades'
+      fullPath: '/garage-upgrades'
+      preLoaderRoute: typeof GarageUpgradesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/guide': {
+      id: '/guide'
+      path: '/guide'
+      fullPath: '/guide'
+      preLoaderRoute: typeof GuideRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leaderboards': {
+      id: '/leaderboards'
+      path: '/leaderboards'
+      fullPath: '/leaderboards'
+      preLoaderRoute: typeof LeaderboardsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/play': {
+      id: '/play'
+      path: '/play'
+      fullPath: '/play'
+      preLoaderRoute: typeof PlayRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/replays': {
+      id: '/replays'
+      path: '/replays'
+      fullPath: '/replays'
+      preLoaderRoute: typeof ReplaysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stats': {
+      id: '/stats'
+      path: '/stats'
+      fullPath: '/stats'
+      preLoaderRoute: typeof StatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/themes': {
+      id: '/themes'
+      path: '/themes'
+      fullPath: '/themes'
+      preLoaderRoute: typeof ThemesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/race/$roomCode': {
+      id: '/race/$roomCode'
+      path: '/race/$roomCode'
+      fullPath: '/race/$roomCode'
+      preLoaderRoute: typeof RaceRoomCodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/race/friends': {
+      id: '/race/friends'
+      path: '/race/friends'
+      fullPath: '/race/friends'
+      preLoaderRoute: typeof RaceFriendsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/race/multiplayer': {
+      id: '/race/multiplayer'
+      path: '/race/multiplayer'
+      fullPath: '/race/multiplayer'
+      preLoaderRoute: typeof RaceMultiplayerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/race/solo': {
+      id: '/race/solo'
+      path: '/race/solo'
+      fullPath: '/race/solo'
+      preLoaderRoute: typeof RaceSoloRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/race/solo/': {
+      id: '/race/solo/'
+      path: '/'
+      fullPath: '/race/solo/'
+      preLoaderRoute: typeof RaceSoloIndexRouteImport
+      parentRoute: typeof RaceSoloRoute
+    }
+    '/race/solo/$speed': {
+      id: '/race/solo/$speed'
+      path: '/$speed'
+      fullPath: '/race/solo/$speed'
+      preLoaderRoute: typeof RaceSoloSpeedRouteImport
+      parentRoute: typeof RaceSoloRoute
+    }
   }
 }
 
+interface RaceSoloRouteChildren {
+  RaceSoloSpeedRoute: typeof RaceSoloSpeedRoute
+  RaceSoloIndexRoute: typeof RaceSoloIndexRoute
+}
+
+const RaceSoloRouteChildren: RaceSoloRouteChildren = {
+  RaceSoloSpeedRoute: RaceSoloSpeedRoute,
+  RaceSoloIndexRoute: RaceSoloIndexRoute,
+}
+
+const RaceSoloRouteWithChildren = RaceSoloRoute._addFileChildren(
+  RaceSoloRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AchievementsRoute: AchievementsRoute,
+  DailyChallengeRoute: DailyChallengeRoute,
+  FriendsRoute: FriendsRoute,
+  GarageRoute: GarageRoute,
+  GarageUpgradesRoute: GarageUpgradesRoute,
+  GuideRoute: GuideRoute,
+  LeaderboardsRoute: LeaderboardsRoute,
+  PlayRoute: PlayRoute,
+  ReplaysRoute: ReplaysRoute,
+  StatsRoute: StatsRoute,
+  ThemesRoute: ThemesRoute,
+  RaceRoomCodeRoute: RaceRoomCodeRoute,
+  RaceFriendsRoute: RaceFriendsRoute,
+  RaceMultiplayerRoute: RaceMultiplayerRoute,
+  RaceSoloRoute: RaceSoloRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getRandomSentence } from './sentences'
 
 const TICK_MS = 100
 // Below this, elapsed time is too noisy to extrapolate into a per-minute
 // rate — a tiny denominator turns small timing jitter into a huge WPM spike.
 const MIN_ELAPSED_FOR_WPM_MS = 1500
-// How many extra (wrong) characters you can pile onto a word before further
-// keystrokes are ignored.
-const MAX_OVERFLOW_CHARS = 20
 
 export interface WordSpan {
   word: string
@@ -25,8 +22,17 @@ export function computeWordSpans(text: string): Array<WordSpan> {
   return spans
 }
 
-export function useTypingRace() {
-  const [text, setText] = useState(() => getRandomSentence())
+export function useTypingRace(
+  getText: (exclude?: string) => string = getRandomSentence,
+) {
+  // Starts empty rather than calling getText() directly in useState's
+  // initializer — that would run once during SSR and again on client
+  // hydration, and a Math.random()-backed generator gives two different
+  // strings each time, which is a hydration mismatch. Real text is
+  // generated client-side only, right after mount.
+  const getTextRef = useRef(getText)
+  getTextRef.current = getText
+  const [text, setText] = useState('')
   const [typed, setTyped] = useState('')
   // Which word is "current" is tracked as its own piece of state, advanced
   // only by an explicit, verified space-commit — never re-derived from raw
@@ -37,12 +43,17 @@ export function useTypingRace() {
   const [wordIndex, setWordIndex] = useState(0)
   const [totalTyped, setTotalTyped] = useState(0)
   const [totalMistakes, setTotalMistakes] = useState(0)
+  const [errorSeq, setErrorSeq] = useState(0)
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [finishedAt, setFinishedAt] = useState<number | null>(null)
   const [now, setNow] = useState<number | null>(null)
 
   const spans = useMemo(() => computeWordSpans(text), [text])
   const finished = finishedAt !== null
+
+  useEffect(() => {
+    setText(getTextRef.current())
+  }, [])
 
   useEffect(() => {
     if (!startedAt || finished) return
@@ -119,35 +130,46 @@ export function useTypingRace() {
 
     if (incoming.length <= typed.length) return
 
-    // Walk the newly typed characters one at a time, tracking the active
-    // word index ourselves as we go — it only moves forward when a space
-    // is typed AND the word typed so far matches exactly.
+    // Walk newly typed characters one at a time. Strict mode: wrong
+    // characters are silently rejected — the player must type the correct
+    // key before anything advances.
     let next = typed
     let idx = activeWordIndex
+    let newAttempts = 0
+    let newMistakes = 0
     for (let i = typed.length; i < incoming.length; i++) {
       const char = incoming[i]
       const word = spans[idx]
-      const segmentLength = next.length - word.start
 
       if (char === ' ') {
-        if (next.slice(word.start) !== word.word) continue
+        newAttempts++
+        if (next.slice(word.start) !== word.word) {
+          newMistakes++
+          continue
+        }
         next += char
         idx = Math.min(idx + 1, spans.length - 1)
         continue
       }
 
-      if (segmentLength >= word.word.length + MAX_OVERFLOW_CHARS) continue
+      // Reject if it doesn't match the expected character.
+      newAttempts++
+      if (char !== text[next.length]) {
+        newMistakes++
+        continue
+      }
       next += char
     }
 
-    if (next.length === typed.length) return
+    if (next.length === typed.length && newAttempts === 0) return
 
-    let newMistakes = 0
-    for (let i = typed.length; i < next.length; i++) {
-      if (next[i] !== text[i]) newMistakes++
-    }
-    setTotalTyped((count) => count + (next.length - typed.length))
+    setTotalTyped((count) => count + newAttempts)
     setTotalMistakes((count) => count + newMistakes)
+    if (newMistakes > 0) {
+      setErrorSeq((s) => s + 1)
+    } else if (next.length > typed.length) {
+      setErrorSeq(0)
+    }
 
     setTyped(next)
     setWordIndex(idx)
@@ -156,12 +178,22 @@ export function useTypingRace() {
     }
   }
 
+  // Lets a countdown-driven UI (the solo race screen) kick the clock off at
+  // "GO" instead of on the player's first keystroke — bots and the timer
+  // shouldn't wait on you to start typing. handleInputChange's own
+  // `if (!startedAt)` still covers callers with no countdown (custom text,
+  // daily challenge), and no-ops here since startedAt is already set.
+  const start = useCallback(() => {
+    setStartedAt((current) => current ?? Date.now())
+  }, [])
+
   function reset() {
-    setText((current) => getRandomSentence(current))
+    setText((current) => getTextRef.current(current))
     setTyped('')
     setWordIndex(0)
     setTotalTyped(0)
     setTotalMistakes(0)
+    setErrorSeq(0)
     setStartedAt(null)
     setFinishedAt(null)
     setNow(null)
@@ -179,7 +211,9 @@ export function useTypingRace() {
     wpm,
     accuracy,
     progress,
+    errorSeq,
     handleInputChange,
+    start,
     reset,
   }
 }

@@ -1,26 +1,37 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Gauge as GaugeIcon,
+  Medal,
   RotateCcw,
+  Sparkles,
   Target,
   Timer,
   Trophy,
 } from 'lucide-react'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
-import { useBotRacers, SPEED_RANGES } from '#/lib/typing/useBotRacers'
+import { useBotRacers } from '#/lib/typing/useBotRacers'
+import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
-import { cn } from '#/lib/utils'
+import { Badge } from '#/components/ui/badge'
+import { Card, CardContent } from '#/components/ui/card'
+import { cn, ordinal } from '#/lib/utils'
 import RaceTrack from '#/components/typing/RaceTrack'
-import RaceSetup from '#/components/typing/RaceSetup'
 import Gauge from '#/components/typing/Gauge'
+import TypingWords from '#/components/typing/TypingWords'
 import type { Racer } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
-import type { WordSpan } from '#/lib/typing/useTypingRace'
+
+const MEDAL_COLORS: Record<number, string> = {
+  1: '#facc15',
+  2: '#cbd5e1',
+  3: '#c2703d',
+}
 
 const WPM_GAUGE_MAX = 130
 
-const RACE_COUNTDOWN_START = 10
+// Solo vs AI has nobody else to wait on, so the countdown just needs to be
+// long enough to get fingers on the keys — not a real multiplayer-room wait.
+const RACE_COUNTDOWN_START = 3
 
 function formatTime(ms: number) {
   const totalSeconds = ms / 1000
@@ -29,67 +40,7 @@ function formatTime(ms: number) {
   return `${minutes}:${seconds}`
 }
 
-function ordinal(n: number) {
-  const v = n % 100
-  if (v >= 11 && v <= 13) return `${n}th`
-  switch (n % 10) {
-    case 1:
-      return `${n}st`
-    case 2:
-      return `${n}nd`
-    case 3:
-      return `${n}rd`
-    default:
-      return `${n}th`
-  }
-}
-
-type WordState = 'pending' | 'active' | 'correct'
-
-function Word({
-  span,
-  typed,
-  state,
-}: {
-  span: WordSpan
-  typed: string
-  state: WordState
-}) {
-  if (state === 'active') {
-    const chars = span.word.split('')
-    const caretPos = typed.length - span.start
-    const overflow = typed.length > span.end ? typed.slice(span.end) : ''
-    return (
-      <span className="race-word">
-        {chars.map((char, i) => {
-          const index = span.start + i
-          const className =
-            index >= typed.length
-              ? 'race-char-pending'
-              : typed[index] === char
-                ? 'race-char-correct'
-                : 'race-char-incorrect'
-          return (
-            <Fragment key={i}>
-              {i === caretPos && <span data-caret-marker="" />}
-              <span className={className}>{char}</span>
-            </Fragment>
-          )
-        })}
-        {overflow.split('').map((char, i) => (
-          <span key={`overflow-${i}`} className="race-char-incorrect">
-            {char}
-          </span>
-        ))}
-        {caretPos >= chars.length && <span data-caret-marker="" />}
-      </span>
-    )
-  }
-
-  return <span className={`race-word race-word-${state}`}>{span.word}</span>
-}
-
-export default function TypingRace() {
+export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   const {
     text,
     spans,
@@ -102,11 +53,13 @@ export default function TypingRace() {
     wpm,
     accuracy,
     progress,
+    errorSeq,
     handleInputChange,
+    start,
     reset,
   } = useTypingRace()
 
-  const [opponent, setOpponent] = useState<SpeedRange | null>(null)
+  const profile = useProfile()
 
   const bots = useBotRacers({
     raceKey: text,
@@ -114,15 +67,11 @@ export default function TypingRace() {
     startedAt,
     textLength: text.length,
     playerFinished: finished,
-    wpmRange: opponent?.wpm ?? SPEED_RANGES[1].wpm,
-    count: opponent ? 1 : 0,
+    wpmRange: speedRange.wpm,
+    count: 4,
   })
 
   const inputRef = useRef<HTMLInputElement>(null)
-  const wordsRef = useRef<HTMLButtonElement>(null)
-  const [caretPos, setCaretPos] = useState<{ x: number; y: number } | null>(
-    null,
-  )
   // 'waiting' and 'counting' are both locked (input disabled) — only
   // 'ready' lets the player type. Kept as one linear phase (rather than
   // deriving "locked" from countdown !== null with a null gap in between)
@@ -137,8 +86,11 @@ export default function TypingRace() {
   const locked = phase !== 'ready'
 
   useEffect(() => {
-    if (!locked) inputRef.current?.focus()
-  }, [finished, locked])
+    if (!locked) {
+      const frame = requestAnimationFrame(() => inputRef.current?.focus())
+      return () => cancelAnimationFrame(frame)
+    }
+  }, [finished, locked, phase])
 
   // Races start from a server-broadcast event in the real design — every
   // player in the room gets the same countdown at once, nobody clicks to
@@ -146,43 +98,37 @@ export default function TypingRace() {
   // countdown fires automatically, for every fresh sentence while a
   // opponent is chosen (initial race, "Race Again", and "New Sentence").
   useEffect(() => {
-    if (!opponent) return
     setPhase('waiting')
     setCountdown(RACE_COUNTDOWN_START)
     const t = setTimeout(() => setPhase('counting'), 600)
     return () => clearTimeout(t)
-  }, [opponent, text])
+  }, [text])
 
   useEffect(() => {
     if (phase !== 'counting') return
     if (countdown === 0) {
       const t = setTimeout(() => {
         setPhase('ready')
+        start()
         inputRef.current?.focus()
       }, 450)
       return () => clearTimeout(t)
     }
     const t = setTimeout(() => setCountdown((c) => c - 1), 1000)
     return () => clearTimeout(t)
-  }, [phase, countdown])
-
-  useLayoutEffect(() => {
-    const container = wordsRef.current
-    const marker = container?.querySelector('[data-caret-marker]')
-    if (!container || !marker) {
-      setCaretPos(null)
-      return
-    }
-    const containerRect = container.getBoundingClientRect()
-    const markerRect = marker.getBoundingClientRect()
-    setCaretPos({
-      x: markerRect.left - containerRect.left,
-      y: markerRect.top - containerRect.top,
-    })
-  }, [typed, activeWordIndex, finished])
+  }, [phase, countdown, start])
 
   const racers: Array<Racer> = [
-    { id: 'you', name: 'You', progress, wpm, finished, isYou: true },
+    {
+      id: 'you',
+      name: 'You',
+      progress,
+      wpm,
+      finished,
+      isYou: true,
+      color: profile.carColor,
+      model: profile.carModel,
+    },
     ...bots.map((bot) => ({
       id: bot.id,
       name: bot.name,
@@ -190,155 +136,133 @@ export default function TypingRace() {
       wpm: bot.wpm,
       finished: bot.finished,
       color: bot.color,
+      model: bot.model,
     })),
   ]
 
   const place = finished ? bots.filter((b) => b.finished).length + 1 : undefined
 
-  if (!opponent) {
-    return (
-      <Card className="rise-in overflow-hidden">
-        <div className="checkered-strip" />
-        <CardHeader className="py-6">
-          <p className="kicker mb-1">Vroomy</p>
-          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
-            Type fast. Win the race.
-          </h1>
-        </CardHeader>
-        <div className="glass-divider" />
-        <CardContent>
-          <RaceSetup onStart={setOpponent} />
-        </CardContent>
-      </Card>
-    )
-  }
+  // Records exactly once per race — `recordedRaceRef` tracks the sentence
+  // this race was run on so a re-render after finishing (e.g. the gauges
+  // ticking) never double-counts it in race history. The "new personal
+  // best" check has to compare against the best *before* this race is
+  // added, so it's computed in the same tick, ahead of the `addRace` call.
+  const recordedRaceRef = useRef<string | null>(null)
+  const [newBest, setNewBest] = useState(false)
+
+  useEffect(() => {
+    if (!finished || !place) return
+    if (recordedRaceRef.current === text) return
+    recordedRaceRef.current = text
+    setNewBest(profile.stats.racesPlayed > 0 && wpm > profile.stats.bestWpm)
+    profile.addRace({
+      wpm,
+      accuracy,
+      placement: place,
+      racerCount: bots.length + 1,
+    })
+  }, [
+    finished,
+    place,
+    text,
+    wpm,
+    accuracy,
+    bots.length,
+    profile.addRace,
+    profile.stats.bestWpm,
+    profile.stats.racesPlayed,
+  ])
+
+  const analytics = (
+    <div className="flex items-center gap-4">
+      <Gauge
+        icon={GaugeIcon}
+        label="wpm"
+        value={String(wpm)}
+        progress={Math.min(wpm / WPM_GAUGE_MAX, 1)}
+        size="lg"
+      />
+      <Gauge
+        icon={Target}
+        label="accuracy"
+        value={`${accuracy}%`}
+        progress={accuracy / 100}
+      />
+      <Gauge
+        icon={Timer}
+        label="time"
+        value={formatTime(elapsedMs)}
+        progress={null}
+      />
+    </div>
+  )
 
   return (
-    <Card className="rise-in overflow-hidden">
-      <div className="checkered-strip" />
+    <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">
+      <CardContent className="flex flex-col p-0">
+        <RaceTrack
+          racers={racers}
+          countdown={countdown}
+          phase={phase}
+          className="flex-shrink-0"
+        />
 
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 py-6">
-        <div>
-          <p className="kicker mb-1">
-            Vroomy · Solo vs AI ·{' '}
-            <button
-              type="button"
-              className="underline decoration-dotted underline-offset-2 hover:text-foreground"
-              onClick={() => setOpponent(null)}
-            >
-              change speed
-            </button>
-          </p>
-          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl">
-            Type fast. Win the race.
-          </h1>
-        </div>
-        <div className="flex gap-3">
-          <Gauge
-            icon={GaugeIcon}
-            label="wpm"
-            value={String(wpm)}
-            progress={Math.min(wpm / WPM_GAUGE_MAX, 1)}
-          />
-          <Gauge
-            icon={Target}
-            label="accuracy"
-            value={`${accuracy}%`}
-            progress={accuracy / 100}
-          />
-          <Gauge
-            icon={Timer}
-            label="time"
-            value={formatTime(elapsedMs)}
-            progress={null}
-          />
-        </div>
-      </CardHeader>
-      <div className="glass-divider" />
-
-      <CardContent className="pt-6">
-        <div className="mb-6">
-          <RaceTrack racers={racers} />
-        </div>
-
-        <button
-          ref={wordsRef}
-          type="button"
-          className="race-words relative mb-5 block w-full cursor-text rounded-lg p-5 text-left"
-          onClick={() => {
-            if (!locked && !finished) inputRef.current?.focus()
-          }}
-        >
-          {spans.map((span, index) => {
-            // Words are only ever committed once typed exactly right, so
-            // anything behind the active word (or the whole sentence, once
-            // finished) is always correct — no incorrect-and-locked state.
-            const state: WordState =
-              index === activeWordIndex && !finished
-                ? 'active'
-                : index < activeWordIndex || finished
-                  ? 'correct'
-                  : 'pending'
-            return <Word key={index} span={span} typed={typed} state={state} />
-          })}
-          {caretPos && !finished && !locked && (
-            <span
-              className="race-caret"
-              style={{
-                transform: `translate(${caretPos.x}px, ${caretPos.y}px)`,
-              }}
-            />
-          )}
-          {locked && (
-            <div className="countdown-overlay">
-              <span className="countdown-number" key={countdown}>
-                {countdown === 0 ? 'GO!' : countdown}
-              </span>
-            </div>
-          )}
-        </button>
-
-        {finished ? (
-          <div
-            className={cn(
-              'flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4',
-              'border-success/30 bg-success/10',
-            )}
-          >
-            <p className="flex items-center gap-2 text-sm">
-              <Trophy className="size-4 text-success" />
-              Finished <strong>{place && ordinal(place)}</strong> of{' '}
-              {bots.length + 1} in <strong>{formatTime(elapsedMs)}</strong> at{' '}
-              <strong>{wpm} wpm</strong> with <strong>{accuracy}%</strong>{' '}
-              accuracy.
-            </p>
-            <Button onClick={reset}>
-              <RotateCcw />
-              Race Again
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between gap-3">
-            <input
-              ref={inputRef}
-              type="text"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              disabled={locked}
-              className="sr-only"
-              value={typed}
-              onChange={(event) => handleInputChange(event.target.value)}
-              aria-label="Type the passage"
-            />
-            <p className="kicker">{started ? 'Racing…' : 'Get ready…'}</p>
-            <Button variant="outline" onClick={reset} disabled={locked}>
-              New Sentence
-            </Button>
-          </div>
-        )}
+        <TypingWords
+          spans={spans}
+          typed={typed}
+          activeWordIndex={activeWordIndex}
+          finished={finished}
+          locked={locked}
+          errorSeq={errorSeq}
+          onInputChange={handleInputChange}
+          inputRef={inputRef}
+          className="shrink-0"
+          overlay={
+            finished && (
+              <div className="countdown-overlay">
+                <Button
+                  onClick={reset}
+                  size="lg"
+                  className="pointer-events-auto"
+                >
+                  <RotateCcw />
+                  Race Again
+                </Button>
+              </div>
+            )
+          }
+        />
       </CardContent>
+
+      {finished && <div className="glass-divider" />}
+
+      {finished ? (
+        <div className="flex flex-wrap items-center justify-between gap-5 bg-success/10 p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            {place && place <= 3 ? (
+              <Medal
+                className="size-6 shrink-0"
+                style={{ color: MEDAL_COLORS[place] }}
+              />
+            ) : (
+              <Trophy className="size-6 shrink-0 text-success" />
+            )}
+            <div className="flex flex-col gap-1">
+              <p className="text-base leading-none">
+                Finished <strong>{place && ordinal(place)}</strong> of{' '}
+                {bots.length + 1} in <strong>{formatTime(elapsedMs)}</strong>
+              </p>
+              {newBest && (
+                <Badge variant="success" className="w-fit gap-1">
+                  <Sparkles className="size-3" />
+                  New personal best
+                </Badge>
+              )}
+            </div>
+          </div>
+          <div className="race-footer-controls">{analytics}</div>
+        </div>
+      ) : null}
     </Card>
   )
 }
