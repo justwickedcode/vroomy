@@ -486,6 +486,38 @@ Requested explicitly: `quotes.source` only ever stored a short label ("wikiquote
 
 ---
 
+## Session 6, once more still — two more real extraction bugs, found by hunting for under-parsed pages
+
+User asked to proactively find and fix pages where parsers were silently skipping real quotes, across all parsers. Found two, both substantial:
+
+1. **English: a non-English original's translation lives inside the same citation `<ul>` as the citation itself.** Confirmed live on Sophocles and the Aeneid: `<li>[Greek/Latin original]<ul><li>[English translation]</li><li>Line 79 (tr. R. C. Jebb, 1896)</li></ul></li>`. `WikiquoteParser` discarded the whole nested `<ul>` as pure citation, so the translation was lost — the original was still extracted, but then correctly rejected downstream (non-English), so the net yield was ~0 usable quotes from pages that structurally had plenty. Fixed: when the primary text isn't English (checked via both `IsLatinScript`, for a different alphabet like Greek, and `MatchesClaimedLanguage`, for same-alphabet-different-language cases like Latin — Latin is _written_ in the Latin alphabet, so `IsLatinScript` alone missed the Aeneid entirely), each nested `<li>` that doesn't itself look like a citation is extracted as its own additional quote. Citation-detection markers: `"(tr."` (translator credit) and `"Doc. "` (Wikiquote's collected-papers document-number convention — found live, a bibliographic _description_ line was slipping through the narrower `"(tr."`-only check). Verified live: Sophocles went from 1 recoverable English quote to 179 that would survive the full filter chain; the Aeneid from ~0 (all previously-deleted pure Latin) to 315.
+2. **French: some quotes are a bare sibling `<div class="citation">`, never inside any `<ul>`/`<ol>` at all.** Confirmed live on `fr.wikiquote.org/wiki/Socrate` — roughly half that page's quotes are structured `<div class="citation">[the actual quote]</div><ul><li><span class="precisions">[context]</span></li></ul><ul><li><div class="ref">[citation]</div></li></ul>`. `LocalizedWikiquoteParser` only ever looked inside `<ul>`/`<ol>` for `<li>` text, so it missed the real quote entirely _while also_ saving the "precisions" annotation as if it were the quote (not caught by the existing `div.ref`-only skip check). Fixed: `div.citation` is now extracted directly as its own quote block; the li-skip check now also recognizes `span.precisions`. Verified live: 14/14 real quotes recovered on the Socrates page, 0 citation-shaped false positives.
+
+Checked German (different structure — original-language variant sits in a separate _sibling_ block, not nested inside the same `<li>`, so not affected) and Goodreads (spot-checked a real author page: 30 quote cards → 30 extracted, clean 1:1) — no equivalent bug found in either.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` all clean. Both fixes covered by new regression tests using real, live-confirmed HTML shapes, not synthetic guesses.
+
+**Not yet verified**: these fixes only affect _future_ crawls of already-known URLs still marked `done` (Sophocles, Aeneid, Socrate, and any other page sharing these structures won't be re-fetched automatically) — the corpus won't actually gain this recovered content until those specific pages are re-crawled somehow (e.g. via the random-page fallback happening to hit them again, or a deliberate one-off re-fetch).
+
+---
+
+## Session 6, one more time still — ran the crawler live and watched it, found and fixed two real synchronization bugs
+
+User asked to actually start the crawler and watch the logs live rather than only reasoning about code, then fix whatever looked wrong. Ran it for ~10 minutes across two restarts (~2,500 log lines, 1,519 quotes saved), watching logs and spot-checking the DB directly.
+
+Found two real, related bugs, both about _when_ requests happen rather than _how often_ on average — confirms the shared-rate-limit theory from earlier in this session (which the user had asked to revert protection against for speed) was correct, but the actual problem turned out to be **synchronization**, not raw request rate:
+
+1. **All 14 Wikiquote workers start in the exact same instant** — their very first discovery call collides immediately (confirmed live: 3-5 editions 429'd within the same second at startup, every restart). Fixed: each Wikiquote worker (not Goodreads — a single stream has no herd to desynchronize) now sleeps a random 0-15s before its first request. `runWorker` in `crawler.go`.
+2. **The fixed 15s stall penalty made every rate-limited worker retry at the same fixed offset** — once several workers get 429'd close together, they then retry in lockstep again 15s later, indefinitely. Fixed: `stallPenaltyFor` now returns `wikiquoteStallPenalty` jittered ±50% (`jitter()`, `crawler.go`) — spreads retries apart instead of slowing down the average case. Had to also fix a self-inflicted side effect: two log-message call sites called `stallPenaltyFor` a second time purely to print the value, which — now that it's randomized — printed a _different_ number than the one actually applied. Added `stallPenaltyDisplayFor` (prints the nominal, unjittered value with a "(jittered)" note) so logs stay honest without needing to thread the exact drawn value through every return path.
+
+Verified live, before vs. after (same ~90s-scale windows): max simultaneous 429 collisions dropped from 5 to 2-3; this doesn't eliminate the underlying shared rate limit (12 of 14 non-EN/IT editions still hit _some_ 429s over 10 minutes), but they now consistently self-recover within a few retries rather than sitting in a longer synchronized pile-up.
+
+Also spot-checked, found clean: no crashes, no panics, no parse errors, no "unknown source" — DB content itself (English, Italian, Czech, Spanish dialogue-page quotes, the new `source_url` column) all correctly populated on live saves. German's per-run duplicate rate is high but expected — its corpus is already large and mature from earlier sessions, so it's naturally rediscovering more already-known pages than the newer, sparser editions.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` all clean. Crawler was stopped (per the user's "when you're done turn it off") after the diagnostic run — needs a fresh restart to pick up these two fixes for real use.
+
+---
+
 ## What's next
 
 1. **Decide on the 465 ellipsis-bounded quotes** — quotes starting or ending with "..." are a real candidate for "doesn't fit the game" but much fuzzier than the two filters just added: some are genuine truncated-excerpt artifacts, others are intentional stylistic trailing-off in the original quote. Flagged, not filtered — worth a follow-up conversation on how to tell the two apart, or whether it's not worth the false-positive risk.

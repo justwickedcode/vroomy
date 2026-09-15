@@ -142,19 +142,47 @@ func (p *LocalizedWikiquoteParser) Parse(html string) (Result, error) {
 			inQuotesSection = included
 			return
 		}
+		if !inQuotesSection {
+			return
+		}
+
+		// French sometimes presents the quote itself as a bare sibling <div class="citation">
+		// — not inside any <ul>/<ol> at all — immediately followed by one or more <ul> blocks
+		// holding only context/citation (a "<span class=\"precisions\">" annotation, then a
+		// "<div class=\"ref\">" bibliographic citation). Confirmed live on fr.wikiquote.org's
+		// Socrates page: roughly half of its quotes are structured this way, so a parser that
+		// only ever looked inside <ul>/<ol> for <li> text missed them entirely while also
+		// saving their "precisions" annotation as if *it* were the quote (see the li-level skip
+		// below). Extracted directly, not through the <li> loop, since it's already one
+		// complete block.
+		if s.Is("div.citation") {
+			text := dedup.StripQuoteChars(normalizeWhitespace(s.Text()))
+			if text != "" && author != "" {
+				result.Quotes = append(result.Quotes, models.Quote{
+					Text:     text,
+					Author:   author,
+					Source:   p.Source,
+					Language: p.Language,
+				})
+			}
+			return
+		}
+
 		// Also matches <ol> — see the identical fix in wikiquotes.go (a numbered list is just
 		// as valid a quote-bearing list as a bulleted one; a bare "ul" check silently drops it).
-		if !inQuotesSection || !s.Is("ul, ol") {
+		if !s.Is("ul, ol") {
 			return
 		}
 
 		s.ChildrenFiltered("li").Each(func(i int, li *goquery.Selection) {
-			// French sometimes lists a pure bibliographic citation as its own <li> sibling,
-			// entirely wrapped in <div class="ref"> with no quote text of its own at all (e.g.
-			// "Science, éthique, philosophie [...], éd. Seuil, 1991 (ISBN ...), partie 1.") —
-			// confirmed live on fr.wikiquote.org. Skip these outright rather than saving a
-			// citation as if it were a quote.
-			if children := li.Children(); children.Length() == 1 && children.First().Is("div.ref") {
+			// French sometimes lists a pure bibliographic citation or a contextual annotation
+			// as its own <li> sibling, entirely wrapped in <div class="ref"> (e.g. "Science,
+			// éthique, philosophie [...], éd. Seuil, 1991 (ISBN ...), partie 1.") or
+			// <span class="precisions"> (e.g. "Apologie de Socrate, 21d. Socrate vérifie
+			// l'oracle de Delphes...") with no quote text of its own at all — confirmed live on
+			// fr.wikiquote.org. Skip these outright rather than saving citation/commentary
+			// prose as if it were a quote.
+			if children := li.Children(); children.Length() == 1 && (children.First().Is("div.ref") || children.First().Is("span.precisions")) {
 				return
 			}
 

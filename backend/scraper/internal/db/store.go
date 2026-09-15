@@ -26,7 +26,18 @@ func bandKey(band int, value int64) string {
 	return fmt.Sprintf("simhash:band:%d:%d", band, value)
 }
 
-// WarmSimhashCache loads all existing simhashes from Postgres into Redis LSH bands on startup
+// redisPipelineChunkSize bounds how many quotes' (or pending URLs') worth of commands go into a
+// single pipeline Exec — real bug found live: WarmSimhashCache used to build one pipeline
+// spanning the *entire* quotes table (600K+ quotes × 4 bands each, millions of commands by now
+// and growing every session), and a single Exec's wire payload got big enough to blow past
+// go-redis's default write timeout outright ("write tcp [::1]:...->[::1]:6379: i/o timeout"),
+// crashing the whole crawler on startup (main.go treats WarmSimhashCache's error as fatal).
+// Executing in bounded chunks instead keeps each individual write small regardless of how large
+// the corpus grows, rather than needing an ever-longer timeout to keep pace with it.
+// WarmFrontierCache uses the same chunk size for the same reason, on a longer fuse today.
+const redisPipelineChunkSize = 5000
+
+// WarmSimhashCache loads all existing simhashes from Postgres into Redis LSH bands on startup.
 func (s *Store) WarmSimhashCache(ctx context.Context) error {
 	rows, err := s.pool.Query(ctx, `SELECT simhash FROM quotes`)
 	if err != nil {
@@ -35,6 +46,7 @@ func (s *Store) WarmSimhashCache(ctx context.Context) error {
 	defer rows.Close()
 
 	pipe := s.rdb.Pipeline()
+	queued := 0
 	for rows.Next() {
 		var simhash int64
 		if err := rows.Scan(&simhash); err != nil {
@@ -44,13 +56,25 @@ func (s *Store) WarmSimhashCache(ctx context.Context) error {
 		for i, band := range bands {
 			pipe.SAdd(ctx, bandKey(i, band), simhash)
 		}
+		queued++
+		if queued >= redisPipelineChunkSize {
+			if _, err := pipe.Exec(ctx); err != nil {
+				return err
+			}
+			pipe = s.rdb.Pipeline()
+			queued = 0
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	_, err = pipe.Exec(ctx)
-	return err
+	if queued > 0 {
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // frontierKey namespaces the Redis priority queue by source. Each source gets its own sorted
@@ -75,7 +99,11 @@ func (s *Store) WarmFrontierCache(ctx context.Context) error {
 	}
 	defer rows.Close()
 
+	// Chunked the same way WarmSimhashCache is, for the same reason — see that function's doc
+	// comment. The pending count here is smaller today, but it only grows as more sources and
+	// more aggressive discovery queue more URLs, so it's the same risk on a longer fuse.
 	pipe := s.rdb.Pipeline()
+	queued := 0
 	for rows.Next() {
 		var url, source string
 		var priority float64
@@ -83,13 +111,25 @@ func (s *Store) WarmFrontierCache(ctx context.Context) error {
 			return err
 		}
 		pipe.ZAdd(ctx, frontierKey(source), redis.Z{Score: priority, Member: url})
+		queued++
+		if queued >= redisPipelineChunkSize {
+			if _, err := pipe.Exec(ctx); err != nil {
+				return err
+			}
+			pipe = s.rdb.Pipeline()
+			queued = 0
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	_, err = pipe.Exec(ctx)
-	return err
+	if queued > 0 {
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // PushURL adds url to source's priority queue.

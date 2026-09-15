@@ -12,7 +12,7 @@
     "prettier": "^3.8.1"
   },
   "lint-staged": {
-    "frontend/**/*.{js,ts,vue}": "bunx eslint --fix --config frontend/eslint.config.mjs",
+    "frontend/**/*.{js,ts,vue}": "bunx eslint --fix --config frontend/eslint.config.js",
     "**/*.{js,ts,vue,css,json,md}": "bunx prettier --write"
   }
 }

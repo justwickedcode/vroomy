@@ -80,3 +80,31 @@ func TestLocalizedWikiquoteParser_SpanishFootnote(t *testing.T) {
 		t.Errorf("text = %q, footnote marker should be stripped", result.Quotes[0].Text)
 	}
 }
+
+// TestLocalizedWikiquoteParser_FrenchBareCitationDiv is a regression test for a real bug found
+// live on fr.wikiquote.org/wiki/Socrate: roughly half that page's quotes are a bare sibling
+// <div class="citation"> — not inside any <ul>/<ol> at all — immediately followed by <ul> blocks
+// holding only a <span class="precisions"> annotation and a <div class="ref"> citation. This
+// parser used to miss the real quote entirely (it only ever looked inside <ul>/<ol> for <li>
+// text) while saving the "precisions" annotation as if it were the quote.
+func TestLocalizedWikiquoteParser_FrenchBareCitationDiv(t *testing.T) {
+	html := `<html><body><h1 id="firstHeading"><span class="mw-page-title-main">Socrate</span></h1>
+<div id="mw-content-text"><div class="mw-parser-output">
+<div class="mw-heading mw-heading2"><h2 id="Citations">Citations</h2></div>
+<div class="citation">Je ne sais qu'une chose, c'est que je ne sais rien.</div>
+<ul><li><span class="precisions">Apologie de Socrate, 21d. Socrate vérifie l'oracle de Delphes.</span></li></ul>
+<ul><li><div class="ref">Apologie de Socrate. Criton. Phédon., Platon (trad. Léon Robin), éd. Gallimard, 1968, p. 26-27</div></li></ul>
+</div></div></body></html>`
+
+	p := &LocalizedWikiquoteParser{Source: "wikiquote-fr", Language: "fr"}
+	result, err := p.Parse(html)
+	if err != nil {
+		t.Fatalf("Parse() failed: %v", err)
+	}
+	if len(result.Quotes) != 1 {
+		t.Fatalf("got %d quotes, want 1: %+v", len(result.Quotes), result.Quotes)
+	}
+	if result.Quotes[0].Text != "Je ne sais qu'une chose, c'est que je ne sais rien." {
+		t.Errorf("text = %q, want the div.citation's own text, not the precisions/ref siblings", result.Quotes[0].Text)
+	}
+}

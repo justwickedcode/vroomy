@@ -6,11 +6,22 @@ import (
 	"testing"
 )
 
+// TestWikiquoteParser_Parse also covers a real bug found live: this parser used to discard a
+// non-English quote's nested citation *<ul>* wholesale, throwing away the real English
+// translation Wikiquote had nested right alongside the citation itself (confirmed live on
+// Sophocles and the Aeneid — see the doc comment above WikiquoteParser). The fixture's French
+// and German quotes each now correctly yield *two* entries: the original-language text
+// (unchanged from before, still there for a future non-English consumer, still filtered out by
+// crawler.go's language checks for this "en" parser) and its English translation, extracted from
+// the same nested <ul> the citation itself lives in.
 func TestWikiquoteParser_Parse(t *testing.T) {
 	expected := []models.Quote{
 		{Text: "Everything should be made simple as possible but no simpler.", Author: "Albert Einstein", Source: "wikiquote-en"},
+		{Text: "A happy man is too satisfied with the present to dwell too much on the future.", Author: "Albert Einstein", Source: "wikiquote-en"},
 		{Text: "Un homme heureux est trop content du présent pour trop se soucier de l'avenir.", Author: "Albert Einstein", Source: "wikiquote-en"},
+		{Text: "Blind obedience to authority is the greatest enemy of truth.", Author: "Albert Einstein", Source: "wikiquote-en"},
 		{Text: "Autoritätsdusel ist der größte Feind der Wahrheit.", Author: "Albert Einstein", Source: "wikiquote-en"},
+		{Text: "Dear Habicht, / Such a solemn air of silence has descended between us that I almost feel as if I am committing a sacrilege when I break it now with some inconsequential babble... / What are you up to, you frozen whale, you smoked, dried, canned piece of soul...?", Author: "Albert Einstein", Source: "wikiquote-en"},
 		{Text: "Lieber Habicht! / Es herrscht ein weihevolles Stillschweigen zwischen uns, so daß es mir fast wie eine sündige Entweihung vorkommt, wenn ich es jetzt durch ein wenig bedeutsames Gepappel unterbreche... / Was machen Sie denn, Sie eingefrorener Walfisch, Sie getrocknetes, eingebüchstes Stück Seele...?", Author: "Albert Einstein", Source: "wikiquote-en"},
 		{Text: "E=mc²", Author: "Albert Einstein", Source: "wikiquote-en"},
 		{Text: "The mass of a body is a measure of its energy content.", Author: "Albert Einstein", Source: "wikiquote-en"},
@@ -106,5 +117,73 @@ func TestWikiquoteParser_Parse_NonStandardHeading(t *testing.T) {
 	}
 	if result.Quotes[0].Text != "A real quote under a non-standard heading name." {
 		t.Errorf("text = %q", result.Quotes[0].Text)
+	}
+}
+
+// TestWikiquoteParser_Parse_ClassicalTranslation is a regression test for a real bug found
+// live: a non-English original quote's English translation lives *inside the same nested
+// citation <ul>* as the actual citation (confirmed on Sophocles and the Aeneid) — this parser
+// used to discard that whole <ul> as pure citation, silently losing the translation along with
+// it (the original-language text was still extracted, but then correctly rejected downstream by
+// dedup.IsLatinScript/MatchesClaimedLanguage, so the net effect was 0 usable quotes from pages
+// that structurally had plenty). Covers both a non-Latin-script original (Greek, needs
+// IsLatinScript to catch) and a Latin-*language* original (needs MatchesClaimedLanguage
+// specifically — Latin is written in the Latin alphabet, so IsLatinScript alone doesn't catch
+// it, confirmed live this exact gap silently produced 0 recovered translations on the Aeneid
+// page before MatchesClaimedLanguage was added to the check). Also verifies a citation line
+// carrying the "Doc. " marker (Wikiquote's collected-papers citation convention, found live on
+// Einstein's page) is correctly excluded, not kept as if it were quotable content.
+func TestWikiquoteParser_Parse_ClassicalTranslation(t *testing.T) {
+	html := `<html><body><h1 id="firstHeading"><span class="mw-page-title-main">Sophocles</span></h1>
+<div id="mw-content-text"><div class="mw-parser-output">
+<div class="mw-heading mw-heading2"><h2 id="Quotes">Quotes</h2></div>
+<ul><li>οὔκουν γέλως ἥδιστος εἰς ἐχθροὺς γελᾶν;
+<ul><li>And to mock at foes—is not that the sweetest mockery?</li>
+<li>Line 79 (tr. R. C. Jebb, 1896)</li></ul></li></ul>
+<ul><li>Tantae molis erat Romanam condere gentem!
+<ul><li>So hard and huge a task it was to found the Roman people.</li>
+<li>Book 1, line 33 (tr. Allen Mandelbaum)</li></ul></li></ul>
+<ul><li>Everything should be made simple as possible but no simpler.
+<ul><li>From "Mes Projets d'Avenir", a French essay written at age 18. Doc. 22.</li></ul></li></ul>
+</div></div></body></html>`
+
+	result, err := (&WikiquoteParser{}).Parse(html)
+	if err != nil {
+		t.Fatalf("Parse() failed: %v", err)
+	}
+
+	var texts []string
+	for _, q := range result.Quotes {
+		texts = append(texts, q.Text)
+	}
+
+	mustContain := []string{
+		"And to mock at foes—is not that the sweetest mockery?",
+		"So hard and huge a task it was to found the Roman people.",
+	}
+	for _, want := range mustContain {
+		found := false
+		for _, got := range texts {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("missing recovered translation %q in %v", want, texts)
+		}
+	}
+
+	mustNotContain := []string{
+		"Line 79 (tr. R. C. Jebb, 1896)",
+		"Book 1, line 33 (tr. Allen Mandelbaum)",
+		`From "Mes Projets d'Avenir", a French essay written at age 18. Doc. 22.`,
+	}
+	for _, unwanted := range mustNotContain {
+		for _, got := range texts {
+			if got == unwanted {
+				t.Errorf("citation line kept as if it were a quote: %q", got)
+			}
+		}
 	}
 }
