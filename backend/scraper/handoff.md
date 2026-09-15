@@ -1,147 +1,532 @@
 # Handoff — quotes-crawler
 
-## What we did this session
+## Current state
 
-### New package: `internal/crawler`
+This project runs on **three sources**, all now genuinely self-sustaining: Goodreads via pagination `NextURLs` (plus a curated-tag fallback once one tag exhausts), and two Wikiquote editions (English and German) each via a MediaWiki **category-based** title-discovery side channel (`internal/crawler/wikiquote_discovery.go`) that tops itself up whenever it runs dry. Everything else that was tried or considered has been removed from the codebase, not just deprioritized — see "Sources that were cut" below for why, and git history if any of the removed code is ever needed again.
 
-- Created `internal/crawler/crawler.go` with:
-  - `Crawler` struct holding `*db.Store`
-  - `New(store *db.Store) *Crawler` constructor
-  - `SeedFrontier(ctx)` — seeds the frontier on first run only
-  - `Run(ctx)` — main crawl loop
-
-### `SeedFrontier`
-
-- Checks `GetPendingURLs` first — if non-empty, returns early (idempotent)
-- Calculates priority via `scoring.CalculatePriority(source, 0, 0)` before building the struct
-- Calls `SaveURL` then `PushURL` for each seed — logs and continues on error
-- Current seed: BrainyQuote only (`https://www.brainyquote.com/topics/inspirational-quotes`)
-- Quotable API dropped — service is down and likely staying down
-
-### `Run` loop flow
-
-```
-WarmSimhashCache
-WarmFrontierCache
-SeedFrontier
-loop:
-  PopURL → if empty, sleep 5s and continue
-  MarkURLInProgress
-  Fetch
-  Parse (dispatched by source — switch statement, not yet implemented)
-  MarkURLDone or MarkURLFailed
-```
-
-### `main.go` slimmed down
-
-- Removed old hardcoded toscrape loop
-- Now just: setup (Postgres, Redis, migrations) → `crawler.New(store)` → `crawler.Run(ctx)`
-
-### `MarkURLInProgress` added to `internal/db/store.go`
-
-- Sets `status = 'in_progress'`, no `last_crawled_at` update
+- `internal/parser/goodreads.go` + `internal/parser/wikiquotes.go` + `internal/parser/germanwikiquote.go` — the three real parsers (`internal/parser/toscrape.go` is test infra, see below).
+- `crawler.go` dispatches on `scoring.SourceGoodreads` / `scoring.SourceWikiquote` / `scoring.SourceWikiquoteDE`; `SeedFrontier` seeds Goodreads and English Wikiquote — German has no stopgap list, it bootstraps from category discovery on first idle (see "Session 5" below).
+- `internal/parser/toscrape.go` still exists but is **test infrastructure, not a source** — `quotes.toscrape.com` is a public scraping sandbox kept solely as the live-fetch integration test target.
+- **Each source has its own Redis queue (`frontier:<source>`) and the crawl loop round-robins between them** (`Crawler.popNextReady`) — not one shared priority queue. This replaced an approach where a source's base priority score determined precedence, which broke completely once Wikiquote's real discovery gave it a deep backlog: Goodreads' one pending page sat **fully unserved** (confirmed live: 476 Wikiquote pending vs. Goodreads' 1) for as long as any Wikiquote work remained. Round-robin is what actually guarantees every source makes continuous progress — see "Session 4, the real fix" below. A third source (German Wikiquote) slotted into this rotation with zero changes to the mechanism itself — just another entry in `sourceOrder`.
+- **Per-source rate limiting, cooldown enforced by skipping a source's turn**, not by popping-and-deferring — Goodreads gets 20s, both Wikiquote editions get 6s. Not pooled under one number — Goodreads has shown real throttling, neither Wikiquote edition has.
+- **Non-Latin-script quotes are filtered before saving** — Wikiquote author pages often carry the original-language text (Chinese, Ancient Greek, Arabic, etc.) right alongside an English translation; only the Latin-script text survives. This check is language-agnostic, not English-specific — German quotes (also Latin-script) pass it fine.
+- **Every quote is now tagged with the language it's actually in** (`quotes.language`, migration `20260913200000_add_quotes_language.sql`) — `en` for Goodreads/English Wikiquote/toscrape, `de` for German Wikiquote. Defaults to `en` in `db.SaveQuote` for rows/parsers that predate the field.
+- **Seeding is now genuinely idempotent** and **crashed/killed runs recover their orphaned work** on the next start — both were real bugs caught live, not hypothetical.
+- **Fetch has a 90s timeout** (was unset — could hang forever) and the crawl loop backs off 1s on Redis/Postgres errors (previously spun immediately with no delay on failure).
+- **A slow or failing fetch now makes the crawler switch to another source** for ~60s (`Crawler.backOffFor`) — not just wait out the normal per-source cooldown. Symmetric: fires for Goodreads stalls or either Wikiquote edition's errors (including a 429) alike.
+- **Each Wikiquote edition discovers its own new work instead of just running dry, and filters out most of the "trash"** — `Crawler.topUpWikiquoteSiteIfEmpty` walks a curated list of that edition's own occupation categories (23 for English, 6 for German) via `action=query&list=categorymembers`, not blind alphabetical `allpages` enumeration (the original approach, which pulled in every article regardless of topic — movies, TV shows, books — most yielding "0 quotes, 0 discovered URLs"). Once every category is exhausted it wraps back to the first one. Verified live for English: freshly-seeded batches are real individual names, yielding real quotes (149 saved in the 2 minutes right after switching over).
+- **A circuit breaker skips low-yield categories early, per Wikiquote edition** — `Crawler.recordWikiquoteYield` tracks each edition's own consecutive zero-quote streak; after 5 in a row, that edition's current category is force-advanced past rather than ground through to its end. Categories aren't perfectly pure (some non-biographical pages are members too).
+- **Genuine dead-end fallback**: if nothing is ready anywhere and both Wikiquote editions' current categories are also exhausted, `Crawler.topUpGoodreadsIfEmpty` seeds the next tag from a curated list (`goodreadsTags`) instead of the crawler idling forever.
+- All of `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, and unit tests are clean as of this session. Full live end-to-end verification of the German source specifically is still pending — see "Session 5" and "What's next" below.
 
 ---
 
-## Current state
+## Session 4 — this one: rate limiting was actually a lie, plus English-only filtering
 
-The crawler runs and reaches the crawl loop. It seeds BrainyQuote, pops it, fetches it, then fails because `ToscrapeParser` is the wrong parser. The URL gets marked `failed`, the queue empties, and the loop sleeps. Everything is working as expected — just missing the BrainyQuote parser.
+The user asked, essentially, two things at once: "aren't we too aggressive and risking a ban?" and "shouldn't Wikiquote pick up the slack while Goodreads is on cooldown, and can we actually see the rate limiting happen?" Checking the code before answering (rather than trusting the README) found the real problem:
+
+- **`internal/fetcher/fetcher.go` has zero rate limiting.** The README's Phase 1 TODO had "✅ Add rate limiting to fetcher (configurable delay per domain)" checked off. It was never implemented — a bare `net/http.Client{}`, no delay anywhere. `crawler.go`'s loop only sleeps when the frontier is _empty_, never between consecutive fetches. So the actual crawler was faster and more aggressive than any of the manual `curl` testing from earlier sessions (which always used deliberate pacing) — this was a real gap, not a documentation nitpick.
+- **Confirmed independently that Wikiquote also needs politeness**, not just Goodreads: while re-verifying candidate Wikiquote author-page URLs, a 20-request burst with zero delay got a flat `429 Too Many Requests` from Wikiquote itself after ~11 requests. Standard, well-behaved rate limiting (much clearer than Goodreads' silent tarpitting) — but it means "no anti-bot wall" was never the same claim as "no rate limit at all," and the fix needed to be source-generic, not Goodreads-specific.
+
+### Fix: per-source cooldown + defer-to-next-URL (`crawler.go`)
+
+- `Crawler` gained `lastFetchBySource map[string]time.Time`. Before fetching a popped URL, if its source was fetched too recently, the URL is pushed back into the frontier at `priority + deferPenalty` (5.0) and the loop tries the _next_ queued URL instead of waiting — this is what makes "work on Wikiquote while Goodreads cools down" actually happen, using the existing single priority queue rather than adding concurrency or separate per-source queues.
+- Added a `slowFetchWarn` (10s) log line so a live run visibly flags Goodreads' soft-throttle stalls the moment they happen, instead of only being discoverable via manual `curl` testing after the fact.
+- **Verified live, not just unit-tested**: ran the real crawler against fresh docker-compose Postgres/Redis. Saw exactly the intended behavior — clear `Rate limit: ... deferring ...` log lines, no rapid-fire requests, and 894 real Wikiquote quotes collected while Goodreads sat mostly on cooldown (only 30 Goodreads quotes in the same window).
+- Also discovered live (not something to "fix," just a real limitation worth knowing): a few seeded Wikiquote pages (Shakespeare, Buddha, Charles Darwin) returned 0 quotes — those articles structure content differently (by play/work rather than a single "Quotes" heading), which the current parser doesn't handle. Left as-is; not worth chasing for a handful of pages out of ~20.
+
+**Follow-up in the same session**: the initial version used one flat `minSourceDelay = 3s` and a small `SourceGoodreads` base-score gap (3.0 vs Wikiquote's 2.0) for both sources. Live testing showed the real consequence — once Wikiquote's seed backlog ran low, the loop settled into a steady rhythm of fetching a Goodreads page every ~3s (the same cadence already shown to trigger its soft-throttle), spending most of the time in between busy-deferring at 300ms intervals. The user caught this directly from the logs and asked for Goodreads to be treated with more caution _and_ lower priority, not pooled with Wikiquote's much better-behaved profile. Fixed:
+
+- `minSourceDelayBySource` map replaces the single constant: Goodreads → 10s, Wikiquote → 3s.
+- `scoring.SourceGoodreads` base score raised from `3.0` to `10.0` (Wikiquote stays at `2.0`) — a real gap, not a marginal one, so Goodreads loses every tie against Wikiquote rather than just most of them.
+- The defer-sleep is no longer a flat 300ms; it now sleeps `min(remaining_cooldown, maxDeferSleep=2s)` — avoids both pointless spinning when the cooldown is nearly over and log-spam when it isn't (relevant now that Goodreads' cooldown is 10s, not 3s).
+- **Verified live again**: a 30-second run touched Goodreads zero times while Wikiquote had pending work — exactly the intended "Goodreads only gets a turn when there's nothing better to do" behavior.
+- **Aside, not acted on yet**: this same verification run revealed `SeedFrontier` re-seeds _already-completed_ Wikiquote pages (e.g. Abraham Lincoln got fetched a 3rd time) whenever `GetPendingURLs` returns empty — which happens naturally once a batch finishes, not just "on first run" as the intent suggests. Flagged, then actually fixed a few messages later in the same session — see "Session 4, continued" below.
+
+---
+
+## Session 4, continued — "wait longer" + fix everything else found
+
+The user, watching the live logs, asked to slow down further ("non-stop rate limiting" was too aggressive-feeling even though no extra requests were actually being sent — the defer-log volume itself signaled we were pushing too hard) and to fix "whatever other problems you found." Four real fixes, all verified live against the running docker-compose stack:
+
+1. **Delays widened again**: Goodreads 10s → **20s**, Wikiquote 3s → **6s**, `maxDeferSleep` 2s → **4s**. Verified: a 40-second run produced a single digit's worth of log lines instead of a constant stream.
+2. **Seeding idempotency, actually fixed**: added `db.HasAnyURLs` (any row, any status) and changed `SeedFrontier`'s guard from `GetPendingURLs` emptiness to this. Verified live: after this fix, restarting mid-crawl correctly logs `Frontier already seeded.` instead of re-pushing already-completed Wikiquote pages back into Redis.
+3. **Crash recovery for orphaned `in_progress` rows**: a killed/crashed process leaves whatever URL it was mid-fetch on stuck at `in_progress` forever — already popped from Redis (gone from the queue), status never advances, so it's silently lost work. Added `db.RequeueStuckInProgress` (resets `in_progress` → `pending`), called in `Run()` right after `WarmSimhashCache`, before `WarmFrontierCache` so requeued rows get picked back up into Redis the same startup. Verified live: `Requeued 2 URL(s) stuck in_progress from a previous run` logged correctly, and the requeued Henry David Thoreau page was then fetched normally.
+4. **Fetch timeout + error backoff**: `fetcher.Fetch` had no timeout at all (`&http.Client{}`) — could hang forever on a dead connection. Added `requestTimeout = 90 * time.Second`, deliberately above Goodreads' observed ~60s stalls so a slow-but-succeeding request isn't misclassified as failed. Separately, the `PopURL`/`GetURLByURL`/`MarkURLInProgress` error paths in the crawl loop previously `continue`d with zero delay — a persistent Redis/Postgres outage would have spun the loop as fast as the CPU allows. Added `errorBackoff = 1 * time.Second` on all three.
+
+**New limitation surfaced by this round of live testing, not yet solved**: with delays widened, a 40-second live run spent the entire window on a single in-flight Goodreads fetch that appears to have hit its soft-throttle stall — confirming directly that the defer mechanism only prevents _starting_ a fetch too soon, it cannot help once a fetch is already in flight and stalls, because the loop is single-threaded. Wikiquote work sitting ready in the queue simply has to wait out that ~60s stall too. This is the same fact already noted for Phase 4 ("Fetcher workers consuming from Redis frontier") but is now concretely observed, not just theoretical — worth prioritizing that Phase 4 item over further single-loop tuning if this keeps mattering in practice.
+
+### Fix: adaptive backoff — switch to the other source when one struggles (`Crawler.backOffFor`)
+
+The user asked explicitly: "when Goodreads seems to rate-limit me, switch to Wikiquote, and the other way around." The fixed per-source cooldown (20s/6s) is a floor, not a reaction — it doesn't know a fetch just struggled, it just always waits that long regardless. Added `Crawler.backOffFor(source, penalty)`: sets `lastFetchBySource[source]` far enough in the future that the source is ineligible for another fetch for `stallPenalty` (60s, matching Goodreads' own observed stall duration) — a mechanical trick, not a new field: `time.Now().Add(penalty - minSourceDelayFor(source))` makes the existing `wait := minDelay - time.Since(last)` check yield `penalty` instead of the normal delay.
+
+Called from two places, both already-existing detection points:
+
+- The `slowFetchWarn` (>10s) branch — Goodreads' tarpit signature.
+- The fetch-error branch — this covers a Wikiquote `429` for free, since `fetcher.Fetch` returns that as `"unexpected status code: 429"`, an `error` like any other. No source-specific logic needed; whichever source just errored gets backed off, symmetric by construction.
+
+**Not yet verified live** — built and unit-tested (`go build`/`vet`/full suite clean) but not exercised against a real stall/429 in this session, since the user's own crawler was actively running against the shared docker-compose stack and starting a second competing process against the same Redis/Postgres queue would have raced with it. Verify next session by watching for `Slow fetch: ... favoring other sources for 1m0s` or `Fetch failed for ... favoring other sources for 1m0s` in real logs, then confirming the other source gets fetched next instead of an immediate retry.
+
+---
+
+## Session 4, continued again — two things caught from the same live session
+
+**1. Defer-retry noise.** The user asked "is this normal?" pointing at a repeating `Rate limit: goodreads was fetched Xs ago ... deferring ... trying the next queued URL instead` every ~4s for the same URL. It was — Wikiquote's 20-page stopgap was fully drained, so Goodreads' single self-sustaining URL was the _only_ thing in the queue, and it kept re-popping itself, deferring, sleeping `maxDeferSleep` (4s), and repeating for the full 20s cooldown — five log lines per cycle instead of one, correct but noisy. Fixed: before capping the sleep at `maxDeferSleep`, check `db.FrontierSize` (new: `ZCARD frontier`) — if the deferred URL is the only thing pending, nothing else can appear on its own, so sleep the _full_ remaining cooldown in one shot instead of polling.
+
+**2. The actual root cause — Wikiquote had nothing to switch to.** Immediately after explaining the above, the user asked the sharper question: "wouldn't this be a point where you should switch to Wikiquote?" Correct catch — the crawler wasn't declining to switch, Wikiquote's fixed ~20-author seed list was simply exhausted (all `done`), so there was nothing to switch _to_. This is the third time source-switching came up in this session, each time exposing that the previous fix only handled part of the problem (priority ordering → per-source cooldown → adaptive backoff → now, actually running out of Wikiquote work entirely). Built the real fix this time instead of a bigger fixed list:
+
+- **`internal/crawler/wikiquote_discovery.go`** (new file) — `fetchWikiquoteTitles(cursor)` calls Wikiquote's MediaWiki API (`action=query&list=allpages&apnamespace=0`, 500 titles per call — the anonymous-access max), returning titles plus a continuation cursor (`apcontinue`). `wikiquoteTitleToURL(title)` converts a title to its real page URL (`strings.ReplaceAll(title, " ", "_")` then `url.PathEscape`) — verified via an isolated smoke test (not touching the shared queue, since the user's crawler was still running against it at the time) that this round-trips correctly even for titles with quotes/apostrophes/exclamation marks (`"Ezra Klein"` → `%22Ezra_Klein%22`, confirmed live `200`).
+- **`db.CountPendingBySource`**, **`db.GetDiscoveryCursor`/`SetDiscoveryCursor`** (Redis-backed, keyed `discovery:cursor:<source>`) — new store methods so the cursor survives restarts instead of re-fetching the same first 500 titles every time.
+- **`Crawler.topUpWikiquoteIfEmpty(ctx)`** — checks Wikiquote's pending count; if zero, fetches the next batch via the cursor, seeds every new title (`SaveURL`+`PushURL`, `ON CONFLICT DO NOTHING` handles overlap with the original 20 for free), saves the new cursor, logs how many were actually added.
+- **Wired into the same defer branch as the noise fix above**: when `FrontierSize` shows the queue is down to just the deferred URL, call `topUpWikiquoteIfEmpty` _before_ deciding to sleep. If it finds new work, skip the sleep entirely (`continue` immediately) so the loop picks up the freshly-discovered Wikiquote URLs on the very next iteration instead of waiting out Goodreads' full cooldown regardless.
+
+**Verified**: isolated smoke test of the API call + URL construction — real, correct results.
+
+**Real bug caught immediately after, from the user watching live output**: end-to-end verification showed the discovery trigger never actually fired — the defer-log pattern (`next check in 4s`) just repeated forever instead of switching. Root cause: `FrontierSize` was checked **after** `PushURL` re-added the deferred URL to Redis, so the frontier always contained at least that one URL and never looked empty — both the "sleep the full cooldown when alone" optimization and the Wikiquote top-up trigger were silently defeated by this ordering bug, on every single check, with no error surfaced. The user's exact complaint ("more than 10 sec is unacceptable before the switch") was this bug, not a tuning question — moving the `FrontierSize` check to before `PushURL` fixed it completely.
+
+**Verified end-to-end after the fix**, live: with Goodreads' single pending page and Wikiquote fully drained (20/20 done), a fresh run deferred Goodreads' next page and discovered+seeded 500 new Wikiquote titles **within ~2 seconds** (`Wikiquote discovery: fetched 500 titles, added 500 new URLs to the frontier`, immediately followed by `deferring ..., but found new Wikiquote work to do meanwhile` and real Wikiquote fetches starting the very next iteration) — not the 10-20+ second wait from before. Confirmed via direct DB query afterward: 497 pending Wikiquote URLs freshly queued.
+
+### Fix: Wikiquote seed list (`crawler.go` `SeedFrontier`)
+
+Added a fixed list of ~20 well-known author pages (Mark Twain, Oscar Wilde, Gandhi, Lincoln, MLK, Shakespeare, etc.) as a stopgap so Wikiquote has real work available for the crawler to fall back to — previously it had a parser but nothing seeded, so the fallback behavior above would have had nothing to fall back to. This is explicitly temporary: it doesn't grow on its own (no `NextURLs` from Wikiquote yet), unlike Goodreads' self-sustaining pagination. The real fix is still the MediaWiki `list=allpages` title enumeration noted below.
+
+### Fix: English-only filter (`dedup.IsLatinScript`, applied in `crawler.go`)
+
+Live crawling immediately surfaced the reason this matters: Wikiquote author pages frequently include the original-language quote (Confucius in Chinese, Aristotle in Ancient Greek) directly alongside — not instead of — an English translation, both as separate top-level `<li>` entries the parser correctly extracts as two quotes. Added `dedup.IsLatinScript(text)` — a script check per letter rune, not an ASCII-only check, so accented Latin text like "café" still passes — checked in `crawler.go`'s save loop before `SaveQuote`; non-Latin-script quotes are logged (`Skipped non-English quote [...]`) and dropped, not saved.
+
+**Bug caught from live output, fixed same session**: the first version rejected a quote on _any_ non-Latin letter at all. A real Plato quote on Wikiquote — 300+ letters, entirely in English — has exactly one `Η` (Greek capital eta) where a Latin `H` belongs, almost certainly a homoglyph typo in the source page, not evidence of a non-English quote. That single stray character caused the whole quote to be wrongly dropped. Fixed by switching `IsLatinScript` to a ratio check (`nonLatinTolerance = 0.10` — reject only if >10% of letters are non-Latin) instead of an any-single-letter reject. Verified against the live Plato page: the affected quote is now kept, while all 11 genuinely-Greek quotes on the same page are still correctly rejected (94 total quotes, 83 kept — was 82 before the fix).
+
+All of `go build ./...`, `go vet ./...`, `gofmt -l .`, and the full test suite are clean after these changes; verified live against real docker-compose Postgres/Redis and the live Wikiquote/Goodreads pages as described above.
+
+---
+
+## Sources that were cut, and why (don't re-litigate without new evidence)
+
+- **BrainyQuote — fully removed** (parser, tests, fixtures, scoring constant, dispatch case; was present in an earlier version of this codebase, see git history). Two independent, confirmed reasons: sits behind a Cloudflare _managed_ JS challenge (plain HTTP gets a 403 "Just a moment..." page); and its `robots.txt` explicitly disallows `ClaudeBot` and most AI-crawler UAs by name (dated policy comment: `SEO plan item #5, Jeff 2026-08-04`), allowlisting only `GPTBot`/`OAI-SearchBot`/`PerplexityBot`. Not pursued technically (would mean building infrastructure to defeat a site's stated anti-bot/anti-AI policy) or by removing the parked code once Goodreads proved out as a real replacement.
+- **Quotable API — fully removed.** Not "temporarily down" as originally assumed: `api.quotable.io` doesn't resolve in DNS at all — the domain looks abandoned. Its GitHub source repo (`lukePeavey/quotable`, still 2094-star, not archived) has no bundled offline dataset either; the quote data only ever lived in their now-gone hosted MongoDB. Nothing to salvage.
+- **AZQuotes.com / QuotationsPage.com** — surfaced during source research as technically-viable candidates (permissive `robots.txt`, real content, no JS needed) but never implemented. Not cut for cause, just not a priority next to Goodreads' scale. Fine to revisit if source diversity is ever needed.
+
+---
+
+## Goodreads reliability — real, but not "fully open"
+
+Initial testing (single requests across many different tag/author pages) showed clean `200`s with no anti-bot wall, which was the basis for choosing it as the primary source. **Follow-up testing specifically simulating the crawler's real access pattern — sustained sequential pagination on one tag — found something the initial test missed**: ~35 sequential requests (`?page=2..45`), spaced anywhere from 0.3s to 2.5s apart, hit an artificial **~60-second stall roughly every 10–13 requests** (observed at request #14, #27, and #40 — gap of 13 each time, independent of pacing), while still returning a normal `200` with valid quote content. Re-fetching the "slow" URL in isolation afterward returned in ~1s — so it's not that specific page being slow, it's positional/count-based. Looks like deliberate per-IP tarpitting: still fully reachable, no CAPTCHA, no block, but throughput-limiting.
+
+**Practical implications — now acted on in code (session 4), see above:**
+
+- `internal/fetcher.Fetch` is still a bare `net/http.Client{}` with **no timeout set**. Still fine for surviving a stall (it just waits it out); if a timeout is ever added, it needs to be comfortably above ~65s or these throttled-but-succeeding requests will get misclassified as failures.
+- Effective crawl throughput is meaningfully lower than raw request count suggests — the per-source cooldown (session 4) is a first pass at planning around this, not a full solution. Real retry/backoff design is still open (Phase 4).
+- This is why the Asynq weighted-queue example in the README puts Goodreads in its own lane — a stall on one source's fetch shouldn't stall Wikiquote's. The session 4 defer-to-next-URL mechanism achieves this same goal within the current single-loop architecture as a stopgap.
+
+Full detail in README's "Sources" section note.
+
+---
+
+## Session 4, the real fix — per-source queues + round-robin, not priority scores
+
+Right after the discovery-trigger bug fix above, the user watched a live run and immediately caught the actual architectural flaw underneath everything so far: `2026/09/13 14:04:xx` logs showed **zero** Goodreads fetches for a full minute while Wikiquote cycled through its freshly-discovered backlog non-stop. Checked the DB directly: `goodreads pending=1, wikiquote pending=476` — Goodreads' one page had been sitting completely unserved.
+
+Root cause, finally correctly diagnosed: `scoring.SourceGoodreads` (10.0) vs `scoring.SourceWikiquote` (2.0) were both scores in the **same shared Redis sorted set** (`frontier`). `ZPOPMIN` always returns the global minimum — so as long as _any_ Wikiquote URL was pending, it would always be popped before Goodreads' single URL, no matter how deep Wikiquote's backlog got. This was invisible earlier in the session because Wikiquote's backlog was always small (~20 pages, drained in minutes) — real title discovery (built two exchanges earlier) is what turned a cosmetic priority gap into a hard, indefinite lock-out. Every earlier fix this session (per-source cooldown, deferPenalty, adaptive backoff, the FrontierSize sleep-duration optimization) operated _within_ this broken model and could only ever mask the symptom, never fix it — this is why the user had to keep pointing at new-looking-but-related problems each time.
+
+**The actual fix**: replaced the single shared "frontier" priority queue with **one Redis sorted set per source** (`frontier:<source>` — `db.frontierKey`), and replaced priority-based cross-source selection with **explicit round-robin at the application level**: `Crawler.popNextReady` cycles through `sourceOrder` (`[goodreads, wikiquote]`), skipping any source still on cooldown (checked _before_ popping — no pop-then-defer churn at all anymore), and pops from the first source that's both off-cooldown and has pending work. `scoring.CalculatePriority`'s base scores now only affect ordering _within_ one source's own queue — they have zero say in which source gets served next, which is what actually guarantees fairness instead of emulating it.
+
+This also **deleted** the entire defer-and-repush mechanism (`deferPenalty`, `maxDeferSleep`, `db.FrontierSize`, the "next check in Xs" logging) — none of it is needed anymore. A source on cooldown is simply skipped for that turn; its URL is never touched, so there's nothing to push back and nothing to log. `backOffFor` and `topUpWikiquoteIfEmpty` both carried over unchanged in spirit, just triggered from the new loop shape (`topUpWikiquoteIfEmpty` now fires from the `url == ""` branch — "nothing ready anywhere" — rather than from inside a defer block that no longer exists).
+
+**Verified live, immediately, against the real skewed state that exposed the bug** (goodreads pending=1, wikiquote pending=476): a fresh run showed `Parsed .../page=34 (goodreads)` and `Parsed .../page=35 (goodreads)` exactly 20 seconds apart, cleanly interleaved with Wikiquote fetches every ~6-7s in between — both sources genuinely progressing, zero `Rate limit` log lines (nothing to defer anymore). Confirmed via `psql` afterward: Goodreads' `done` count advanced from 33 to 35. Also re-ran the full `-tags=integration` suite against this same change (`store.PushURL`/`PopURL` signatures changed to take a `source` argument, `integration_test.go` updated to match, including the `ZScore` key changing from `"frontier"` to `"frontier:<source>"`) — all 5 tests pass.
+
+**Lesson worth remembering**: three consecutive "fixes" earlier in this session (per-source delay, adaptive backoff, discovery top-up) each looked complete in isolation and were each verified working — but every one of them was operating on top of a single shared priority queue that made true fairness structurally impossible once one source's backlog grew large enough. Fixing the symptom repeatedly is not the same as checking the underlying data structure can actually support the guarantee being built on it. The user's repeated "wouldn't this be a point where you should switch sources" pushback across multiple turns was the signal that something deeper was wrong, not just under-tuned.
+
+---
+
+## Session 4, category filtering + dead-end fallback
+
+Two more asks, both from the user watching real logs: (1) too many Wikiquote pages logging `found 0 quotes, 0 discovered URLs` — wasted effort on pages that were never going to have quotes; (2) what happens if everything genuinely runs dry — is there a way to "start again"?
+
+**Diagnosed (1) first**: `allpages` enumeration (the discovery mechanism from two exchanges earlier) pulls titles from Wikiquote's _entire_ article corpus alphabetically — movies (`10_Things_I_Hate_About_You`), TV shows, books, historical events, legal concepts, all mixed in with real biographical pages. None of the non-person pages have Wikiquote's "Quotes" `<h2>` heading, so they correctly parse to 0 quotes — not a bug, but genuinely wasteful when the goal is finding quotable people.
+
+**Fix**: checked whether Wikiquote's own category system could target person-pages specifically — verified live via `action=query&prop=categoryinfo` that occupation categories exist and have real member counts (`Category:Writers` 74, `Category:Philosophers` 128, `Category:Religion leaders` 203, etc. — checked ~20 candidates this way; `Category:Military personnel` doesn't exist and `Category:Athletes` only had 2 members, both excluded). Replaced `fetchWikiquoteTitles` (`allpages`) with `fetchWikiquoteCategoryMembers` (`action=query&list=categorymembers&cmtype=page`) walking a curated list (`wikiquoteCategories`, 23 categories). `cmtype=page` specifically excludes subcategories themselves, returning only real articles. This only reaches each category's _direct_ members, not recursively into subcategories (e.g. `Category:Writers` has further subcats like Novelists/Poets — already listed separately in the curated list instead of walked via recursion) — a real further precision gain, not pursued given the added complexity of recursive category walking with cycle detection.
+
+Cursor state grew from "one continuation token" to "which category, plus that category's own continuation token" — packed into the same Redis string `db.GetDiscoveryCursor`/`SetDiscoveryCursor` already persist, as small JSON (`wikiquoteDiscoveryCursor{CategoryIndex, CMContinue}`) rather than adding new storage. Once every category is exhausted, the cursor wraps back to `{0, ""}` and starts over — cheap (everything already known gets skipped via `ON CONFLICT DO NOTHING`) and eventually productive again as Wikiquote gains new articles.
+
+**Fix for (2), the actual dead-end fallback**: added `Crawler.topUpGoodreadsIfEmpty`, mirroring the Wikiquote top-up but for Goodreads — a curated list of tags (`goodreadsTags`: life, love, wisdom, happiness, success, etc., all confirmed live to exist and return real content during earlier source-reliability research) that gets cycled through whenever Goodreads' pending count hits zero. Wired into the same `url == ""` branch in `Run()`, tried _after_ `topUpWikiquoteIfEmpty`: if Wikiquote genuinely has nothing new (its current category is also exhausted, not just cooling down), Goodreads gets a fresh tag instead of the crawler idling forever with real discoverable content still available on both sites.
+
+**Verified**: isolated smoke test of `fetchWikiquoteCategoryMembers` against the real API (`Category:Novelists`, 8 real author names returned, one confirmed live and fetchable) — correct.
+
+**Verified end-to-end shortly after, live** (not just isolated this time): the user restarted their own crawler to pick this up. Confirmed the new category-based batch landing correctly — direct `psql` query showed the freshly-seeded pending Wikiquote URLs were all real individual names (`Bongile_Mantsai`, `Erika_Ishii`, `Saweetie`, `Yandy_Smith`, etc. — a `Category:Actors`/`Category:Actresses`-shaped batch), not the numeric/date/movie junk from before. Confirmed real yield: 149 quotes saved in the 2 minutes right after restart. The cursor wrap-around and Goodreads dead-end fallback paths specifically are still unexercised (queues never actually emptied out during this session) — worth checking whenever that naturally happens.
+
+**Also did a live data cleanup, not just a code fix**: the _old_ `allpages`-based process was still running when this was built (hadn't been restarted yet), and kept re-seeding fresh batches of junk (year-number pages, movie/TV titles) into the real Wikiquote frontier queue every time it emptied out — confirmed directly: cleaned up 146 pure-numeric pages (`/wiki/1172` etc.), then 26 more non-numeric junk (dates, `12_Monkeys`, `12_oz._Mouse` in four different capitalizations), then a further 487 from one more `allpages` re-seed that happened between the user's restart and the cleanup landing — 655 stale `url_frontier` rows marked `failed` and removed from `frontier:wikiquote` in Redis total, across three passes, done directly via `psql`/`redis-cli` rather than through new application code (this was one-time stale-data cleanup, not a recurring maintenance task worth automating). Necessary because the dead-streak circuit breaker and category-based discovery only affect _future_ discovery — they don't retroactively clean out what's already sitting in the queue from before the fix existed.
+
+---
+
+## Session 5 — language tagging + a real German Wikiquote source
+
+The user's ask: _"we need to mark in our db the language of the quote, we might want to use de.wikiquote.org and add German quotes too."_ Two parts — a schema change, and a genuinely new source (not a translation layer over the existing one).
+
+**Schema**: migration `20260913200000_add_quotes_language.sql` adds `quotes.language VARCHAR(8) NOT NULL DEFAULT 'en'` plus an index. `models.Quote` gained a `Language` field; `db.SaveQuote` defaults it to `"en"` when empty (covers every parser written before this field existed) and includes it in the insert. All three pre-existing parsers (Goodreads, English Wikiquote, toscrape) were updated to set `Language: "en"` explicitly rather than relying only on the store-level default, so the source code itself states the assumption instead of leaving it implicit.
+
+**Generalizing discovery for multiple Wikiquote editions**: rather than duplicating `wikiquote_discovery.go` for German, it was rewritten around a `wikiquoteSite` struct (`source`, `language`, `apiBase`, `wikiBase`, `categoryPrefix`, `curatedCategories`) with two instances, `wikiquoteEN` and `wikiquoteDE`. `fetchWikiquoteCategoryMembers` and `wikiquoteTitleToURL` both now take a `site wikiquoteSite` as their first argument instead of being English-hardcoded. This mattered for a real reason, not just DRY-ness: German Wikiquote's category namespace is localized (`Kategorie:`, not `Category:`) — a literal string that would have been silently wrong if the English constant had just been reused. German's curated categories (`Schriftsteller`, `Schauspieler`, `Politiker`, `Philosoph`, `Musiker`, `Wissenschaftler`) were each confirmed live via `categoryinfo` before being added (Schriftsteller 767, Politiker 507, Philosoph 263, Schauspieler 140, Musiker 66, Wissenschaftler 45 direct + 38 subcats) — same verification discipline as the original English category list.
+
+`crawler.go` then needed real wiring, not just a new parser sitting unused: `sourceOrder` and `minSourceDelayBySource` both gained `scoring.SourceWikiquoteDE` entries (same 6s cooldown as English — no evidence yet it needs different treatment); the `Crawler.wikiquoteDeadStreak int` field became `wikiquoteDeadStreakBySite map[string]int` so each edition tracks its own dead-streak independently; `recordWikiquoteYield` and `topUpWikiquoteIfEmpty` were both generalized to take a `site wikiquoteSite` parameter (renamed `topUpWikiquoteSiteIfEmpty`) instead of hardcoding the English source everywhere; the `Run()` dispatch switch gained a case for `GermanWikiquoteParser`; and the idle branch now tries top-up for both `wikiquoteEN` and `wikiquoteDE` before falling through to the Goodreads dead-end fallback.
+
+**New parser, not a parameterized reuse of the English one** (`internal/parser/germanwikiquote.go`) — the page structure genuinely differs enough to warrant it: German biography pages don't consistently use one fixed heading name for the real quotes section (verified live across several pages — Goethe's own name-heading directly contains the quotes; Twain and Einstein instead have a second heading, "Überprüft" or "Zitate mit Quellenangabe"). Rather than guess the "right" heading name, every top-level section is treated as quote-bearing except a known exclusion list (`Fälschlich zugeschrieben`, `Zitate mit Bezug auf …`, `Weblinks`, `Einzelnachweise`, `Quellen`, `Anmerkungen`, `Siehe auch`, `Literatur`). Citations are inline in the same `<li>` (dash-separated), not in a nested `<ul>` like English Wikiquote — stripped by removing the trailing `<i>` element and then a trailing dash-separator regex. Verified against real captured HTML for three pages before wiring anything up: Twain (72 quotes, clean), Goethe (600 quotes, one complex-citation leak accepted as a known imperfection), Einstein (one similar leak accepted). No German stopgap author seed list was added to `SeedFrontier` — category discovery already proved itself reliable for English, so it bootstraps German the same way Goodreads' tag fallback bootstraps itself, rather than spending time hand-picking German authors for a list that would only ever be a temporary bridge.
+
+Also fixed while in the area: the per-quote log line for the Latin-script filter said "Skipped non-English quote," which became actively misleading once German (a legitimate, wanted, Latin-script language) entered the picture — a German quote correctly _passes_ this filter, so calling it "non-English" mischaracterized what the check does. Reworded to "Skipped non-Latin-script quote," matching what `dedup.IsLatinScript` actually checks.
+
+**Verification status**: `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .` (after one fix), and `go test ./...` are all clean. **Not yet verified live end-to-end** — the user's own crawler process was running against the shared docker-compose stack throughout this session (same "don't race a live process" rule as session 4), so live confirmation that German discovery/parsing actually work against the real site is still open for next session, once their process is restarted to pick up this code and the new migration.
+
+---
+
+## Session 5, continued — two real performance fixes
+
+Asked generically "any speed and performance improvements?" — rather than guessing, read `fetcher.go` and `store.go` first to find concrete, verifiable waste instead of speculative tuning:
+
+1. **`fetcher.Fetch` built a brand-new `http.Client` (and thus a fresh `http.Transport`) on every single fetch.** That means every fetch — regardless of source — paid for its own TCP handshake and TLS negotiation from scratch, with zero keep-alive reuse even across back-to-back requests to the same host, despite the crawler only ever talking to four distinct hosts. Fixed by hoisting a single package-level `http.Client` with a tuned `Transport` (`MaxIdleConnsPerHost: 10`, `MaxIdleConns: 100`, `IdleConnTimeout: 90s`) so the standard library's connection pool actually gets used.
+2. **Wikiquote discovery batches were ~1000 sequential awaited round-trips for what's really one bulk operation.** `topUpWikiquoteSiteIfEmpty` looped over up to 500 titles calling `SaveURL` (one Postgres INSERT) then `PushURL` (one Redis ZADD) per title, one at a time. Added `db.SaveURLsBatch` (`INSERT ... SELECT FROM unnest(...) ON CONFLICT DO NOTHING RETURNING url`, one round trip for the whole batch, still reporting exactly which URLs were newly inserted) and `db.PushURLsBatch` (one variadic `ZADD` for every URL). `topUpWikiquoteSiteIfEmpty` now does one Postgres call + one Redis call per discovery batch instead of up to 1000 of each — the per-URL "Discovered URL [...]" log line was kept exactly as before, just moved to iterate over the batch result instead of driving each network call.
+
+Both are safe, mechanical changes — no behavior change to what gets saved/pushed, just fewer round trips to get there. New test: `TestSaveURLsBatch` in `internal/db/store_test.go` (testcontainers, same pattern as `TestSaveQuote`) covers a fresh batch, an overlapping batch (only the new URL reported), and that a pushed batch is actually poppable. `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, and `go test ./...` all clean.
+
+**Not yet measured live** — these are architecturally sound, verified-correct changes (real HTTP round-trip savings, real DB/Redis round-trip savings), but no before/after throughput number has been captured against the live crawl, since that requires a live run the same way German Wikiquote itself still needs one (see above).
+
+---
+
+## Session 5, continued again — concurrent per-source workers
+
+The user's follow-up, after the two mechanical fixes above: "i also feel we're waiting too long between fetches." Diagnosed as a different problem from either of the above — the crawl loop was still **single-threaded** across all three sources: even with independent per-source cooldowns and round-robin scheduling (`Crawler.popNextReady`), every source's fetch had to fully complete (network latency, parse, save) before the loop even checked whether a _different_ source's cooldown had already elapsed. A slow Goodreads fetch, in particular, blocked ready Wikiquote/German work the entire time it was in flight — round-robin, per-source cooldown, and adaptive backoff all only act _between_ fetches, none of them help mid-fetch. This was already flagged as a known gap in earlier sessions ("Fetcher workers consuming from Redis frontier," README Phase 4) but not yet built.
+
+Presented the user two levers with different risk profiles: add concurrency (fixes the real bottleneck, doesn't touch the cooldown numbers that were deliberately widened earlier this project after live-confirmed throttling), or just shrink the cooldown numbers (faster immediately, but directly reverses tuning that exists _because_ live testing showed real throttling at faster paces). User chose concurrency only — correctly, since the cooldown numbers aren't the problem being described and shrinking them risks re-triggering exactly the throttling that got them widened in the first place.
+
+**The fix**: replaced the single shared loop with **one dedicated goroutine per source** (`Crawler.runWorker`, launched once each from `Run()` for Goodreads, English Wikiquote, and German Wikiquote), each running its own independent forever-loop — wait out its own cooldown, pop from its own Redis queue, fetch, parse, save, mark done, repeat. This eliminated `Crawler.popNextReady`, `sourceOrder`, and the round-robin index entirely — there's no scheduling decision left to make between sources, since each one now just runs continuously on its own. The shared mutable state that used to coordinate the single loop (`lastFetchBySource map[string]time.Time`, `wikiquoteDeadStreakBySite map[string]int`) is gone too — cooldown and (for the two Wikiquote editions) the dead-streak circuit breaker are now plain local variables captured in each worker goroutine's closure, since exactly one goroutine ever touches either. `recordWikiquoteYield` changed from a method mutating a shared map to a pure function (`(ctx, site, deadStreak int, gotQuotes bool) int`) so each Wikiquote worker can keep its own streak as a local `int` with no synchronization needed. The actual per-URL work (fetch/parse/filter/save/discover) was extracted into `Crawler.processURL`, called identically by all three workers — no logic duplicated three times.
+
+Real correctness question worth being explicit about, not glossed over: is `db.Store` safe to call from three goroutines at once now? Yes by construction — its two fields are `*pgxpool.Pool` and `*redis.Client`, and both are explicitly designed for concurrent use (that's the entire point of a connection pool); no new locking was needed on the `Store` itself. One genuine, deliberately-accepted edge case: `SaveQuote`'s near-duplicate check (Redis LSH bands) is a check-then-insert sequence that is no longer atomic across sources — two different sources' workers could theoretically both check "not a near-dup" for two near-identical quotes in the same instant and both insert. Exact duplicates are still safely caught by the database-level `ON CONFLICT (sha256_hash)` regardless of concurrency. The near-dup race is real but exceptionally unlikely to matter in practice (two different sources producing near-identical quote text at the literal same millisecond) and, if it ever does happen, the outcome is one extra near-duplicate row — a quality nit, not a crash or corruption. Not fixed here; would need a distributed lock or a Postgres-side unique constraint on a near-dup fingerprint to close completely, disproportionate to the actual risk.
+
+**Verified**: `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, and `go test -race ./...` (the race detector specifically, given this is now genuinely concurrent code) are all clean. **Not yet verified live** — same reason as everything else this session: the user's own crawler process was running throughout, so no competing process was started against the shared docker-compose stack. Next session should watch a live run for the actual intended effect: Goodreads' ~60s stalls (when they occur) no longer visibly delaying Wikiquote/German fetches in the interleaved log output, the way they would have under the old single-loop design.
+
+---
+
+## Session 5, continued once more — quote quality: too long, and dictionary-style entries
+
+The user flagged one live example straight from a `SELECT * FROM quotes WHERE language = 'de'` query: `"Zukunft, die [Subst.], jene Zeit, in der unsere Geschäfte gut gehen, unsere Freunde treu sind und unser Glück gesichert ist."` — asked whether "weird characters" like this fit the game. Looked it up by joining back to its source URL before assuming it was a scraping bug: it's real, correctly-attributed content — Ambrose Bierce's German Wikiquote page, from his _Devil's Dictionary_, which is _written_ as a satirical dictionary. Not a bug to fix, but a real content-shape question: does a reference-book-style entry belong in a quote-guessing game.
+
+Checked scope directly against the live DB before deciding anything:
+
+- 14 quotes (all German, all Bierce) match this exact "headword + `[Abbrev.]` + definition" shape.
+- A much bigger fit-for-game problem exists too: quote length ranges up to **5,290 characters** against a **275-character average** (p50=153, p90=606, p95=852, p99=1515) — whole speeches/essays saved as a single "quote," mostly a Goodreads artifact.
+- Almost tried a blanket "reject any quote containing a bracket" rule, then checked first: **1,258 quotes contain a bracket**, and the overwhelming majority are legitimate scholarly/translation convention (`"[T]he ancient philosophers..."`, `"the vicious portion of [our] population"` — editorial capitalization/clarification insertions, very common in classical-philosophy quotes). A blanket bracket-reject would have wrongly thrown out nearly all of them. Narrowed the regex to require the bracket within the first 25 characters and contain a short Title-Case abbreviation ending in a period (`\[\p{Lu}\p{Ll}{1,9}\.\]`) — tested against the full corpus before landing on it: matches exactly the 14 known dictionary entries, zero false positives among the other 1,244.
+- Also checked for other "weird character" candidates before deciding what else was in scope: no leftover HTML entities (`&amp;` etc.), no embedded raw newlines/tabs (already normalized). 465 quotes start or end with an ellipsis — a real but much fuzzier category (could be intentional stylistic trailing-off, not necessarily truncation) — flagged as a follow-up question rather than guessed at, since a blanket ellipsis reject risks removing a lot of legitimate quotes.
+
+Asked the user to scope the fix rather than guessing: which patterns to filter (they picked dictionary-style entries + overly long quotes, from the three offered) and whether to also clean up existing rows (they chose going-forward only).
+
+**Fix**: two new content-quality gates in `internal/dedup/dedup.go`, applied in `Crawler.processURL` right alongside the existing `dedup.IsLatinScript` check:
+
+- `dedup.MaxQuoteLength` (500 runes) + `dedup.IsTooLong(text)` — rune-counted (not byte-counted, so multi-byte German characters don't get penalized), chosen from the corpus's own percentiles rather than a round number.
+- `dedup.LooksLikeDictionaryEntry(text)` — the narrow regex above.
+
+Both are pure functions with unit tests (`TestIsTooLong`, `TestLooksLikeDictionaryEntry` in `dedup_test.go`) covering the real regression cases found live (the Bierce entries that must match, the scholarly-bracket quotes that must not). Existing rows were deliberately left alone, per the user's choice — this only affects what gets saved from here on.
+
+**Verified**: `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, and `go test -race ./...` all clean.
+
+**Immediate follow-up in the same session**: user asked for a lower bound too ("should have a lower limit to not be too short"). Checked the corpus the same way before picking a number: only 8 quotes total sit under 8 characters, and every one of them is a citation/page-reference fragment that leaked through as if it were a standalone quote — `"Ch.8"`, `"p. 78"`, `"p. 280"`, `"p. 376."`, a bare `"[7]"` footnote marker. Everything at 8 characters or above found live was a genuine (if terse) quote — `"Be brave"` (8 chars), `"Who Am I?"` (9). Added `dedup.MinQuoteLength` (8) + `dedup.IsTooShort`, same pattern as `MaxQuoteLength`/`IsTooLong`, wired into the same filter chain in `crawler.go`. One accepted edge case, deliberately not special-cased: `"E=mc²"` (5 chars) is a real, famous line but reads more like a formula than a quotable sentence, so it gets cut along with the citation fragments rather than carving out a one-quote exception.
+
+**Noted but not (yet) built**: a pure length floor won't catch same-length junk that isn't short enough to trip it — `"Chapter One"` (11 chars) and `"Introduction"` (12 chars) are section headers that leaked through the same way the citation fragments did, but sit well within the range of genuine short quotes, so no length threshold alone can separate them. Would need a separate, narrower pattern check (same "verify against the whole corpus first" discipline as `LooksLikeDictionaryEntry`) if this turns out to matter enough to chase.
+
+---
+
+## Session 5, continued yet again — a live status check, then three operability features
+
+User checked in after a while ("almost got close to 40k so it seems to work well!") and asked if anything else was needed to build. Verified live rather than assuming: 35,320 quotes across all three sources, all with overlapping recent save timestamps (confirming the concurrent workers really are interleaving, not just running sequentially with lucky timing) — but also found the running process was stale: **4,692 quotes (13% of the corpus) were over 500 characters**, and 2,978 of those had been saved in just the prior 2 hours — meaning the just-added `IsTooLong` filter wasn't actually active in the process that had been running, because it predated that code change and hadn't been restarted. Everything else (German Wikiquote tagging, all three sources progressing) checked out fine.
+
+That directly motivated the next ask — "any extra features to add to make it run properly?" — answered with three concrete, non-generic candidates (each tied to something that actually happened this session, not a generic best-practices list), and built all three once the user picked them:
+
+**1. Graceful shutdown.** The three worker goroutines (added earlier this session) ran forever with no way to stop cleanly — killing the process left work to `RequeueStuckInProgress` to sort out on the next start, functional but always a beat behind. Added:
+
+- `internal/crawler/crawler.go`: `sleepCtx(ctx, d)` — sleeps for `d` or returns early the instant `ctx` is cancelled. Every `time.Sleep` in `Crawler.runWorker` (the per-source cooldown wait, `errorBackoff`, `idlePollInterval`) was replaced with it, and the top of the loop now also checks `ctx.Err()` directly. Without this, a shutdown signal would have had to wait out whatever cooldown or up-to-60s stall penalty happened to be pending before the worker actually noticed.
+- `internal/fetcher/fetcher.go`: `Fetch` now takes a `context.Context` and uses `http.NewRequestWithContext` — otherwise an in-flight fetch (up to the 90s timeout) wouldn't have been cancellable at all, undermining the point of "graceful." This changed `Fetch`'s signature, so its other two call sites (`internal/crawler/wikiquote_discovery.go`'s `fetchWikiquoteCategoryMembers`, and 3 call sites in `integration_test.go`) were updated to pass `ctx` through.
+- `cmd/crawler/main.go`: `ctx` is now `signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)` instead of a bare `context.Background()`.
+
+**2. Startup build-identification log line.** Directly motivated by the stale-process problem found earlier in this same message: the reason figuring out "is the running process on the latest code" took a live DB investigation instead of a glance at the log was that there was no way to tell from the log at all. First attempt used `runtime/debug.ReadBuildInfo()`'s automatic VCS stamp (the idiomatic approach, no build-system changes needed) — but tested live before committing to it, and found `go run ./cmd/crawler` (how this crawler is actually started, confirmed via `ps aux`) does **not** embed VCS info in this environment; only `go build`/`go install` do. Would have silently printed nothing useful for the one invocation method that matters. Switched to shelling out to `git rev-parse --short=12 HEAD` and `git status --porcelain` directly (`cmd/crawler/main.go`'s `logBuildInfo`/`runGit`) — verified live to correctly find the repo root even though `go.mod` sits in a subdirectory (`backend/scraper`) of the actual git root (the `vroomy` monorepo). Fails soft (one log line, no crash) if git isn't available.
+
+**3. Bounded retry for failed fetches.** Previously a single failed fetch — a transient network blip, a momentary 5xx — marked that URL `failed` permanently, with literally no second chance ever. Added `Crawler.failOrRetry` (`internal/crawler/crawler.go`) and `db.RetryURL` (`internal/db/store.go`): a fetch failure now requeues the URL to `pending` with `error_count` incremented and priority recalculated via the existing `scoring.CalculatePriority` (which already had an `errorCount` term from the start — it just had nothing feeding it a nonzero value before now), then pushes it back onto that source's Redis queue — up to `maxURLRetries` (3) attempts before finally calling the existing `MarkURLFailed` to give up for good. Deliberately scoped to fetch failures only, not parse failures or an unrecognized source — those are near-deterministic given the same page content, so retrying wouldn't change the outcome.
+
+**Verified**: `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, and `go test -race ./...` all clean. New unit test `TestRetryURL` in `internal/db/store_test.go` (same testcontainers pattern as the others). The build-info git-shellout behavior and the `go run`-doesn't-embed-VCS-info finding were both confirmed via a temporary throwaway probe binary (built, run, deleted) rather than assumed from documentation. **Not yet verified end-to-end against the live process** — same reason as everything else this session (an active competing crawler process against the shared docker-compose stack), so a real SIGINT/SIGTERM shutdown and a real fetch-failure retry haven't been observed live yet, only exercised via the build and the isolated `RetryURL` test.
+
+---
+
+## Session 5, one more real bug — discovery calls weren't rate-limited at all
+
+User pasted live log output right after the graceful-shutdown/retry/build-info work above:
+
+```
+wikiquote discovery: category "Musicians" — fetched 86 titles, added 0 new URLs to the frontier (all already known)
+wikiquote title discovery failed (category="Philosophers"): unexpected status code: 429
+```
+
+Root-caused rather than assumed: `Crawler.runWorker`'s per-source cooldown (`lastFetch`/`minDelay`) is only ever updated around an actual page fetch (`processURL`) — the `topUp` call (which is what makes the real HTTP request to Wikiquote's MediaWiki API during discovery) sat in a separate branch that never touched `lastFetch` at all. When `topUp` returned `false` (a category already fully known, a fast response), the only gap before the _next_ `topUp` attempt was the flat `idlePollInterval` (2s) — nowhere near the 6s cooldown that's been correctly protecting real page fetches to the same site this whole time. Walking through several already-exhausted categories back-to-back (exactly what "Musicians ... added 0 new URLs" is) meant the MediaWiki API was getting hit every ~2-3s instead of every 6s+, and the earlier-established research (a zero-delay burst gets a 429 from Wikiquote after ~11 requests) caught up with it. Page fetches never had this problem because they were always gated by `lastFetch`; discovery calls simply bypassed that gate by construction, not because 6s was ever insufficient.
+
+**Fix**: introduced `topUpResult{added, calledNetwork, networkFailed}` as the return type for both top-up functions (`topUpWikiquoteSiteIfEmpty`, `topUpGoodreadsIfEmpty`) instead of a bare `bool`. `runWorker` now updates `lastFetch` after _any_ top-up call where `calledNetwork` is true — treating a discovery API call exactly like a page fetch for cooldown purposes, including applying the full `stallPenalty` (60s) on `networkFailed` (covers the 429 case directly). `topUpGoodreadsIfEmpty` never sets `calledNetwork` since it only touches Postgres/Redis (no request to goodreads.com happens during top-up itself), so it correctly keeps not needing this — the fix is specific to the actual problem (Wikiquote's MediaWiki API calls), not applied uniformly to something that didn't need it.
+
+**Verified**: `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean. **Not yet verified live** against a real string of exhausted categories — same standing constraint this whole session (an active competing process against the shared stack) — but the mechanism directly addresses the exact failure mode in the pasted log: consecutive Wikiquote-family network calls will now always be at least `minSourceDelayFor(site.source)` (6s) apart, matching the pacing that's been reliably 429-free for regular page fetches the entire time.
+
+---
+
+## Session 5, final round — English Wikiquote actually ran dry, so discovery now recurses
+
+Right after the discovery-cooldown fix, the user pasted a log line and asked what it meant (`wikiquote discovery: category "Judges" — fetched 58 titles, added 0 new URLs to the frontier (all already known)`), then followed up: "we need a better way to keep the queue full and a better fallback, because it ends up fetching nothing after a lot of such warnings!"
+
+Diagnosed with real data before proposing anything, per this session's running discipline:
+
+- `SELECT status, count(*) FROM url_frontier WHERE source='wikiquote' GROUP BY status` → 1,572 `done`, 655 `failed` (old pre-existing junk), **0 `pending`**. English Wikiquote's queue really was empty, not just slow.
+- But `SELECT source, count(*) FROM quotes WHERE created_at > now() - interval '15 minutes' GROUP BY source` showed Goodreads (982) and German Wikiquote (510) both still saving quotes actively in that same window, with English Wikiquote's last save 14 minutes stale. **This confirmed the problem was scoped to one worker, not the whole crawler** — the concurrent-worker architecture from earlier this session was doing exactly its job (Goodreads/German weren't blocked by English being dry), but English genuinely had run out of its own discoverable content: all 23 curated categories' direct members were already fully known.
+- Checked live whether there was more to find before assuming the fixed category list was the ceiling: `Category:Writers` (already fully mined) has real subcategories the flat list never visits — `Category:Writers by language`, `Category:Gay writers`, `Category:Legal writers`, etc. — and one of those has further subcategories of its own (`Bengali writers`, `Japanese-language writers`, ...). A meaningfully large additional space, not a marginal one.
+
+**Fix**: `Crawler.topUpWikiquoteSiteIfEmpty` (`internal/crawler/crawler.go`) now recurses into subcategories once a category's own direct pages are exhausted, instead of moving straight to the next fixed top-level category. Split into two explicit steps, each exactly one HTTP request:
+
+- `wikiquoteWalkCategoryPages` — walks a category's own member pages (`cmtype=page`, unchanged from before). Once fully paginated, flips the cursor to `CheckingSubcats` for the _same_ category rather than advancing.
+- `wikiquoteCheckSubcats` — fetches that category's direct subcategories (new: `fetchWikiquoteSubcategories`, `cmtype=subcat`, in `wikiquote_discovery.go`), queues any not already seen under the current top-level branch (breadth-first via a FIFO `Queue`, cycle-safe via a `Visited` set), and either descends into the next queued subcategory or — once the whole branch is exhausted — advances `CategoryIndex` to the next top-level curated category.
+
+`wikiquoteDiscoveryCursor` gained `Current`, `CheckingSubcats`, `Queue`, and `Visited` fields (still one JSON string in the existing Redis key, no schema change). `Queue`/`Visited` are scoped to the current top-level branch and reset the moment `CategoryIndex` advances — a subcategory name from one branch is meaningless once that branch is done, so there's no reason to keep it around, and no unbounded growth risk.
+
+**Deliberately kept 1:1 with the cooldown fix from the previous message**: each top-up call makes _exactly one_ HTTP request (page-members OR subcats, never both in the same call) and returns exactly one `topUpResult`. This was a specific design constraint, not an accident — a call that quietly made two requests back-to-back internally would reopen the exact unthrottled-discovery-burst bug that caused the live 429 just fixed.
+
+Also updated `recordWikiquoteYield`'s low-yield circuit breaker to log `cursor.Current` (whatever's actually being walked, possibly a deep subcategory) instead of always the top-level category name, and confirmed its "abandon the whole branch on a persistent dead streak" behavior (`CategoryIndex + 1`, dropping `Queue`/`Visited`) is still the right call — a persistently unproductive area isn't worth resuming elsewhere inside the same branch.
+
+**Verified live, not assumed**: wrote a throwaway probe test (`internal/crawler/zzprobe_test.go`, built, run, deleted — same pattern as earlier probes this project) calling `fetchWikiquoteSubcategories`/`fetchWikiquoteCategoryMembers` directly against the real API. Confirmed: `Category:Writers` → 6 real subcategories; `Category:Writers by language` (a pure container, 0 direct pages) → 5 further real subcategories two levels deep. The full round-trip (fetch subcats → strip prefix → feed back into the page-members fetcher) works correctly.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean. **Not yet exercised end-to-end against the live, dry English Wikiquote worker** — same standing constraint as everything else this session (an active competing process against the shared stack) — but the mechanism directly targets the exact state that was confirmed live (0 pending, all curated categories exhausted at the top level).
+
+---
+
+## Session 5, last refinement — "go aggressive," but only where it's actually free
+
+User pushed back wanting Wikiquote to fill its own queue faster ("go aggressively... don't switch... otherwise it's a lot of time waste"). Worth separating two different things bundled in that ask:
+
+1. **"Don't switch"** — this model doesn't exist anymore. Since the concurrent-worker rewrite earlier this session, each source runs on its own independent goroutine; Wikiquote was never waiting its turn behind Goodreads or German to begin with. Clarified this rather than building anything for it.
+2. **"Go aggressive" on pacing** — checked what was actually safe before changing anything, rather than just picking a faster number because it was asked for. The 429 that motivated the _previous_ message's cooldown fix happened at almost exactly a 2-3 second pace (the old `idlePollInterval`-only gap, zero cooldown). That's the one interval we have _direct evidence_ is unsafe — going back anywhere near it isn't "aggressive," it's re-triggering the exact thing just fixed. Said so plainly rather than quietly complying or quietly refusing.
+
+Found two genuine, zero-risk speedups instead — efficiency, not reduced caution:
+
+- **Redundant sleep removed.** `runWorker`'s idle branch was calling `sleepCtx(ctx, idlePollInterval)` (2s) _in addition to_ the per-source cooldown, every single time a discovery call found nothing (the common case walking an already-known branch). The cooldown alone already paces the next attempt correctly; the extra 2s was pure waste layered on top. Now any discovery call that made a real network request `continue`s straight back to the top-of-loop cooldown check instead — same 6s floor, ~25% fewer wasted seconds per step (Goodreads' behavior is unaffected: its top-up never sets `calledNetwork`, so a freshly-seeded tag still gets fetched immediately via the pre-existing `added` check, not funneled through this new path).
+- **Combined page+subcategory fetch.** Tested live and confirmed MediaWiki's `list=categorymembers` accepts `cmtype=page|subcat` with `cmprop=title|type`, returning a category's own member pages _and_ its direct subcategories in one response, each tagged with an explicit `"type"` field — no need for the two separate calls (`cmtype=page` then `cmtype=subcat`) the previous message's recursive-discovery design used. Rewrote `fetchWikiquoteCategoryMembers` to fetch both at once and collapsed the two-phase `wikiquoteWalkCategoryPages`/`wikiquoteCheckSubcats` split back into one function — genuinely simpler code, not just faster, since there's no `CheckingSubcats` state to track anymore. This halves the round-trips needed to fully resolve a category, at the _same_ per-call pace as before — real throughput gain from doing less redundant work, not from being less careful.
+
+Verified both changes with a throwaway probe (`internal/crawler/zzprobe_test.go`, built, run, deleted) calling the actual `fetchWikiquoteCategoryMembers` Go function against the real API — confirmed `Category:Writers` → 68 pages + 6 subcategories in one call, and the subcat round-trip (fetch → strip prefix → feed back in) still resolves correctly two levels deep. `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean.
+
+**Not yet verified against the live, dry English Wikiquote worker** — same standing constraint all session (an active competing process against the shared stack).
+
+---
+
+## Session 5, absolute last thing — a bounded, self-limiting pacing experiment
+
+User pushed further: "wikiquote are more generous, can't we fetch quicker and closer to the rate limit... bomb a lot of quotes quick, then switch." Pushed back on the premise before building anything: "more generous" isn't actually supported by the evidence — Wikiquote is the one that just 429'd, two messages earlier. What's actually known: 6s is proven safe (hundreds of fetches, zero failures); ~2-3s is proven _unsafe_ (the exact pace of the live 429). Nothing between those two points has ever been tested. Also flagged a real unknown in "burst then switch to rest": it only works if Wikiquote's limiter is a token bucket that refills with rest, and we don't actually know that — if it's a longer sliding-window quota instead, bursting just burns through it faster with no recovery benefit from resting, and a burst pattern risks a harsher block than a plain per-request 429. Asked the user to explicitly choose the risk level rather than picking one silently — they chose "run a bounded experiment at ~4s."
+
+**Built a bounded experiment, not just a lower number** — since the user is knowingly accepting risk, the responsible thing was to make it fail safe automatically rather than requiring someone to babysit logs for the first sign of trouble:
+
+- `internal/fetcher/fetcher.go`: `Fetch` now returns a typed `*StatusError{StatusCode}` instead of a bare `fmt.Errorf(...)` for any non-200 response (same `.Error()` string, so no existing log line changes) — this makes the status code inspectable structurally. Added `IsRateLimited(err) bool`, checking specifically for `429`, as opposed to "some fetch failed" generally (a timeout, a 5xx, a DNS blip are all real failures too, but only a 429 is actual evidence of hitting a rate limit).
+- `internal/crawler/crawler.go`: `wikiquoteExperimentalDelay = 4 * time.Second` — both Wikiquote editions now start their worker at this pace instead of the proven-safe `minSourceDelayFor` (6s). `processURL` and `topUpWikiquoteSiteIfEmpty` both now report a `rateLimited` bool alongside their existing failure signals (`stalled`/`networkFailed`), set via `fetcher.IsRateLimited(err)`. `Crawler.runWorker`'s `minDelay` parameter is now a genuinely mutable local variable (not a fixed value for the goroutine's lifetime): the moment either Wikiquote worker sees `rateLimited=true` at the experimental pace, `Crawler.abandonExperimentalPace` permanently widens that worker's own `minDelay` back to 6s for the rest of the run, logging clearly that it happened and why. One-way (only ever widens) and entirely local to the one goroutine that owns it — no shared state, no locking needed, consistent with everything else built around the per-source-worker architecture this session.
+- Goodreads is completely unaffected — it never runs at an experimental pace, and `abandonExperimentalPace` is a no-op for any source already at or above its safe delay.
+
+Added `internal/fetcher/fetcher_test.go` (`TestIsRateLimited`, `TestStatusErrorMessage`) covering the new detection logic, including that it correctly does _not_ fire for non-429 failures or wrapped/nil errors. `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean.
+
+**This is a live experiment, not a settled fact** — 4s might turn out to be perfectly safe, or it might trip the auto-revert on the very next restart. Either outcome is useful information; watch for the `"Got rate-limited at the experimental 4s pace — reverting to..."` log line specifically, since that's the signal the guess was wrong and the safe 6s is back in effect for that edition for the rest of that run (it does **not** persist across restarts — a fresh process starts the experiment over at 4s again each time, which is worth knowing if this trips repeatedly and the experiment is abandoned for good rather than per-run).
+
+---
+
+## Session 5, truly final — language tagging was checking script, not language
+
+After the API work, the user reported real Latin/Romanian/Bulgarian/Serbian quotes in the DB despite the existing `IsLatinScript` filter. Diagnosed rather than assumed: `IsLatinScript` was only ever built to reject non-Latin _scripts_ (Arabic, Cyrillic, CJK) — it has no way to distinguish English from any _other_ Latin-alphabet language, since French/Portuguese/Latin/Romanian/Italian/Spanish/Turkish/Indonesian/Tagalog all pass a script check just fine. Confirmed live immediately: real Latin (Quintilian, Seneca, Jordanes), Portuguese (Fernando Pessoa), and Romanian (Marin Sorescu) quotes, all tagged `language='en'`.
+
+**Evaluated and adopted a real dependency rather than hand-rolling a heuristic**: tested `github.com/pemistahl/lingua-go` (statistical n-gram language detection, 75 languages including Latin) live before committing to it — confirmed it correctly scores genuine Latin/Portuguese/Romanian text as ~0.000-0.001 confidence for English while scoring real English ~0.5-0.97, and confirmed the same clean separation for German. Also confirmed live: model loading is a one-time ~3.4s cost (warmed explicitly at crawler startup, see `Crawler.Run`), and per-call cost after that is sub-millisecond — a non-issue for a background crawler. Confirmed safe for concurrent use across the three worker goroutines via `go run -race` (the library's internal caches are `sync.Map`-based by design).
+
+**Calibration was iterative and evidence-based, not a single guess**: an initial threshold (0.05, minimum length 30 runes) was chosen from ~110 hand-checked real samples (60 genuine short English quotes, 50 known/suspected leaks) and looked clean — until a full-corpus audit (`cmd/langaudit`, throwaway, deleted after) surfaced a real false positive: `"I'm not a feminist, I'm a humanist."` (a genuine Madonna quote, 36 chars) scored 0.0415, just under the 0.05 cutoff. Rather than declare it an acceptable loss, re-checked the actual margin against every confirmed true leak found by that same audit (max confidence among real leaks: 0.0196) and moved the threshold to 0.025 — sitting at the midpoint between the highest confirmed true leak and the one confirmed false positive, not an arbitrary round number.
+
+**Full-corpus audit result** (throwaway probe against the real production code path, not a synthetic test): **609 of 54,805 checked quotes (1.11%)** are mismatched — a genuinely wide spread of languages: French (Camus, Baudelaire, Newton(!) — a mistranslated/misattributed quote), Portuguese (Afonso Cruz), Latin (Cicero), Romanian (Andrei Pleșu, Emil Cioran), Indonesian (Jostein Gaarder translations, Avianti Armand), Italian (Schopenhauer), Spanish (Kierkegaard, Audrey Dry), Turkish (Elif Şafak, several), Tagalog (Alice Eduardo, Neri Naig), Urdu (Bano Qudsiyah), Kinyarwanda (Nathalie Remera Mukahigiro), and even German (a Goethe quote tagged `en`).
+
+**Fix**: `internal/dedup/language.go` — `dedup.MatchesClaimedLanguage(text, language)`, wired into `crawler.go`'s per-quote filter chain alongside the existing checks (`IsLatinScript`, `IsTooLong`, `IsTooShort`, `LooksLikeDictionaryEntry`). `Crawler.Run` now also calls `dedup.WarmLanguageDetector()` at startup, logged the same way `WarmSimhashCache` already is. New unit tests (`TestMatchesClaimedLanguage` in `internal/dedup/language_test.go`) cover the real regression cases from both rounds of calibration — confirmed leaks that must be rejected, confirmed English/German that must survive, the short-quote length-skip, an unrecognized-language-code fail-open case, and the Madonna false-positive specifically (to prevent the threshold ever silently regressing back toward it).
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean. Unlike the earlier length/dictionary-entry filters this session, the user chose to clean up existing rows here rather than going-forward-only: re-ran the same production `dedup.MatchesClaimedLanguage` check (not a re-derived heuristic) against the live corpus and deleted every flagged row directly (`cmd/langcleanup`, throwaway, deleted after) — **631 rows removed** (up slightly from the 609 found minutes earlier in the audit, since the still-running old crawler process kept saving a few more mismatched quotes with the un-patched code in the meantime — expected, not a discrepancy). Corpus after cleanup: 56,612 quotes total (goodreads/en 18,374, wikiquote/en 27,931, wikiquote-de/de 10,300, quotes.toscrape.com/en 7 — test-infra leftovers, harmless).
+
+**User's follow-up, explicitly deferred to next session**: once this task was done, relax `MaxQuoteLength` again (since the typing-race API can filter by word count itself — `backend/api`'s `minWords`/`maxWords` params already do exactly this), and consider adding a distinct "category" for very long or very short quotes rather than rejecting them outright at the crawler level. Not acted on yet — noted here for next time.
+
+---
+
+## Session 6 — production readiness, and two real bugs only live testing found
+
+User asked "anything else to make this production ready?", then "implement everything still needed." Answered the first question the same way as earlier "anything else needed" asks this project: a short, prioritized, non-generic list grounded in what's actually true of _this_ system (API has no auth/rate-limiting; nothing supervises the two processes; no backups; secrets are dev placeholders; no TLS) rather than a generic checklist — then asked where this was actually going to be deployed, since that changes the right implementation. User didn't answer that and just said to implement everything, so picked the most portable default given what already exists in the repo: Docker Compose (already the established pattern for Postgres/Redis in `backend/scraper`), works on any VPS or Docker-compatible host, no PaaS lock-in.
+
+**Built**: `backend/scraper/Dockerfile` and `backend/api/Dockerfile` (multi-stage, static binaries, Alpine runtime); `docker-compose.prod.yml` at the repo root orchestrating postgres+redis+crawler+api on one internal network with `restart: unless-stopped` and healthchecks; per-IP rate limiting on the API's one public endpoint (`ratelimit.go`, `golang.org/x/time/rate`, 30 req/min/IP, `/health` deliberately exempt so an orchestrator's own healthcheck can't trip it); `.env.example` files (scraper, api, and repo root) documenting every required variable without committing real secrets; a backup script (`backend/scraper/scripts/backup.sh`, `pg_dump` + gzip + retention pruning); a `Caddyfile.example` for automatic HTTPS in front of the API; `PRODUCTION.md` at the repo root tying it all together.
+
+**Did not stop at "the compose file looks right"** — actually brought up an isolated instance of the full stack (separate Docker Compose project name, separate volumes, a throwaway `.env`, verified zero interference with the real running dev crawler/containers throughout) and found two real bugs that would otherwise have only surfaced on a real deployment:
+
+1. **`db.ConnectRedis` silently connected to the wrong host.** The crawler container logged "Connected to Redis!" — no error — while actually talking to `[::1]:6379` (IPv6 localhost) instead of the `redis` service. Root cause: `redis.ParseURL("redis:6379")` doesn't error, it parses `"redis"` as a URL _scheme_ (bare `host:port` is valid opaque-URI syntax) and silently produces `Addr="localhost:6379"`, discarding the real host. This bug has existed since `ConnectRedis` was first written — invisible in every dev run this entire project only because `REDIS_ADDR` in dev has always literally _been_ `localhost:6379`, the same wrong answer by coincidence. Fixed by only attempting `ParseURL` when the input actually contains `"://"` (`internal/db/redis.go`), with a new regression test (`TestConnectRedisPlainHostPort`, testcontainers) covering the exact case that broke.
+2. **The crawler's real memory need is ~1.25GB, not the ~250MB first guessed.** First attempt set the container's hard memory limit to 256M based on nothing — got OOM-killed immediately. Checked the _actual_ host process's RSS (~1GB) rather than guessing again, traced it to the language detector (added session 5) loading all 75 of lingua-go's language models — realized `MatchesClaimedLanguage` only ever runs on text that's already passed `IsLatinScript`, so non-Latin-script models are pure waste, and switched to `FromAllLanguagesWithLatinScript()` (cut memory to ~330MB, re-verified zero accuracy regression on every known case before committing to it). Still wasn't enough on its own: even at 512M with `GOMEMLIMIT=400MiB` (a number picked without evidence), the container kept restarting — `docker stats` showed it pinned at the limit with CPU spiking to 400-600%, the signature of Go's GC fighting a losing battle against a soft target set _below_ real need rather than above it. Removed the memory limit entirely, let it run, measured the real plateau directly (`docker stats`, sustained run, zero artificial pressure): **~1.25GB, stable, 0 restarts**. Set the real limits from that number — `GOMEMLIMIT=1536MiB`, hard limit `2G` — and confirmed 60+ seconds of stable operation at those values before calling it done.
+
+Both fixes are the kind that "looks right in code review" would never catch — they only showed up because the actual containerized stack was actually run, not just assembled. This is the same discipline as the rest of this project (verify live, don't assume), just applied to infrastructure instead of crawl logic.
+
+**Verified**: `go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` clean on `backend/scraper`; equivalent clean on `backend/api`. Both Docker images build successfully. The full isolated stack ran stably for 60+ seconds at the final memory settings with zero restarts before being torn down (`down -v`, all test-only volumes/images removed, nothing left behind).
+
+**Not yet done**: a real domain to actually test the Caddy HTTPS path end-to-end (the Caddyfile is provided but untested beyond confirming the API is reachable at `127.0.0.1:8080`, which is as far as testing can go without a real DNS record); the backup script has been read through carefully but not run against a real container (needs a container actually named `quotes-postgres`, which only exists once the prod stack is brought up for real — noted in "What's next" below).
+
+**User's follow-up asks, both explicitly deferred to next session**: (1) stop rejecting over-length quotes at the crawler level — allow them back in and filter by length in `backend/api` instead (which already supports this via `minWords`/`maxWords`), possibly with a distinct "long quote" category rather than a binary allow/reject; (2) leverage MediaWiki's `action=query&list=random` (Wikiquote's "random page" feature) as an additional discovery mechanism alongside the existing curated-category walk. Neither acted on yet.
+
+---
+
+## Session 6, continued — relaxed the length reject, per the user's standing request
+
+User pasted a live log line (`Skipped quote over 500 characters [wikiquote]: "The merchant sends the buyer far afield..." — Harry Gordon Selfridge`) — the still-running old crawler process hitting the exact filter flagged for removal earlier. Removed it for real this time: `dedup.IsTooLong`/`dedup.MaxQuoteLength` deleted entirely from `internal/dedup/dedup.go` (and its test), the `if dedup.IsTooLong(...)` branch removed from `crawler.go`'s per-quote filter chain. `dedup.IsTooShort`/`MinQuoteLength` stays — that one catches genuine junk (citation fragments) that isn't valid content for _any_ consumer, not a game-specific length preference the API can already handle better on its own.
+
+No corpus cleanup needed here (unlike the language-mismatch fix) — rejected quotes were never saved in the first place, so there's nothing bad sitting in the DB to remove; this only changes what gets saved _going forward_. `backend/api`'s `RandomTypingQuote` already filters by `word_count BETWEEN minWords AND maxWords` (default 25-60) at query time — long quotes will now be saved by the crawler but simply won't match that range, so the typing race is unaffected; other future consumers of the corpus get the full-length quotes.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean.
+
+**Still outstanding from the same ask**: the "long/short quote category" idea (a distinct label instead of a binary length filter) — not built, since the current design (save everything, filter by word count at query time) already achieves the practical goal without needing a new schema concept. Revisit if a concrete need for an explicit category shows up.
+
+---
+
+## Session 6, continued again — random-page fallback for Wikiquote, checked Goodreads first
+
+User asked for two things at once: be more aggressive about German Wikiquote (and Goodreads "if needed") finding/queueing URLs, and specifically: after 10 tries finding nothing, fall back to `/random`, then continue. This directly picks up the random-page idea flagged (twice) earlier this session as deferred.
+
+Checked live before building anything, per the usual discipline: German Wikiquote's frontier was genuinely at 0 pending, with its discovery cursor deep inside a large `Wissenschaftler` subcategory branch (~50 sub-subcategories, most already visited) — a real, current dead-end, not hypothetical. Goodreads, by contrast, showed a steady 1 pending (its normal sequential-pagination resting state) — no sign of distress, so nothing was built for it; it also has no MediaWiki-style random-page equivalent to leverage anyway, being a plain e-commerce/social site, not a wiki.
+
+**Built**: `fetchWikiquoteRandomPages` (`wikiquote_discovery.go`) calls `action=query&list=random&rnnamespace=0&rnlimit=50` — verified live via both editions' real APIs before wiring anything up (confirmed a real mix of biographical and non-biographical titles, as expected, same tradeoff `allpages` enumeration had originally, but acceptable here since this is explicitly a fallback of last resort, not the primary mechanism). `Crawler.topUpWikiquoteRandomPages` (`crawler.go`) saves+pushes the results via the same batched `SaveURLsBatch`/`PushURLsBatch` mechanism already used for category discovery — no new save path needed. `Crawler.wikiquoteTopUpFunc` wraps the normal category-walk top-up with a per-edition `emptyStreak` counter (local to a closure set up once per Wikiquote goroutine in `Run()`, not shared/global state): 10 consecutive _successful_ top-up calls in a row that still add nothing (a network error explicitly doesn't count toward this — that's a different signal, not evidence of exhaustion) triggers one random-page fallback call, then resets and resumes normal category discovery exactly where its cursor left off — the fallback doesn't touch or reset that cursor at all.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean. Verified the actual random-page fetch function live via a throwaway probe (built, run, deleted) hitting both real APIs — 50 real titles returned for each edition, URL-building round-trip confirmed correct.
+
+**Not yet verified**: the full 10-consecutive-empty-calls trigger path itself hasn't been observed live end-to-end (would need to actually watch a Wikiquote worker hit the threshold and log the fallback message) — the pieces (the counter logic, the random fetch, the batch save) were each verified independently rather than the whole chain live, same standing constraint as everything else this session (an active competing crawler process). Worth watching for `"... consecutive discovery attempts found nothing new — falling back to random pages"` in the logs after the next restart, especially for German given it's the one confirmed to actually be in a position to trigger it.
+
+---
+
+## Session 6, once more — citation-link discovery, and a real Goodreads bug found chasing it
+
+User flagged, with a specific live URL, that in-page link discovery "felt broken": `de.wikiquote.org/wiki/Führer` should have led to Volker Rühe, Michael Mittermeier, George Bush, etc., but nothing was being detected. Investigated live rather than assuming: that page's _visible_ links ("Existenz," "Arbeit," "Demokratie") are topical cross-references inside the quote body text, not people — while the real signal is each quote's _citation_ (e.g. "... - Volker Rühe, Konkret, Heft 2/1998"), which does link the actual quoted person.
+
+Mid-investigation, the user proposed a broader rule: "any unvisited link within en.wikiquote/de.wikiquote/goodreads.com is a candidate," and explicitly asked to be corrected if wrong. Pushed back with the same live evidence: that rule would follow the topical in-quote links too, reintroducing the exact "trash" problem this project already diagnosed and abandoned once before (blind `allpages` enumeration at whole-site scale — see "Sources that were cut" / TODO Phase 3). Implemented the narrower, correct version instead — citation-link-only extraction.
+
+**Built**: `internal/parser/wikilink.go` (new file) — `resolveWikiquoteLink` accepts only `/wiki/`-prefixed hrefs, rejects both languages' non-content namespaces (`Category:`/`Kategorie:`, `Special:`/`Spezial:`, etc. — checked regardless of edition, since a wrong-language prefix never legitimately collides with a real title), strips URL fragments rather than rejecting them, and implicitly excludes interwiki links (`class="extiw"` to `en.wikipedia.org`) since those are already absolute URLs, not `/wiki/`-relative. `dedupeStrings` (same file) keeps one page's `NextURLs` from repeating a cited author once per quote that cites them. Wired into `WikiquoteParser.Parse` (citation is a nested `<ul>`) and `GermanWikiquoteParser.Parse` (citation is inline `<dl>/<ul>` sourcing plus a trailing `<i>`, dash-separated) — each extracts links from its own citation shape before stripping that markup out of the quote text as before. Confirmed live on a second, independent English "Leadership" thematic page that the same in-quote-topical vs. citation-precise distinction holds there too.
+
+**A real Goodreads bug, found only by testing what this feature would actually produce**: extended the same idea to Goodreads (`a.quoteAvatar` on each quote card) and, testing the resulting URL live, found two separate real bugs, neither previously known: (1) the avatar's href is an author's _profile_ page (`/author/show/ID.Name`), not the _quotes_ page (`/author/quotes/ID.Name`) this parser's selectors actually handle — fixed via `goodreadsAuthorShowLink` regex rewriting the href before queueing, confirmed live the `ID.Name` suffix carries over unchanged and the rewritten URL renders a real quotes page (31 quotes, Gandhi test page). (2) independently, the quote-card selector required both `quote` and `mediumText` classes (`div.quote.mediumText`), but an author's quotes page renders the card as `<div class='quote'>` alone — this parser would have silently returned zero quotes from every single author page once they started being discovered, a real latent bug never exercised before because nothing had discovered an author-quotes URL until now. Fixed by broadening to `div.quote` alone, confirmed safe live (grepped both real fetched page types — nothing else uses the bare class `quote`).
+
+Also converted `crawler.go`'s per-page `NextURLs` save loop (inside `processURL`) from one `SaveURL`+`PushURL` round-trip per URL to the same batched `SaveURLsBatch`/`PushURLsBatch` pattern already used by the discovery top-up paths — citation extraction can now surface dozens of URLs per page (English/German Wikiquote citations, Goodreads avatars), not the 0-1 the old per-URL loop was sized for.
+
+Updated `internal/parser/goodreads_test.go` and `internal/parser/wikiquotes_test.go`'s `NextURLs` expectations, which predated this feature (previously asserted "none"/pagination-only) — the two failures the first post-implementation test run surfaced were the fixtures being stale, not a bug in the new extraction logic; the actual extracted URLs (three real Goodreads author pages, two real Wikiquote citation targets) are the correct, intended new behavior.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test -race ./...` all clean.
+
+**Not yet verified live end-to-end**: the underlying HTML/API shapes were each checked live individually (the Führer page's citation markup, the Leadership page, both Goodreads page types), but a real page fetch actually producing and queueing these citation-derived URLs through the full running pipeline hasn't been observed yet — worth watching for `"Discovered URL [...]: ... (from ...)"` log lines citing a person's page (not a category) after the next restart.
+
+---
+
+## Session 6, continued once more — language-mismatch fix, a German parser bug, and five new Wikiquote editions
+
+Three things, prompted by the user reporting French quotes still leaking through tagged `en`:
+
+1. **`MatchesClaimedLanguage` had a real gap**: the absolute confidence threshold (0.025) only ever caught a wrong-language quote whose claimed-language confidence was near zero — a fully French sentence can score 0.03-0.18 for "en" while French itself scores 0.58-0.91, clearing that floor easily. Added a comparative check (`topLanguageConfidenceFloor`/`topLanguageDominanceRatio` in `internal/dedup/language.go`): also reject when some other language is both confidently detected (≥0.4) and beats the claimed language by 3x. Calibrated against ~5,000 real corpus quotes, not guessed — verified it doesn't regress the one previously-known false positive at the old threshold. Ran a full-corpus audit under the new logic, manually reviewed all 114 flagged rows against their author/source (not just the detector's verdict), and cleaned up the DB directly: 27 rows repaired (see next item), 72 rows deleted as confirmed genuine language mismatches (French/Latin/Italian/Spanish/mixed content, verified individually — e.g. Aeneid/Vulgate/Horace pages saving pure Latin tagged `en`).
+
+2. **Real German parser bug found chasing the above**: some German Wikiquote citations aren't `<i>`-wrapped at all (confirmed live on `Deutsche_Sprichwörter` and dozens of other author pages) — plain trailing text like `"... - Citatboken, Bokförlaget Natur och Kultur, Stockholm, 1967, ISBN 91-27-01681-1"` was being saved straight onto the quote. Added `stripPlainTrailingCitation` (`germanwikiquote.go`) — cuts at whichever of (last dash-separator, last closing-quote-mark) keeps _more_ text, only when the resulting tail looks like a citation (contains "ISBN" or a plausible year). Two follow-up bugs found in that fix itself before it shipped: byte-unsafe slicing on multi-byte quote characters (corrupted UTF-8), and picking the wrong dash when a real quote has its own internal dash followed by a separator-less citation later — both fixed, both covered by regression tests. Ran this against every `wikiquote-de` row in the DB (682 affected) and fixed them in place, recomputing `sha256_hash`/`simhash`/`word_count` so future re-crawls of the same pages still dedupe correctly.
+
+3. **Five new Wikiquote editions**: French, Spanish, Italian, Portuguese, Polish — requested explicitly as "other common languages." Same `wikiquoteSite` discovery mechanism as German (category prefix + curated categories, each confirmed live via the MediaWiki API). One shared parser, `LocalizedWikiquoteParser` (`internal/parser/wikiquote_i18n.go`), not five separate files — confirmed live on each edition's own Einstein page that all five are "German-shaped" (no single fixed "Quotes" heading), so the same exclusion-list model applies, extended with one real fix: exclusion has to be **inherited by heading level**, not checked heading-by-heading — French's "Œuvres choisies" (bibliography) h3 is correctly excluded, but its own un-excluded h4 book-title sub-headings were flipping inclusion back on before this was fixed, leaking bibliography entries as quotes. Deliberately skips citation-link `NextURLs` for all five (citation structure differs by edition — sibling `<dl>`, nested `<ul>`, footnote `<sup>`, inline `<div class="ref">` — chasing all of them risked repeating the exact German contamination bug for little payoff); self-sustaining via category discovery alone, like German originally was. Known, accepted limitation: French has some remaining low-quality noise (caption labels, cross-language variant tags) not fully filtered — same class of tradeoff already accepted for German's own citation leakage, not chased further.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` all clean. Verified live against real fetched Einstein pages for all five new editions before considering them done, not just unit tests against hand-written fixtures.
+
+**Not yet verified**: the five new editions' full discovery loop (category walk → real page fetch → save) hasn't been observed running end-to-end in the live crawler process yet, only the parser and discovery primitives independently.
+
+---
+
+## Session 6, continued yet again — seven more languages, and three real cross-parser bugs found auditing for them
+
+User asked for more "big European languages, not niche." Added Swedish, Romanian, Czech, Hungarian, Danish, Norwegian (Bokmål), Finnish — same `LocalizedWikiquoteParser`/`wikiquoteSite` pattern as the previous five, each edition's category prefix and a curated category's real membership confirmed live first. **Dutch was checked and rejected**: confirmed live (two separate pages) that Dutch Wikiquote gives quotes in their _original_ language with Dutch-only editorial labels around them ("Origineel in het Duits:", "Bron:", "Aanhaling(en):") rather than translating them — a genuinely different extraction problem, not worth building for a 1,317-article edition.
+
+User then asked to audit every parser for the same class of "silently not extracting content that's actually there" bug. Found three real ones, all live-verified, all fixed with regression tests:
+
+1. **English `WikiquoteParser` required an exact `"Quotes"` heading match** — silently 0 quotes _and_ 0 discovered URLs on any page using a different real heading. Confirmed live: `Fyodor_Dostoyevsky`'s actual heading is "General". Switched to the same exclusion-list model already proven on German/localized editions (`englishWikiquoteExcludedHeadingPrefixes`).
+2. **A semi-protected page's `mw-parser-output` div collision** — MediaWiki renders the "this page is protected" padlock indicator through the same wikitext pipeline, producing a second, empty `div.mw-parser-output` _earlier_ in the DOM than the real content one. All three parser families (`wikiquotes.go`, `germanwikiquote.go`, `wikiquote_i18n.go`) used an unscoped `doc.Find("div.mw-parser-output").First()`, silently grabbing the empty decoy. Confirmed live: `Charles_Darwin` (semi-protected) went from 0 quotes to 89 once scoped to `#mw-content-text div.mw-parser-output` instead. Also explains the long-standing "Shakespeare/Buddha/Darwin yield 0 quotes, a real per-article limitation" README note from an earlier session — that wasn't a per-article limitation at all, it was this bug plus bug #1 combined (Shakespeare: `William_Shakespeare_Quotes` heading, not "Quotes"; Buddha: topical headings, no "Quotes" heading at all). Shakespeare 0→62, Buddha 0→85 quotes once both were fixed.
+3. **Numbered `<ol>` lists silently skipped** — all three parsers only matched `s.Is("ul")`. Confirmed live on Buddha's page (a numbered list of "his last sermon"'s eight main points). Extended to `s.Is("ul, ol")` everywhere.
+
+Also fixed, while verifying the new Danish edition: `LocalizedWikiquoteParser` started `inQuotesSection := false`, correct for editions that always have _some_ heading before real content, but wrong for Danish's Gandhi page (real quotes sit directly under the intro paragraph, before any heading at all — the page's only heading is "Eksterne henvisninger"/External links at the very end). Flipped the default to `true` — matches the exclusion-list philosophy itself (quote-bearing unless proven otherwise) rather than being a Danish-specific hack; re-verified live across all twelve localized editions afterward that this didn't introduce any false-positive noise (Portuguese picked up 2 more genuine quotes from its own article intro as a result, checked live, not assumed).
+
+Considered but not applied: extending `s.Find("a.quoteAvatar")` in Goodreads' parser to also check `a.leftAlignedImage` (the two classes co-occur on the same element in practice — confirmed live no case where a card has one without the other, so no change needed).
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` all clean. Every language addition and every bug fix verified against real live-fetched pages, not just fixtures, before considering it done.
+
+**Not yet verified**: the full crawler loop running these 12 localized editions end-to-end (category discovery → fetch → parse → save) hasn't been observed live yet, only the parser/discovery pieces independently.
+
+---
+
+## Session 6, once more again — renamed English's source, a real vandalism-content bug, and a cross-edition rate-limit fix
+
+Three quick follow-ups from live reports:
+
+1. **Renamed `scoring.SourceWikiquote` ("wikiquote") to `SourceWikiquoteEN` ("wikiquote-en")** for consistency with every other edition's naming. Updated all code references plus the ~94,839 `quotes` and ~7,634 `url_frontier` rows already in the DB. The user's own crawler process was still running the old binary at the time, so a handful of rows landed back under the old label after the rename — flagged for the user to restart the process and get a final cleanup pass.
+2. **Real vandalism content leaking through as quotes**: user reported a garbled entry ("♞☤☮♌︎Kalki ⚚⚓︎⊙☳☶⚡ 00:35, 12 June 2025 (UTC)", author "June 20"). Investigated: Wikiquote's "June 20"-style calendar pages are quote-of-the-day _nomination/voting_ pages, not biographies — real editors discussing and voting on candidates with wiki signatures, which the new exclusion-list-based parsers (see the heading-audit session above) now sweep in as if they were real quotes. Considered and rejected a page-title-based fix ("skip anything from a calendar-date page") — confirmed live the same pages also carry genuinely good, legitimately-featured quotes (real Mitch Hedberg lines) mixed in with the noise, so that would have thrown out good content too. Built a content-shaped filter instead: `dedup.LooksLikeWikiDiscussion` (`internal/dedup/dedup.go`) rejects text containing a MediaWiki signature timestamp (`"12:04, 17 June 2010 (UTC)"`, any timezone abbreviation — one real row used "(GST)") or a talk-link suffix (`"(talk · contribs)"`). Wired into the same per-quote filter chain as `LooksLikeDictionaryEntry`. Cleaned up 1,955 already-contaminated rows from the live DB. Two rare stragglers (a symbol-only signature with no timestamp, one bare "proposed by user..." note) accepted as residual noise — no reliable structural marker without real risk of new false positives.
+3. **Cross-edition rate limiting — built, then reverted at the user's explicit request.** User reported repeated live 429s ("wikiquote-no title discovery failed... 429"). Diagnosed: each of the 14 Wikiquote-family sources runs its own goroutine with its own independent per-source cooldown (6s) — safe for 1-2 concurrent streams (the pace this 6s value was originally proven against), but 14 running in parallel likely produces a much higher _aggregate_ rate against what's probably a single shared Wikimedia rate limit (by client IP across the whole wikiquote.org family, not per-subdomain) than anything ever tested safe. Built a shared gate (`waitForWikiquoteGlobalSlot`) enforcing 6s between _any_ two requests to _any_ Wikiquote edition. **User immediately reported this made the crawler "crazy slow" and explicitly asked to revert it, preferring to run closer to the actual rate limit for speed and accept occasional 429s** (already handled reactively by the existing per-source stall/backoff logic — `stallPenalty`, `abandonExperimentalPace`). Fully reverted: removed the constant, the shared mutex/timestamp, the function, and both call sites: independent per-source pacing only, as before.
+4. **`wikiquoteEmptyStreakBeforeRandom` lowered from 10 to 2**, at the user's explicit request. Same live evidence (French had a 94-minute gap with zero new quotes) turned out to have two contributing causes: the now-reverted global gate (each source's own attempts were artificially rare while it was active), and a separate, real, persisting one — the smaller localized editions only have 2-3 curated categories each (vs English's 23), so they exhaust and start cycling back through already-known categories much faster, meaning 10 consecutive misses was simply too patient a threshold for how quickly these smaller editions genuinely run dry. The user's own framing: "after 2 failed 'everything already known,' go fallback, don't wait much for it."
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` all clean after both the revert and the threshold change.
+
+**Not yet verified live**: whether reverting the global gate plus the lower empty-streak threshold together actually resolves both the overall slowdown and French's specific starvation — needs watching after the next restart.
+
+---
+
+## Session 6, once more yet again — be more aggressive: faster pace everywhere, and fill-the-queue priority
+
+Immediate follow-up, same session, all explicitly requested:
+
+1. **`wikiquoteExperimentalDelay` now applies to all fourteen Wikiquote editions**, not just EN/DE. Rationale, per the user: with fourteen independent per-edition goroutines, one source getting rate-limited just means that one source alone permanently widens back to its own safe pace (`abandonExperimentalPace`) while the other thirteen keep going — there's no reason for all of them to sit at the same cautious pace a single-stream world needed. Briefly dropped the value itself to 2s in the same push for aggression, then reverted to 4s the same session at the user's follow-up ("2s is way way too low, 4s worked well") — 4s was already the value the original EN/DE experiment had confirmed worked, while 2s sits right at the edge of the pace once confirmed to produce a real 429.
+2. **`minFrontierBuffer` (50 → 15 at the user's suggestion → 20, the user's final call after asking for a recommendation)**: category discovery adds up to 500 URLs per successful batch and the random fallback adds 50 — both far above any reasonable buffer target, so the buffer's real job is only governing behavior in the "just dipped below target" phase between batches, not overall throughput. At the 2s per-source pace, 20 pending gives ~40s of fetch-only runway before a source needs its next discovery attempt to succeed, without over-prioritizing discovery for long stretches. a source's own topUp used to be skipped the instant even one URL was pending, so in practice a source spent nearly all its time fetching pages one at a time and only topped up in the rare iteration its queue had _fully_ drained to zero. Changed `topUpWikiquoteSiteIfEmpty`'s gate from "skip if any pending" to "skip once pending >= the buffer," and `runWorker` now checks the pending count _before_ deciding whether to fetch or top up (not only when the queue is already empty) — below the buffer, discovery is tried first every iteration; if it has nothing to add right now, falls through to fetching whatever's already pending so quote processing never fully stops. Goodreads' own gate (`pending > 0`) was deliberately left untouched — it's a single sequential pagination chain, never meant to hold many pending URLs at once, and forcing a buffer target onto it would have made it burn through its curated tag list far faster than intended. Verified this doesn't produce a double network call per iteration: `topUpWikiquoteSiteIfEmpty` always sets `calledNetwork: true` once past its own gate (it unconditionally calls the MediaWiki API next), so the older `if url == ""` fallback path is never reached in the same iteration for Wikiquote sources; for Goodreads the only redundant-call case is a fully-dead-end tag list, which only touches Postgres/Redis (no network), so harmless.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` all clean.
+
+**Not yet verified live**: whether this combination (faster pace + fill-priority) actually gets the smaller editions (French especially) up to a healthy sustained pending count — needs watching after the next restart.
+
+---
+
+## Session 6, yet again once more — save the source page URL on every quote
+
+Requested explicitly: `quotes.source` only ever stored a short label ("wikiquote-en", "goodreads"), never the actual page a quote was scraped from. Added `source_url` (migration `20260915000000_add_quotes_source_url.sql`, nullable — existing rows have no way to reconstruct their original URL after the fact, so left NULL rather than backfilled with a fabricated value; every new quote going forward always has it). Added `models.Quote.SourceURL`, wired through `db.SaveQuote`'s INSERT, and set on each quote in `crawler.go`'s `processURL` right before the per-quote filter chain (`quote.SourceURL = url`, the same URL already in scope from the page fetch) — no parser interface changes needed, since every parser already returns plain `models.Quote` values that `processURL` filters before saving.
+
+`go build ./...`, `go build -tags=integration ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` all clean. Migration applies automatically on the crawler's next startup (`db.Migrate` runs via goose on every `cmd/crawler` launch).
 
 ---
 
 ## What's next
 
-### 1. Update the `Parser` interface (do this first)
-
-Current interface only returns quotes:
-
-```go
-type Parser interface {
-    Parse(html string) ([]models.Quote, error)
-}
-```
-
-Change it to return both quotes and discovered next URLs:
-
-```go
-type Result struct {
-    Quotes   []models.Quote
-    NextURLs []string
-}
-
-type Parser interface {
-    Parse(html string) (Result, error)
-}
-```
-
-Then update `ToscrapeParser` to match the new signature (it can return empty `NextURLs` for now since toscrape isn't a real source). Update the call site in `crawler.Run()` too.
-
-### 2. BrainyQuote parser (`internal/parser/brainyquote.go`)
-
-Before writing code:
-
-- Open `https://www.brainyquote.com/topics/inspirational-quotes` in browser
-- Right-click a quote → Inspect Element
-- Find selectors for:
-  - Quote container
-  - Quote text
-  - Author name
-  - Next page link (pagination)
-
-The parser should implement the new `Parser` interface — return both quotes and next-page URLs. For pages that look structurally different (topic page vs author page), handle that inside the parser itself.
-
-### 3. Wire parser dispatch in `Run()`
-
-`PopURL` currently returns only the URL string — but you need the source too to dispatch to the right parser. Two options:
-
-- Do a DB lookup by URL after `PopURL` to get the full `URLFrontier` row (simpler, slight overhead)
-- Change `PopURL` to return `(url, priority string, error)` or the full struct (requires storing source in Redis too)
-
-Recommended: DB lookup after `PopURL` for now. Add a `GetURLByURL(ctx, url) (models.URLFrontier, error)` function to `store.go`.
-
-Then in `Run()`:
-
-```go
-row, err := c.store.GetURLByURL(ctx, url)
-// ...
-switch row.Source {
-case "brainyquote":
-    result, err = (&parser.BrainyQuoteParser{}).Parse(html)
-default:
-    log.Printf("Unknown source: %s", row.Source)
-    _ = c.store.MarkURLFailed(ctx, url)
-    continue
-}
-```
-
-### 4. Push discovered URLs back into frontier
-
-After parsing, loop over `result.NextURLs`:
-
-```go
-for _, nextURL := range result.NextURLs {
-    priority := scoring.CalculatePriority(row.Source, row.Depth+1, 0)
-    frontier := models.URLFrontier{URL: nextURL, Source: row.Source, Priority: priority}
-    _, err := c.store.SaveURL(ctx, frontier)
-    // log error, continue
-    err = c.store.PushURL(ctx, nextURL, priority)
-    // log error, continue
-}
-```
-
-### 5. Save quotes from parse result
-
-Currently `Run()` discards the parse result entirely (`_, err = ...`). Wire in `store.SaveQuote` for each quote in `result.Quotes`.
+1. **Decide on the 465 ellipsis-bounded quotes** — quotes starting or ending with "..." are a real candidate for "doesn't fit the game" but much fuzzier than the two filters just added: some are genuine truncated-excerpt artifacts, others are intentional stylistic trailing-off in the original quote. Flagged, not filtered — worth a follow-up conversation on how to tell the two apart, or whether it's not worth the false-positive risk.
+2. **Restart the crawler and verify everything built this session, live, end-to-end** — the running process has been getting further and further behind the actual code with each feature added (confirmed directly: 2,978 over-length quotes saved in one 2-hour window because the running process predated `IsTooLong`; a 429 from Wikiquote's MediaWiki API traced to discovery calls never being cooldown-gated, fixed via `topUpResult`; and English Wikiquote's own worker going fully idle — 0 pending — because the running process predates recursive subcategory discovery). On the next restart, confirm in the logs: the `logBuildInfo` line prints the current commit (a good sanity check that this really is a fresh restart), all three source goroutines are running and interleaving, consecutive Wikiquote/German discovery calls are now at least 6s apart instead of ~2-3s, **English Wikiquote specifically starts finding new work again** — watch for `"... has N new subcategory(ies) to explore next"` log lines and confirm its pending count actually climbs off zero (`SELECT count(*) FROM url_frontier WHERE source='wikiquote' AND status='pending'`) instead of cycling through "added 0 new URLs" forever, `topUpWikiquoteSiteIfEmpty(wikiquoteDE)` seeds real German author URLs on first idle, `GermanWikiquoteParser` extracts real quotes from a live fetch, saved rows have `language='de'` in Postgres, `IsTooLong`/`IsTooShort`/`LooksLikeDictionaryEntry` are visibly skipping bad quotes in the logs rather than silently doing nothing, a SIGINT/SIGTERM (`Ctrl-C` or `docker stop`, if containerized) stops all three workers within a few seconds instead of hanging, if a fetch failure happens to occur a "Will retry" log line appears instead of an immediate permanent failure, and — the one genuinely open question from this session — **watch whether either Wikiquote edition trips the 4s pacing experiment's auto-revert** (`"Got rate-limited at the experimental 4s pace — reverting to..."`) or runs cleanly at that pace; either outcome is real information worth recording here next time.
+3. **More Goodreads seeds / sitemap-based discovery** — currently only one tag (`inspirational`) is seeded. Consider seeding several tags/authors, or better, a proper sitemap-walker that reads `siteindex.quote.xml`'s ~111 sub-sitemaps directly instead of relying purely on tag-page `NextURLs` pagination — much faster discovery at Goodreads' actual scale (≈5.5M quote URLs). Now that both Wikiquote editions have real discovery too, Goodreads is the one source still limited to a single fixed seed.
+4. **Wikiquote per-article structure variance** — many discovered titles yield 0 quotes (confirmed live: several of the first 500 real `allpages` titles are TV/book/movie titles, not person pages, with no "Quotes" `<h2>` at all). Expected at this scale, not a bug — real biographical pages are in there too — but not worth chasing a smarter filter for right now.
+5. **Kaggle CSV importer** for bulk seeding (needs a Kaggle API token — separate one-time setup, not a crawl concern).
+6. **Structured logging, metrics** — see README TODO Phase 4 (retry logic and graceful shutdown were both built this session — see "Session 5, continued yet again").
+7. **If a fourth source is ever added**, it needs its own `case` in the parser dispatch switch inside `processURL`, an entry in `minSourceDelayBySource`, and its own `runWorker` goroutine launched from `Run()` (mirroring how English/German Wikiquote's goroutines are set up) — there's no longer a single list like the old `sourceOrder` to append to, since scheduling isn't centralized anymore.
+8. **Existing bad rows for the _earlier_ filters are still in the DB** — `IsTooLong`, `IsTooShort`, and `LooksLikeDictionaryEntry` only apply going forward, per the user's choice earlier this session (the 14 known Bierce dictionary-entries, 8 known citation-fragment quotes, and any already-saved essay-length quotes are all still sitting in `quotes` untouched). The _language_-mismatch filter is the one exception — those 631 rows were cleaned up immediately (see "truly final" session note above), at the user's explicit choice to handle that one differently.
+9. **"Chapter One" / "Introduction"-style section-header junk** — same-length as genuine short quotes (11-12 chars), so `IsTooShort` can't catch it; would need its own narrow pattern check if it turns out to matter (see "Session 5, continued once more").
+10. ~~Relax `MaxQuoteLength`~~ — **done**, see "Session 6, continued" above. The "long/short quote category" half of the ask wasn't built — the save-everything-filter-at-query-time design already covers the practical need without a new schema concept; revisit only if a concrete reason for an explicit category shows up.
+11. **Verify `backend/api` live against a restarted crawler** — built and tested this session (health check, random EN/DE quotes, `exclude`, error handling, all against the real DB), but only ever run manually for testing, never as a long-lived process alongside a freshly-restarted crawler. Worth confirming the frontend's `useTypingRace.ts` actually picks up real quotes end-to-end once both are running together.
+12. ~~Leverage Wikiquote's `action=query&list=random`~~ — **done**, see "Session 6, continued again" above. Only the 10-consecutive-empty-calls trigger path itself is unverified live end-to-end (the pieces were each verified independently) — watch for the fallback log line after the next restart, especially on German Wikiquote.
+13. **Verify the production deployment for real** — `PRODUCTION.md`/`docker-compose.prod.yml` were built and the whole stack was run end-to-end in an isolated test environment this session (catching two real bugs — see "Session 6" above), but two pieces are still untested against a _real_ deployment specifically: `backend/scraper/scripts/backup.sh` (needs a container actually named `quotes-postgres`, which only exists once the prod stack is brought up for real, not just the throwaway test instance used this session) and the Caddy HTTPS path (`backend/api/Caddyfile.example` — untested beyond confirming the API is reachable on `127.0.0.1:8080`, since testing the real Let's Encrypt issuance needs an actual domain pointed at a real host).
+14. **Verify citation-link discovery live end-to-end** — see "Session 6, once more" above. The underlying HTML/API shapes (Wikiquote citation markup on two independent pages, both Goodreads page types) were each checked live individually, but a real running fetch actually queueing a citation-derived URL and then successfully crawling it hasn't been observed yet. Watch for `"Discovered URL [...]: ... (from ...)"` log lines pointing at a person's page (not a category) after the next restart, on all three sources.
 
 ---
 
-## Key decisions made
+## Key decisions made (cumulative)
 
-- **Parser returns both quotes and next URLs** — one `Parse` method, one `Result` struct, no split interface
-- **Source dispatch via switch** — clean, simple, no over-engineering
-- **DB lookup for source after PopURL** — Redis only stores URL + priority, source lives in Postgres
-- **No Quotable API** — service is permanently down, removed from sources
-- **toscrape.com** — sandbox only, keeping parser but not a real crawl target
+- **Parser returns both quotes and next URLs** — one `Parse` method, one `Result` struct, no split interface.
+- **Source dispatch via switch over `parser.Parser`** — clean, simple, no over-engineering.
+- **DB lookup for source after `PopURL`** — Redis only stores URL + priority, source lives in Postgres.
+- **Pagination stops itself everywhere** (Goodreads/toscrape) — following only the "next" link selector means the last page naturally yields no `NextURLs`, no separate "is this the last page" check needed.
+- **This project runs on exactly two sources, deliberately** — not because nothing else exists, but because every other candidate was either policy/technically blocked or just unnecessary next to Goodreads' scale. Removed code for rejected sources rather than leaving it parked, once the decision was confirmed — a repo should reflect what it does, not a museum of what was tried.
+- **Verify empirically before trusting a site's reputation (good or bad)** — the README previously had Goodreads and Quotable's statuses backwards. Test the actual access pattern the crawler will really use (sustained sequential pagination), not just a handful of scattered single requests — that's what caught the Goodreads throttling that the first pass of testing missed.
+- **Wikiquote parses rendered HTML, not wikitext** — consistent with Goodreads' parser (goquery), avoids writing a wikitext parser for v1.
+- **toscrape.com** — sandbox only, not a real crawl target, kept fully-featured (including pagination) specifically to serve as a live-fetch integration test target.
+- **Verify fixtures against real parser output before writing expected test values** — used a throwaway `go run` probe script (built, run, deleted) for both the Wikiquote and Goodreads fixtures rather than hand-transcribing expected output — caught a real edge case this way (a Goodreads quote's cited work-title link shares the author name's CSS class) that would have been missed by eye.
+- **Check the code before trusting a checked-off TODO** — README's Phase 1 had "add rate limiting" marked done; it wasn't. Verify claims against the actual implementation, not just the checklist, especially for anything safety/politeness-related.
+- **Superseded**: "push a cooling-down URL back into the shared priority queue at a penalty" (the original defer-to-next-URL approach) turned out to only _emulate_ fairness, not guarantee it — see "Session 4, the real fix." Replaced with per-source Redis queues + explicit round-robin at the application level, still without adding goroutines/mutexes. The general instinct (avoid concurrency for two sources) held up; the specific mechanism didn't.
+- **English-only filter is a script gate, not a language detector** — `unicode.Is(unicode.Latin, r)` per letter rune, checked against `quote.Text` only (never `Author` — foreign author names like "Confucius" are fine when the quote itself is in English). Ratio-based (`nonLatinTolerance = 0.10`), not any-single-letter — a homoglyph typo shouldn't fail a whole otherwise-English quote.
+- **"Seeded" means "any row ever existed," not "something is currently pending"** — the latter goes false again the moment a batch finishes, silently re-triggering seeding (and re-crawling already-done pages) on the next restart. `db.HasAnyURLs` fixed this; the same "pending-emptiness as a proxy for done" mistake is worth watching for elsewhere.
+- **A crash-recoverable status needs an explicit recovery step, not just a state machine** — `in_progress` between `MarkURLInProgress` and `MarkURLDone`/`MarkURLFailed` is exactly the window a killed process leaves a row stuck in, forever, since it's already been popped out of Redis. `db.RequeueStuckInProgress` on every startup closes that gap; a state that can only move forward needs a recovery path for "the process died mid-transition."
+- **Widen delays based on observed log volume, not just "did it work"** — the 10s/3s split from earlier in session 4 was technically correct (no extra requests sent) but the sheer volume of "Rate limit: deferring" log lines was itself a signal of pushing the pace too hard. The user caught this from the logs directly; worth treating "the crawler seems to be constantly negotiating with itself" as a smell even when no actual violation is happening.
+- **Reuse the existing cooldown mechanism for adaptive backoff instead of adding new state** — "switch sources when one struggles" is implemented as `lastFetchBySource[source] = now + (penalty - normalDelay)`, not a separate "is this source penalized" map. One less thing to keep in sync, and it composes for free with the existing defer-to-next-URL logic.
+- **Don't run a second crawler process against a shared queue just to test a change** — when the user's own instance was live against the shared docker-compose stack, verification of the adaptive-backoff fix was deferred rather than starting a competing process that would race with it for the same Redis/Postgres state. Correct default when someone else (even the same person, in another terminal) is actively depending on the current state.
+- **"Not yet verified end-to-end" is not the same as "probably fine"** — the Wikiquote discovery feature was built, smoke-tested in isolation, and marked as needing a real end-to-end check next session. The actual end-to-end check (done later the same session once the user's process had stopped) immediately found a real ordering bug (`FrontierSize` checked after `PushURL` re-added the very URL being measured) that silently defeated the feature completely, with no error anywhere. Isolated unit tests of the pieces are not a substitute for watching the whole path run for real — this is exactly the kind of bug that only shows up that way.
+- **A shared priority queue cannot guarantee fairness between producers with very different backlog depths, no matter the score gap** — this was the actual root cause underneath three consecutive "fixes" this session (per-source delay, adaptive backoff, discovery top-up), each of which looked complete and verified on its own. A numeric priority gap between sources only emulates round-robin while both sources' backlogs stay small; it silently becomes "one source always wins" the moment one backlog grows enough. If two producers must both make progress against one queue, either give them separate queues with explicit alternation (what was built here) or don't rely on priority scores to do fairness's job at all.
+- **Repeated pushback on the same-looking problem is a signal to check the data structure, not just retune the constant** — the user asking "wouldn't this be a point where you should switch sources" more than once, about what looked like separate issues each time, was the tell that something structural was wrong beneath the surface-level fixes, not that the tuning needed one more iteration.
 
 ---
 
@@ -153,16 +538,64 @@ cmd/
         main.go              ← setup only, calls crawler.Run()
 internal/
 ├── crawler/
-│       crawler.go           ← NEW: Crawler struct, Run(), SeedFrontier()
+│       crawler.go           ← Run() launches one goroutine per source (Crawler.runWorker,
+│                                one each for Goodreads/English Wikiquote/German Wikiquote) —
+│                                each independently waits out its own cooldown (local
+│                                lastFetch, not a shared map), pops from its own Redis queue,
+│                                and calls Crawler.processURL (fetch/parse/filter via
+│                                dedup.IsLatinScript/save/push NextURLs/mark done — shared by
+│                                all three workers, not duplicated). A slow/failed fetch makes
+│                                processURL return stalled=true, which the worker turns into a
+│                                60s cooldown instead of its normal one (Goodreads 20s, both
+│                                Wikiquote editions 6s). topUpWikiquoteSiteIfEmpty(site)
+│                                discovers new work for a given Wikiquote edition when its
+│                                queue is empty; recordWikiquoteYield is a pure function (not a
+│                                shared map) each Wikiquote worker uses to track its own local
+│                                zero-quote streak. errorBackoff on Redis/Postgres failures,
+│                                requeues stuck in_progress rows on startup; SeedFrontier seeds
+│                                Goodreads and a fixed ~20-author English Wikiquote stopgap
+│                                list, once ever — German has no stopgap list, it bootstraps
+│                                from category discovery on first idle. See "Session 5,
+│                                continued again" for why this became goroutine-per-source
+│                                instead of one shared round-robin loop.
+│       wikiquote_discovery.go ← wikiquoteSite struct (source, language, apiBase, wikiBase,
+│                                categoryPrefix, curatedCategories) + wikiquoteEN/wikiquoteDE
+│                                instances; fetchWikiquoteCategoryMembers(site, ...) and
+│                                wikiquoteTitleToURL(site, ...) both take a site so the same
+│                                code drives every Wikiquote edition
+│       integration_test.go  ← docker-compose-backed tests, incl. 3 live-internet fetches
+│                                (Goodreads, toscrape, Wikiquote); PushURL/PopURL take a
+│                                source arg, ZScore key is "frontier:<source>"
 ├── db/
-│   │   store.go             ← added MarkURLInProgress
-│   └── migrations/
+│   │   store.go             ← GetURLByURL, HasAnyURLs, RequeueStuckInProgress,
+│   │                            CountPendingBySource, Get/SetDiscoveryCursor;
+│   │                            PushURL/PopURL/WarmFrontierCache are per-source
+│   │                            (frontierKey(source) = "frontier:<source>");
+│   │                            SaveQuote defaults Quote.Language to "en" if unset
+│   └── migrations/          ← ...20260913200000_add_quotes_language.sql adds
+│                                quotes.language VARCHAR(8) NOT NULL DEFAULT 'en'
+├── dedup/
+│       dedup.go             ← StripQuoteChars also strips ❝ ❞ (Wikiquote glyphs);
+│                                IsLatinScript (script filter, ratio-based — not English-
+│                                specific, German quotes pass it too)
+├── fetcher/
+│       fetcher.go           ← 90s request timeout (was unset)
 ├── parser/
-│       parser.go            ← Parser interface — needs update (see above)
-│       toscrape.go          ← needs update to new interface
-│       brainyquote.go       ← NEXT: to be created
+│       parser.go            ← Parser interface: Parse(html) (Result, error)
+│       goodreads.go         ← quotes + author + tags + pagination, the flagship source
+│       goodreads_test.go
+│       toscrape.go          ← sandbox only, extracts NextURLs (kept for live-fetch testing)
+│       wikiquotes.go        ← quotes + author from rendered HTML; NextURLs still always
+│                                empty (real discovery lives in crawler/wikiquote_discovery.go
+│                                instead — Wikiquote pages don't have "next page" links to parse)
+│       wikiquotes_test.go
+│       germanwikiquote.go   ← de.wikiquote.org parser; different heading-detection strategy
+│                                than English (exclusion list, not one fixed heading name) and
+│                                inline dash-separated citations instead of a nested <ul>
 └── scoring/
-        scoring.go
+        scoring.go           ← SourceGoodreads (10.0), SourceWikiquote (2.0),
+                                 SourceWikiquoteDE (2.0) — Goodreads' gap is deliberately not
+                                 marginal; the two Wikiquote editions share the same base score
 ```
 
 ---
