@@ -26,7 +26,7 @@ frontend/dist/
 logs/
 *.log
 
-# Go (scraper + api)
+# Go (scraper + api + ws)
 # NOTE: go.sum must NEVER be ignored — it locks dependency checksums and is required for
 # reproducible builds. A prior "*.sum" rule here silently excluded both backend/scraper/go.sum
 # and backend/api/go.sum from every commit ever made in this repo; removed, and both files are
@@ -34,3 +34,4 @@ logs/
 backend/scraper/vendor/
 *.exe
 backend/api/quotes-api
+backend/ws/quotes-ws
