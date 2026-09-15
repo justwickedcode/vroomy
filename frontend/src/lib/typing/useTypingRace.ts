@@ -22,7 +22,6 @@ export function computeWordSpans(text: string): Array<WordSpan> {
   return spans
 }
 
-<<<<<<< HEAD
 export function useTypingRace(
   getText: (exclude?: string) => string = getRandomSentence,
 ) {
@@ -34,37 +33,6 @@ export function useTypingRace(
   const getTextRef = useRef(getText)
   getTextRef.current = getText
   const [text, setText] = useState('')
-=======
-export function useTypingRace() {
-  // The static pool is always the immediately-available value — no loading state to show,
-  // since the race-setup screen already gives a beat before typing can start. fetchGen bumps
-  // on mount and on every reset() to trigger the effect below, which tries to silently upgrade
-  // text to a real scraped quote from backend/api once it resolves, and just leaves the static
-  // fallback in place on any failure (API not running, network error, no eligible quote).
-  const [text, setText] = useState(() => getRandomSentence())
-  const [fetchGen, setFetchGen] = useState(0)
-  // Not useQuery, despite TanStack Query being set up elsewhere in this app: there's no
-  // loading/error UI here to drive, just "replace the fallback if a better one shows up in
-  // time" — a plain effect is the more direct fit than shaping this into cache-key semantics.
-  const textRef = useRef(text)
-  textRef.current = text
-
-  useEffect(() => {
-    let cancelled = false
-    fetchRandomSentence(textRef.current)
-      .then((quote) => {
-        if (!cancelled) setText(quote.text)
-      })
-      .catch(() => {
-        // Keep whatever's already showing (the static pool's pick) — a game with a slightly
-        // less varied sentence pool beats a game that's broken because the API is down.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [fetchGen])
-
->>>>>>> 50537e7 (Add the quotes-api service, 12 more Wikiquote language editions, and a round of real crawler/parser bug fixes)
   const [typed, setTyped] = useState('')
   // Which word is "current" is tracked as its own piece of state, advanced
   // only by an explicit, verified space-commit — never re-derived from raw
@@ -220,12 +188,7 @@ export function useTypingRace() {
   }, [])
 
   function reset() {
-<<<<<<< HEAD
     setText((current) => getTextRef.current(current))
-=======
-    setText((current) => getRandomSentence(current))
-    setFetchGen((gen) => gen + 1)
->>>>>>> 50537e7 (Add the quotes-api service, 12 more Wikiquote language editions, and a round of real crawler/parser bug fixes)
     setTyped('')
     setWordIndex(0)
     setTotalTyped(0)
