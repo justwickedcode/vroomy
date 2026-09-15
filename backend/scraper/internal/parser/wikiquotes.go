@@ -29,9 +29,50 @@ var englishWikiquoteExcludedHeadingPrefixes = []string{
 	"References",
 }
 
+// nestedCitationMarkers are substrings found live marking a nested <li> as the citation itself
+// rather than a real translation/commentary worth keeping — "(tr." is the standard
+// translator-credit shape ("Line 79 (tr. R. C. Jebb, 1896)"); "Doc. " is Wikiquote's own
+// document-number convention in citations sourced from published collected-papers volumes
+// (confirmed live on Einstein's page: "From \"Mes Projets d'Avenir\" ... Doc. 22" and "Opening
+// of a letter to his friend Conrad Habicht ... Doc. 27" — both purely descriptive citation
+// prose, not anything quotable, that slipped through the narrower "(tr." check alone). Neither
+// marker is a perfect, exhaustive test for every citation phrasing Wikiquote might use; a rare
+// unmarked descriptive citation still occasionally gets kept as if it were a quote (an accepted,
+// low-severity tradeoff — real English prose, just not literally something the subject said —
+// for not needing to enumerate every citation convention this project's own corpus contains).
+var nestedCitationMarkers = []string{"(tr.", "Doc. "}
+
+// isNestedCitationLine reports whether text (already stripped of any further-nested quotation
+// marks/whitespace) matches a known citation shape, rather than being real translation or
+// commentary content worth keeping on its own — see nestedCitationMarkers.
+func isNestedCitationLine(text string) bool {
+	for _, marker := range nestedCitationMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 // WikiquoteParser extracts quotes from a Wikiquote article page, e.g.
 // https://en.wikiquote.org/wiki/Albert_Einstein. The page's own <h1> is used as the author,
 // since per-author pages don't repeat the name on every line.
+//
+// A quote whose primary text is in its original, non-English language (confirmed live on
+// Sophocles and the Aeneid — classical/translated-work pages) nests its English translation
+// *inside the same citation <ul>* as the actual citation, e.g. "<li>[Greek original]<ul>
+// <li>[English translation]</li><li>Line 79 (tr. R. C. Jebb, 1896)</li></ul></li>". This parser
+// used to strip that whole nested <ul> as if it were pure citation, discarding the translation
+// along with it — the primary (original-language) text was still extracted and saved, but then
+// correctly rejected downstream by dedup.IsLatinScript for being non-English, so the net effect
+// was the real, valuable English translation silently never made it into the corpus at all
+// (confirmed live: Sophocles' real page yields 152 raw candidates, of which only 1 was
+// Latin-script before this fix). Now, whenever the primary text isn't Latin-script, each nested
+// <li> that doesn't itself look like a citation (see isNestedCitationLine) is extracted as
+// its own additional quote by the same author — this also incidentally picks up real sourced
+// commentary lines that aren't strictly "the" translation (e.g. a note on the line's fame), which
+// is accepted as a reasonable, correctly-attributed bonus rather than something worth the added
+// complexity of filtering out precisely.
 //
 // NextURLs comes only from citation links (see resolveWikiquoteLink) — a quote's citation is
 // typically a nested <ul><li> (e.g. "<a href='/wiki/Aristotle'>Aristotle</a>, in <i>Politics</i>
@@ -90,15 +131,49 @@ func (p *WikiquoteParser) Parse(html string) (Result, error) {
 					}
 				}
 			})
-			citation.Remove()
 
-			text := dedup.StripQuoteChars(normalizeWhitespace(clone.Text()))
-			if text == "" || author == "" {
+			// Primary text with the citation block removed — computed before the non-Latin
+			// check below, since that check needs to see the quote on its own, without the
+			// citation's own (often Latin-script, e.g. a translator's name) text mixed in.
+			withoutCitation := clone.Clone()
+			withoutCitation.Find("ul").Remove()
+			primaryText := dedup.StripQuoteChars(normalizeWhitespace(withoutCitation.Text()))
+
+			// See the doc comment above: a non-English primary quote's nested citation block
+			// commonly also contains its real English translation, sitting right alongside the
+			// actual citation as a sibling <li> — extract every such sibling that doesn't
+			// itself look like the citation, rather than discarding the whole block as pure
+			// citation. Checks both IsLatinScript (Greek, Cyrillic, etc. — a different alphabet
+			// entirely) and MatchesClaimedLanguage (Latin, French, German, etc. — confirmed
+			// live on the Aeneid that Latin-*language* text is still Latin-*script*, so
+			// IsLatinScript alone missed every Latin original on that page, extracting 0 of its
+			// real English translations even though the exact same nested structure was there).
+			if primaryText != "" && (!dedup.IsLatinScript(primaryText) || !dedup.MatchesClaimedLanguage(primaryText, "en")) {
+				citation.First().ChildrenFiltered("li").Each(func(_ int, nested *goquery.Selection) {
+					nestedClone := nested.Clone()
+					nestedClone.Find("ul").Remove()
+					nestedText := dedup.StripQuoteChars(normalizeWhitespace(nestedClone.Text()))
+					if nestedText == "" || isNestedCitationLine(nestedText) {
+						return
+					}
+					if !dedup.IsLatinScript(nestedText) || author == "" {
+						return
+					}
+					result.Quotes = append(result.Quotes, models.Quote{
+						Text:     nestedText,
+						Author:   author,
+						Source:   "wikiquote-en",
+						Language: "en",
+					})
+				})
+			}
+
+			if primaryText == "" || author == "" {
 				return
 			}
 
 			result.Quotes = append(result.Quotes, models.Quote{
-				Text:     text,
+				Text:     primaryText,
 				Author:   author,
 				Source:   "wikiquote-en",
 				Language: "en",

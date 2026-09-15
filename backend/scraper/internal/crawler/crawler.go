@@ -3,6 +3,7 @@ package crawler
 import (
 	"context"
 	"log"
+	"math/rand"
 	"quotes-crawler/internal/db"
 	"quotes-crawler/internal/dedup"
 	"quotes-crawler/internal/fetcher"
@@ -51,8 +52,9 @@ const (
 	// independent editions running, there's no need for the one that stalled to sit out nearly
 	// as long — `abandonExperimentalPace` already provides the lasting protection (permanently
 	// widening *that* source's ongoing pace the instant a real 429 is seen); this penalty is
-	// only about the timing of the very next retry.
-	wikiquoteStallPenalty = 10 * time.Second
+	// only about the timing of the very next retry. Bumped 10s → 15s the same session — a little
+	// more margin against getting rate-limited again on the very next attempt.
+	wikiquoteStallPenalty = 15 * time.Second
 
 	// wikiquoteDeadStreakThreshold: after this many consecutive Wikiquote pages in a row with
 	// 0 quotes, the current discovery category is treated as low-yield and skipped early
@@ -149,7 +151,31 @@ func stallPenaltyFor(source string) time.Duration {
 	if source == scoring.SourceGoodreads {
 		return goodreadsStallPenalty
 	}
-	return wikiquoteStallPenalty
+	return jitter(wikiquoteStallPenalty, 0.5)
+}
+
+// stallPenaltyDisplayFor returns the *nominal*, unjittered value for log messages — calling
+// stallPenaltyFor twice for one event (once to log it, once to actually apply it) would print a
+// different random number than the one really used, since each call draws its own jitter.
+func stallPenaltyDisplayFor(source string) string {
+	if source == scoring.SourceGoodreads {
+		return goodreadsStallPenalty.String()
+	}
+	return wikiquoteStallPenalty.String() + " (jittered)"
+}
+
+// jitter returns d randomly varied by up to ±fraction (e.g. 0.5 → anywhere from 0.5x to 1.5x
+// d). Added after live evidence that 12 of 14 independent Wikiquote workers, all sharing the
+// same fixed wikiquoteStallPenalty, were retrying in near lockstep against what's almost
+// certainly a single rate limit shared across the whole wikiquote.org family — a 429 on one
+// tends to mean several others are about to get one too, and a fixed retry delay means they all
+// come back for another try at the same moment, repeatedly. Only applied to the Wikiquote stall
+// penalty, not Goodreads (a single stream — there's no herd to desynchronize) and not the base
+// per-request pace (jittering *that* would just make individual sources slower on average for
+// no benefit; the goal here is spreading retries apart, not slowing down the normal case).
+func jitter(d time.Duration, fraction float64) time.Duration {
+	delta := (rand.Float64()*2 - 1) * fraction
+	return time.Duration(float64(d) * (1 + delta))
 }
 
 // sleepCtx sleeps for d, or returns early the moment ctx is cancelled — used everywhere
@@ -293,7 +319,7 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 	// fetchWikiquoteCategoryMembers for why this is one request, not two.
 	pages, subcats, nextCMContinue, err := fetchWikiquoteCategoryMembers(ctx, site, category, cursor.CMContinue)
 	if err != nil {
-		log.Printf("%s title discovery failed (category=%q): %s — backing off for %s\n", site.source, category, err, wikiquoteStallPenalty)
+		log.Printf("%s title discovery failed (category=%q): %s — backing off ~%s (jittered)\n", site.source, category, err, wikiquoteStallPenalty)
 		return topUpResult{calledNetwork: true, networkFailed: true, rateLimited: fetcher.IsRateLimited(err)}
 	}
 
@@ -399,7 +425,7 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 func (c *Crawler) topUpWikiquoteRandomPages(ctx context.Context, site wikiquoteSite) topUpResult {
 	titles, err := fetchWikiquoteRandomPages(ctx, site)
 	if err != nil {
-		log.Printf("%s random-page fallback failed: %s — backing off for %s\n", site.source, err, wikiquoteStallPenalty)
+		log.Printf("%s random-page fallback failed: %s — backing off ~%s (jittered)\n", site.source, err, wikiquoteStallPenalty)
 		return topUpResult{calledNetwork: true, networkFailed: true, rateLimited: fetcher.IsRateLimited(err)}
 	}
 	if len(titles) == 0 {
@@ -545,11 +571,11 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 	fetchStart := time.Now()
 	html, err := fetcher.Fetch(ctx, url)
 	if elapsed := time.Since(fetchStart); elapsed > slowFetchWarn {
-		log.Printf("Slow fetch: %s (source=%s) took %s — likely soft rate-limited by the source; backing off for %s", url, source, elapsed.Round(time.Second), stallPenaltyFor(source))
+		log.Printf("Slow fetch: %s (source=%s) took %s — likely soft rate-limited by the source; backing off ~%s", url, source, elapsed.Round(time.Second), stallPenaltyDisplayFor(source))
 		stalled = true
 	}
 	if err != nil {
-		log.Printf("Fetch failed for %s (source=%s): %s — backing off for %s", url, source, err, stallPenaltyFor(source))
+		log.Printf("Fetch failed for %s (source=%s): %s — backing off ~%s", url, source, err, stallPenaltyDisplayFor(source))
 		stalled = true
 		c.failOrRetry(ctx, source, row)
 		return false, stalled, fetcher.IsRateLimited(err)
@@ -695,6 +721,21 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 // local variable, not a fixed parameter — abandonExperimentalPace can permanently widen it mid-run
 // the instant a real 429 shows up, without needing any state shared outside this one goroutine.
 func (c *Crawler) runWorker(ctx context.Context, source string, minDelay time.Duration, topUp func(ctx context.Context) topUpResult, onResult func(gotQuotes bool)) {
+	// A random startup stagger for every Wikiquote worker (not Goodreads — a single stream has
+	// no herd to desynchronize) — found live: all fourteen goroutines start in the same instant,
+	// so their very first discovery call collides immediately, before any retry jitter ever gets
+	// a chance to matter (confirmed live at startup, twice: three editions 429'd within the same
+	// second with a 5s spread window; still five within the same second after widening to that
+	// 5s window, given ~12 sources landing across it — bumped to 15s for a meaningfully lower
+	// per-second collision rate). Spreads the *first* attempt out instead of firing them all at
+	// once; doesn't eliminate the underlying shared rate limit, just reduces how often several
+	// sources' first requests land in the same instant.
+	if source != scoring.SourceGoodreads {
+		if sleepCtx(ctx, time.Duration(rand.Float64()*float64(15*time.Second))) {
+			return
+		}
+	}
+
 	var lastFetch time.Time
 	for {
 		if ctx.Err() != nil {

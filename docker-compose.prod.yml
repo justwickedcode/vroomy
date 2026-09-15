@@ -1,0 +1,112 @@
+# Production stack for the backend: Postgres, Redis, the crawler, and the quotes API, all on
+# one internal Docker network. The frontend is not included here — TanStack Start apps are
+# typically deployed to their own host (Vercel/Netlify/a Node server), not alongside the Go
+# backend; see frontend's own deployment docs for that.
+#
+# Usage:
+#   1. Copy .env.example (repo root) to .env.prod and fill in real, randomly-generated secrets
+#      — never reuse the dev placeholder values (postgres/postgres, redis) here.
+#   2. docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#   3. docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f
+#
+# Unlike backend/scraper/docker-compose.yml (local dev only, Postgres/Redis with host ports
+# exposed for direct psql/redis-cli access), postgres and redis here are NOT exposed to the
+# host — only reachable from other containers on this compose network. crawler and api connect
+# to them by service name (postgres/redis), not localhost.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: quotes-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  crawler:
+    build: ./backend/scraper
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DB: 0
+      # Measured live, not guessed: with the memory limit removed entirely, the crawler's real
+      # stable working set plateaus at ~1.25GB (language models restricted to Latin-script-only
+      # already cut ~700MB off that — see internal/dedup/language.go). An earlier attempt set
+      # both the hard limit and GOMEMLIMIT far below this real number (512M / 400MiB) — that
+      # didn't fix anything, it just made the GC fight a losing battle to stay under a target
+      # smaller than the live working set, burning CPU (seen live: 400-600%) while still
+      # eventually hitting the hard limit and getting OOM-killed anyway. GOMEMLIMIT only helps
+      # once it's set *above* what the process actually needs, so the GC has genuine slack to
+      # collect proactively instead of constantly fighting an impossible target.
+      GOMEMLIMIT: 1536MiB
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  api:
+    build: ./backend/api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      API_PORT: 8080
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
+      # Same reasoning as crawler's GOMEMLIMIT — this service is far lighter (no language
+      # models loaded), but there's no reason to leave Go's GC unaware of the container limit.
+      GOMEMLIMIT: 100MiB
+    # Bound to localhost only — a reverse proxy (Caddy/nginx) on the host handles public HTTPS
+    # and forwards to 127.0.0.1:8080. Don't publish 0.0.0.0:8080 directly; that would expose
+    # the API over plain HTTP with no TLS. See README "Production deployment" for a Caddy example.
+    ports:
+      - '127.0.0.1:8080:8080'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+volumes:
+  postgres_data:
+  redis_data:
