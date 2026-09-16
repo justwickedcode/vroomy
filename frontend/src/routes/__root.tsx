@@ -31,7 +31,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'Vroomy' },
       { name: 'description', content: DESCRIPTION },
-      { name: 'theme-color', content: '#38bdf8' },
+      { name: 'theme-color', content: '#171717' },
       { property: 'og:title', content: 'Vroomy' },
       { property: 'og:description', content: DESCRIPTION },
       { property: 'og:type', content: 'website' },
