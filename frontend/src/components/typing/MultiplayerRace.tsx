@@ -63,7 +63,7 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   }
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+    <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-xl">
         <Card className="rise-in overflow-hidden">
           <CardContent className="flex flex-col gap-4 pt-6 text-center">
@@ -212,7 +212,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   ]
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-6">
+    <main className="flex-1 px-4 py-6">
       <div className="page-wrap flex flex-col">
         <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">
           <CardContent className="flex flex-col p-0">

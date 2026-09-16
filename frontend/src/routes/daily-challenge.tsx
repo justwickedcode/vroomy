@@ -39,7 +39,7 @@ function DailyChallengePage() {
   }, [finished, wpm, accuracy, complete])
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+    <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap">
         <Card className="rise-in overflow-hidden">
           <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 py-6">
