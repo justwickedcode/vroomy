@@ -2,17 +2,19 @@ import { useCallback, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'vroomy:sidebar-collapsed:v1'
 
-// SSR-safe: starts expanded (the deterministic default) and syncs the real
-// preference from localStorage right after mount, same pattern as
-// useProfile/useDailyChallenge.
+// SSR-safe: starts collapsed to an icon-only rail (the deterministic default)
+// and syncs the real preference from localStorage right after mount, same
+// pattern as useProfile/useDailyChallenge — an explicit prior choice, in
+// either direction, always wins over the default.
 export function useSidebarCollapsed() {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   useEffect(() => {
     try {
-      setCollapsed(window.localStorage.getItem(STORAGE_KEY) === '1')
+      const stored = window.localStorage.getItem(STORAGE_KEY)
+      if (stored !== null) setCollapsed(stored === '1')
     } catch {
-      // localStorage unavailable — just falls back to always-expanded.
+      // localStorage unavailable — just falls back to always-collapsed.
     }
   }, [])
 

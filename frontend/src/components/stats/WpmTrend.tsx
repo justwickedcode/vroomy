@@ -60,57 +60,63 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop
               offset="0%"
-              stopColor="var(--color-primary)"
+              stopColor="var(--color-signal)"
               stopOpacity="0.28"
             />
             <stop
               offset="100%"
-              stopColor="var(--color-primary)"
+              stopColor="var(--color-signal)"
               stopOpacity="0"
             />
           </linearGradient>
         </defs>
 
-        <line
-          x1={PAD_X}
-          y1={HEIGHT - PAD_Y}
-          x2={WIDTH - PAD_X}
-          y2={HEIGHT - PAD_Y}
-          stroke="var(--color-border)"
-          strokeWidth="1"
-        />
+        {[0.25, 0.5, 0.75].map((frac) => (
+          <line
+            key={frac}
+            x1={PAD_X}
+            y1={PAD_Y + innerHeight * frac}
+            x2={WIDTH - PAD_X}
+            y2={PAD_Y + innerHeight * frac}
+            stroke="var(--color-border)"
+            strokeWidth="1"
+          />
+        ))}
 
         <path d={areaPath} fill={`url(#${gradientId})`} />
         <path
           d={linePath}
           fill="none"
-          stroke="var(--color-primary)"
+          stroke="var(--color-signal)"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
 
-        {coords.map((c, i) => (
-          <g key={c.point.id}>
-            <rect
-              x={c.x - innerWidth / Math.max(points.length - 1, 1) / 2}
-              y="0"
-              width={innerWidth / Math.max(points.length - 1, 1)}
-              height={HEIGHT}
-              fill="transparent"
-              onMouseEnter={() => setHoverIndex(i)}
-            />
-            <circle
-              cx={c.x}
-              cy={c.y}
-              r={i === hoverIndex ? 5 : 3}
-              fill="var(--color-primary)"
-              stroke="var(--color-card)"
-              strokeWidth="1.5"
-              className="transition-[r]"
-            />
-          </g>
-        ))}
+        {coords.map((c, i) => {
+          const isLast = i === coords.length - 1
+          return (
+            <g key={c.point.id}>
+              <rect
+                x={c.x - innerWidth / Math.max(points.length - 1, 1) / 2}
+                y="0"
+                width={innerWidth / Math.max(points.length - 1, 1)}
+                height={HEIGHT}
+                fill="transparent"
+                onMouseEnter={() => setHoverIndex(i)}
+              />
+              <circle
+                cx={c.x}
+                cy={c.y}
+                r={i === hoverIndex ? 5 : isLast ? 4 : 2.5}
+                fill="var(--color-signal)"
+                stroke="var(--color-card)"
+                strokeWidth="1.5"
+                className="transition-[r]"
+              />
+            </g>
+          )
+        })}
       </svg>
 
       {hovered && (
