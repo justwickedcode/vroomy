@@ -13,7 +13,7 @@ function StatsPage() {
   const { hydrated, stats, races } = useProfile()
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+    <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
         <div className="mb-8">
           <div

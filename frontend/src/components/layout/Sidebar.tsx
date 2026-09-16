@@ -17,7 +17,7 @@ export default function Sidebar({
   return (
     <aside
       className={cn(
-        'sticky top-0 hidden h-svh shrink-0 flex-col border-r border-border px-4 py-5 transition-[width] duration-200 lg:flex',
+        'sticky top-0 hidden h-svh shrink-0 flex-col overflow-y-auto border-r border-border px-4 py-5 transition-[width] duration-200 lg:flex',
         collapsed ? 'w-16' : 'w-60',
       )}
     >
