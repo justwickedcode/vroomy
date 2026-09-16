@@ -1,0 +1,19 @@
+# Example Caddy config for terminating real HTTPS in front of the quotes API — Caddy gets you
+# automatic Let's Encrypt certificates (issued and renewed with zero manual cert management)
+# for the cost of one file like this. Not included as a service in docker-compose.prod.yml
+# by default since it needs a real domain name pointed at this host to issue a certificate for
+# — meaningless in a local/test environment, and different for every real deployment.
+#
+# Usage once you have a domain pointed at this host:
+#   1. Copy this file to Caddyfile, replace api.example.com with your real domain.
+#   2. Install Caddy on the host (not in Docker, for simplicity — apt/dnf/brew all package it,
+#      or see https://caddyserver.com/docs/install), or add it as its own compose service if
+#      you'd rather keep everything containerized.
+#   3. sudo caddy run --config Caddyfile
+#
+# This assumes the api service is reachable at 127.0.0.1:8080 — which is exactly how
+# docker-compose.prod.yml publishes it (bound to localhost only, not the public interface).
+
+api.example.com {
+	reverse_proxy 127.0.0.1:8080
+}

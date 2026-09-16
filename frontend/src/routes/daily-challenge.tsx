@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { CalendarDays, Gauge as GaugeIcon, Target } from 'lucide-react'
+import { CalendarDays } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import TypingWords from '#/components/typing/TypingWords'
 import Gauge from '#/components/typing/Gauge'
@@ -39,24 +39,14 @@ function DailyChallengePage() {
   }, [finished, wpm, accuracy, complete])
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+    <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap">
         <Card className="rise-in overflow-hidden">
           <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 py-6">
             <p className="kicker">Daily challenge</p>
             <div className="flex gap-3">
-              <Gauge
-                icon={GaugeIcon}
-                label="wpm"
-                value={String(wpm)}
-                progress={Math.min(wpm / WPM_GAUGE_MAX, 1)}
-              />
-              <Gauge
-                icon={Target}
-                label="accuracy"
-                value={`${accuracy}%`}
-                progress={accuracy / 100}
-              />
+              <Gauge label="wpm" value={wpm} max={WPM_GAUGE_MAX} />
+              <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
             </div>
           </CardHeader>
           <div className="glass-divider" />

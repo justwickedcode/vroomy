@@ -1,10 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @theme {
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Headlines only — condensed and industrial, standing apart from the UI's own sans so
+     numbers/labels/passage text (all IBM Plex, one coherent instrument system) don't compete
+     with it. See h1/h2 base styles below for where this actually gets applied. */
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
 }
 
 @theme inline {
@@ -27,40 +31,44 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-signal: var(--signal);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* A shadcn-style dark theme (tweakcn "sky" flavor): neutral zinc-ish
-   surfaces, one saturated accent (sky blue) reserved for primary actions
-   and focus states, everything else flat. `accent` is the semantically
-   correct shadcn token — a *neutral* hover tint, not a second brand
-   color — so ghost buttons and row-hover states stay subtle instead of
-   flashing a bright hue. */
+/* Instrument Cluster: a cockpit, not a SaaS dashboard wearing a racing skin — see
+   frontend design notes. Structural surfaces stay near-neutral but with a deliberate warm/olive
+   hue bias (hue ~75) rather than pure gray, so "near-black" and "off-white" read as chosen
+   materials (gunmetal, dial-face paper) instead of default zinc. `--signal` is the one true
+   accent — instrument amber, reserved for live/active readouts (focus rings, the race
+   passage's caret, gauge needles) — never chrome, never a second brand color. `destructive`
+   and `success` keep their own real hue on purpose, same as before: semantic signals, not
+   brand color, so they stay put through every visual pass. */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.25rem;
 
-  --background: oklch(0.1 0.012 264);
-  --foreground: oklch(0.97 0.006 95);
-  --card: oklch(0.16 0.014 264);
-  --card-foreground: oklch(0.97 0.006 95);
-  --primary: oklch(0.75 0.14 232);
-  --primary-foreground: oklch(0.15 0.03 232);
-  --secondary: oklch(0.24 0.016 264);
-  --secondary-foreground: oklch(0.97 0.006 95);
-  --muted: oklch(0.22 0.014 264);
-  --muted-foreground: oklch(0.65 0.02 260);
-  --accent: oklch(0.27 0.015 264);
-  --accent-foreground: oklch(0.97 0.006 95);
+  --background: oklch(0.09 0.004 75);
+  --foreground: oklch(0.96 0.004 85);
+  --card: oklch(0.14 0.005 75);
+  --card-foreground: oklch(0.96 0.004 85);
+  --primary: oklch(0.96 0.004 85);
+  --primary-foreground: oklch(0.09 0.004 75);
+  --secondary: oklch(0.18 0.006 75);
+  --secondary-foreground: oklch(0.96 0.004 85);
+  --muted: oklch(0.15 0.005 75);
+  --muted-foreground: oklch(0.62 0.01 75);
+  --accent: oklch(0.21 0.008 75);
+  --accent-foreground: oklch(0.96 0.004 85);
   --destructive: oklch(0.65 0.21 15);
   --destructive-foreground: oklch(0.97 0.006 95);
   --success: oklch(0.78 0.19 148);
   --success-foreground: oklch(0.14 0.03 148);
-  --border: oklch(0.3 0.016 264);
-  --input: oklch(0.3 0.016 264);
-  --ring: oklch(0.75 0.14 232 / 0.5);
+  --border: oklch(0.25 0.01 75);
+  --input: oklch(0.25 0.01 75);
+  --ring: oklch(0.78 0.15 80 / 0.55);
+  --signal: oklch(0.78 0.15 80);
 }
 
 * {
@@ -82,6 +90,16 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+}
+
+/* Every headline in the app runs through the same condensed display face —
+   one global rule instead of touching every route's own h1/h2, so the whole
+   app reads as one instrument system rather than a page-by-page patchwork. */
+h1,
+h2 {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: -0.005em;
 }
 
 /* A near-flat dark surface with one faint gradient — not a SaaS hero-glow
@@ -132,11 +150,25 @@ body::before {
 }
 
 .kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-family: var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  font-weight: 800;
+  font-weight: 600;
   font-size: 0.7rem;
-  color: var(--color-primary);
+  color: var(--color-muted-foreground);
+}
+
+.kicker::before {
+  content: '';
+  width: 0.4em;
+  height: 0.4em;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-signal);
+  box-shadow: 0 0 6px 1px var(--color-signal);
 }
 
 /* --- Pit-lane chrome: nav, ticker, livery stripe, stagger/tilt utilities --- */
@@ -313,88 +345,310 @@ body::before {
   background: var(--color-primary);
   box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
   transition:
-    filter 150ms ease,
-    box-shadow 150ms ease;
+    background-color 120ms ease,
+    box-shadow 200ms ease;
 }
 
+/* The one button that ever turns signal amber — an ignition switch, not a hover state every
+   control on the page shares. Ghost/outline/secondary buttons stay neutral on hover. */
 .btn-primary-glow:hover {
-  filter: brightness(1.06);
+  background: var(--color-signal);
+  box-shadow: 0 0 0 4px
+    color-mix(in oklab, var(--color-signal) 20%, transparent);
 }
 
 .btn-primary-glow:active {
   filter: brightness(0.95);
 }
 
+/* An automotive semi-circle dial (needle, ticks, a three-zone arc), not a full progress ring —
+   see Gauge.tsx for why: it's reserved for numbers with a real ceiling, so the needle position
+   itself carries meaning (calm/working/redline), the way an actual tachometer's does. */
 .gauge {
-  position: relative;
-  width: 4.25rem;
-  height: 4.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 6.5rem;
   flex-shrink: 0;
 }
 
 .gauge--lg {
-  width: 5.5rem;
-  height: 5.5rem;
+  width: 8rem;
 }
 
 .gauge--lg .gauge-value {
-  font-size: 1.3rem;
+  font-size: 1.5rem;
 }
 
 .gauge--lg .gauge-label {
-  font-size: 0.55rem;
+  font-size: 0.6rem;
 }
 
 .gauge-svg {
   width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-
-.gauge-face {
-  fill: color-mix(in oklab, black 45%, var(--color-card) 55%);
-  stroke: color-mix(in oklab, white 10%, transparent);
-  stroke-width: 1;
+  height: auto;
+  display: block;
 }
 
 .gauge-track {
   fill: none;
   stroke: color-mix(in oklab, white 8%, transparent);
-  stroke-width: 7;
+  stroke-width: 8;
+  stroke-linecap: round;
 }
 
-.gauge-fill {
+.gauge-zone {
   fill: none;
-  stroke: var(--color-primary);
-  stroke-width: 7;
+  stroke-width: 8;
+}
+
+.gauge-zone-calm {
+  stroke: var(--color-accent);
+}
+
+.gauge-zone-working {
+  stroke: color-mix(in oklab, var(--color-signal) 55%, var(--color-accent));
+}
+
+.gauge-zone-redline {
+  stroke: var(--color-signal);
+}
+
+.gauge-tick {
+  stroke: var(--color-muted-foreground);
+}
+
+.gauge-needle {
+  stroke: var(--color-foreground);
+  stroke-width: 2.5;
   stroke-linecap: round;
-  transition: stroke-dashoffset 200ms ease;
+  transition:
+    x2 150ms ease,
+    y2 150ms ease;
+}
+
+.gauge-hub {
+  fill: var(--color-foreground);
+}
+
+.gauge-hub-center {
+  fill: var(--color-background);
 }
 
 .gauge-readout {
-  position: absolute;
-  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  margin-top: -0.15rem;
 }
 
 .gauge-value {
   font-family: var(--font-mono);
-  font-size: 0.95rem;
-  font-weight: 800;
+  font-size: 1.15rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
   line-height: 1;
 }
 
 .gauge-label {
-  margin-top: 0.1rem;
-  font-size: 0.5rem;
+  margin-top: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+/* Sized to sit level with .gauge in the same row — no needle, so no arc to reserve room for. */
+.digital-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 6.5rem;
+  height: 4.0625rem;
+  flex-shrink: 0;
+}
+
+.digital-readout--lg {
+  width: 8rem;
+  height: 5rem;
+}
+
+.digital-readout--lg .gauge-value {
+  font-size: 1.5rem;
+}
+
+.digital-readout--lg .gauge-label {
+  font-size: 0.6rem;
+}
+
+/* A bordered, letter-spaced code readout — reads like a plate stamped for this
+   one race, not a form field. */
+.license-plate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 2px solid var(--color-foreground);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
   font-weight: 700;
+  font-size: 1.4rem;
+  letter-spacing: 0.2em;
+}
+
+.license-plate-tab {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+/* Numbered seats, filled or open — the lobby's real, known state (how many seats,
+   how many taken, which one is you) rather than invented names for players the
+   server hasn't identified. */
+.starting-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--color-border);
+  background: var(--color-border);
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.starting-grid-slot {
+  display: grid;
+  grid-template-columns: 2.25rem 0.6rem 1fr auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 1rem;
+  background: var(--color-card);
+}
+
+.starting-grid-pos {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--color-muted-foreground);
+}
+
+.starting-grid-slot.is-you .starting-grid-pos {
+  color: var(--color-signal);
+}
+
+.starting-grid-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--color-border);
+}
+
+.starting-grid-dot.is-you {
+  background: var(--color-signal);
+}
+
+.starting-grid-dot.is-filled {
+  background: var(--color-muted-foreground);
+}
+
+.starting-grid-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.starting-grid-flag {
+  margin-left: 0.6em;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--color-signal);
+}
+
+.starting-grid-slot.is-empty .starting-grid-name {
+  color: var(--color-muted-foreground);
+  font-weight: 500;
+}
+
+.starting-grid-state {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-success);
+}
+
+.starting-grid-state.is-waiting {
+  color: var(--color-muted-foreground);
+}
+
+.standings {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.standings-head,
+.standings-row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 3.5rem 4.5rem;
+  gap: 0.85rem;
+  padding: 0.6rem 1rem;
+  align-items: center;
+}
+
+.standings-head {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  color: var(--color-muted-foreground);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.standings-row {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.standings-row:last-child {
+  border-bottom: none;
+}
+
+.standings-row.is-you {
+  background: color-mix(in oklab, var(--color-signal) 8%, transparent);
+}
+
+.standings-pos {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--color-muted-foreground);
+}
+
+.standings-row.is-you .standings-pos {
+  color: var(--color-signal);
+}
+
+.standings-name {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.standings-wpm {
+  font-weight: 600;
+}
+
+.standings-time {
+  text-align: right;
   color: var(--color-muted-foreground);
 }
 
@@ -796,7 +1050,7 @@ body::before {
 }
 
 .race-name-tag--you {
-  color: #38bdf8;
+  color: var(--color-primary);
   border-color: rgba(56, 189, 248, 0.4);
 }
 
