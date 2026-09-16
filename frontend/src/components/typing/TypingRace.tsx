@@ -1,13 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  Gauge as GaugeIcon,
-  Medal,
-  RotateCcw,
-  Sparkles,
-  Target,
-  Timer,
-  Trophy,
-} from 'lucide-react'
+import { Medal, RotateCcw, Sparkles, Trophy } from 'lucide-react'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
@@ -17,6 +9,7 @@ import { Card, CardContent } from '#/components/ui/card'
 import { ordinal } from '#/lib/utils'
 import RaceTrack from '#/components/typing/RaceTrack'
 import Gauge from '#/components/typing/Gauge'
+import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
 import type { Racer } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
@@ -175,25 +168,9 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
 
   const analytics = (
     <div className="flex items-center gap-4">
-      <Gauge
-        icon={GaugeIcon}
-        label="wpm"
-        value={String(wpm)}
-        progress={Math.min(wpm / WPM_GAUGE_MAX, 1)}
-        size="lg"
-      />
-      <Gauge
-        icon={Target}
-        label="accuracy"
-        value={`${accuracy}%`}
-        progress={accuracy / 100}
-      />
-      <Gauge
-        icon={Timer}
-        label="time"
-        value={formatTime(elapsedMs)}
-        progress={null}
-      />
+      <Gauge label="wpm" value={wpm} max={WPM_GAUGE_MAX} size="lg" />
+      <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
+      <DigitalReadout label="time" value={formatTime(elapsedMs)} />
     </div>
   )
 

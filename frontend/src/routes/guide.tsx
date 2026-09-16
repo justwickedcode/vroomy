@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Gauge as GaugeIcon, RotateCcw, Target } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import WordStream from '#/components/guide/WordStream'
@@ -43,18 +43,8 @@ function Practice() {
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 py-6">
         <p className="kicker">Practice</p>
         <div className="flex gap-3">
-          <Gauge
-            icon={GaugeIcon}
-            label="wpm"
-            value={String(wpm)}
-            progress={Math.min(wpm / WPM_GAUGE_MAX, 1)}
-          />
-          <Gauge
-            icon={Target}
-            label="accuracy"
-            value={`${accuracy}%`}
-            progress={accuracy / 100}
-          />
+          <Gauge label="wpm" value={wpm} max={WPM_GAUGE_MAX} />
+          <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
         </div>
       </CardHeader>
       <div className="glass-divider" />

@@ -1,8 +1,9 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ChevronRight, Gauge, Target, Trophy, Zap } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
-import StatTile from '#/components/stats/StatTile'
+import Gauge from '#/components/typing/Gauge'
+import DigitalReadout from '#/components/typing/DigitalReadout'
 import RaceHistoryRow from '#/components/stats/RaceHistoryRow'
 import CarIcon from '#/components/typing/CarIcon'
 import { ACHIEVEMENTS } from '#/lib/achievements'
@@ -10,6 +11,8 @@ import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 
 export const Route = createFileRoute('/')({ component: Dashboard })
+
+const WPM_GAUGE_MAX = 130
 
 function Dashboard() {
   const { hydrated, stats, races, carModel, carColor } = useProfile()
@@ -66,24 +69,24 @@ function Dashboard() {
                   View all
                 </Link>
               </CardHeader>
-              <CardContent className="grid grid-cols-2 gap-3 pt-0 sm:grid-cols-4">
-                <StatTile
-                  icon={Trophy}
+              <CardContent className="flex flex-wrap justify-around gap-4 pt-0">
+                <Gauge
                   label="best wpm"
-                  value={hasRaced ? String(stats.bestWpm) : '—'}
+                  value={hasRaced ? stats.bestWpm : 0}
+                  max={WPM_GAUGE_MAX}
                 />
-                <StatTile
-                  icon={Gauge}
+                <Gauge
                   label="avg wpm"
-                  value={hasRaced ? String(stats.avgWpm) : '—'}
+                  value={hasRaced ? stats.avgWpm : 0}
+                  max={WPM_GAUGE_MAX}
                 />
-                <StatTile
-                  icon={Target}
+                <Gauge
                   label="avg accuracy"
-                  value={hasRaced ? `${stats.avgAccuracy}%` : '—'}
+                  value={hasRaced ? stats.avgAccuracy : 0}
+                  max={100}
+                  suffix="%"
                 />
-                <StatTile
-                  icon={Zap}
+                <DigitalReadout
                   label="races run"
                   value={hasRaced ? String(stats.racesPlayed) : '0'}
                 />
@@ -97,8 +100,12 @@ function Dashboard() {
               <CardContent className="pt-0 pb-5">
                 {hasRaced ? (
                   <div className="flex flex-col gap-1">
-                    {races.slice(0, 5).map((race) => (
-                      <RaceHistoryRow key={race.id} race={race} />
+                    {races.slice(0, 5).map((race, i) => (
+                      <RaceHistoryRow
+                        key={race.id}
+                        race={race}
+                        lapNumber={stats.racesPlayed - i}
+                      />
                     ))}
                   </div>
                 ) : (

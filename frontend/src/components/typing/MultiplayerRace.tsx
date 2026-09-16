@@ -1,21 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  ArrowLeft,
-  Check,
-  Copy,
-  Gauge as GaugeIcon,
-  Target,
-  Timer,
-  Trophy,
-  Users,
-} from 'lucide-react'
+import { ArrowLeft, Check, Copy, Trophy, Users } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
 import Gauge from '#/components/typing/Gauge'
-import CarIcon, { CAR_MODELS } from '#/components/typing/CarIcon'
+import DigitalReadout from '#/components/typing/DigitalReadout'
+import { CAR_MODELS } from '#/components/typing/CarIcon'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
@@ -41,7 +33,6 @@ function shortName(id: string, myId: string | null) {
 type Mp = ReturnType<typeof useMultiplayerRace>
 
 function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
-  const { carModel, carColor } = useProfile()
   const [copied, setCopied] = useState(false)
   const canStart = mp.isHost && mp.playersInRoom >= mp.minPlayers
 
@@ -62,21 +53,31 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     }
   }
 
+  // The server only tells us how many seats are filled, not who's in them (no username
+  // system yet — see shortName). Slot 1 is always us; the rest are honestly labeled
+  // "Racer" rather than inventing names for players we have no identity for.
+  const seats = Array.from({ length: mp.maxPlayers }, (_, i) => ({
+    pos: i + 1,
+    filled: i < mp.playersInRoom,
+    isYou: i === 0,
+  }))
+
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-xl">
         <Card className="rise-in overflow-hidden">
-          <CardContent className="flex flex-col gap-4 pt-6 text-center">
-            <Badge variant="outline" className="mx-auto">
+          <CardContent className="flex flex-col gap-5 pt-6">
+            <Badge variant="outline" className="w-fit">
               {mp.code ? 'Private room' : 'Quick match'} · waiting
             </Badge>
 
             {mp.code && (
-              <>
-                <p className="stat-figure text-3xl tracking-[0.2em] text-primary">
-                  {mp.code}
-                </p>
-                <div className="flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
+              <div>
+                <div className="license-plate">
+                  <span>{mp.code}</span>
+                  <span className="license-plate-tab">Share to invite</span>
+                </div>
+                <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
                   <span className="flex-1 truncate font-mono text-xs text-muted-foreground">
                     {shareLink}
                   </span>
@@ -85,22 +86,51 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                     {copied ? 'Copied' : 'Copy link'}
                   </Button>
                 </div>
-              </>
+              </div>
             )}
 
-            <div className="glass-chip flex items-center gap-3 rounded-lg p-3 text-left">
-              <CarIcon
-                color={carColor}
-                model={carModel}
-                className="aspect-[8/5] w-14"
-              />
-              <div>
-                <p className="text-sm font-bold">You</p>
-                <p className="text-xs text-muted-foreground">
-                  {mp.playersInRoom} / {mp.maxPlayers} players (need{' '}
-                  {mp.minPlayers} to start)
-                </p>
-              </div>
+            <div className="starting-grid">
+              {seats.map((seat) => (
+                <div
+                  key={seat.pos}
+                  className={cn(
+                    'starting-grid-slot',
+                    seat.isYou && 'is-you',
+                    !seat.filled && 'is-empty',
+                  )}
+                >
+                  <span className="starting-grid-pos">P{seat.pos}</span>
+                  <span
+                    className={cn(
+                      'starting-grid-dot',
+                      seat.isYou && 'is-you',
+                      seat.filled && !seat.isYou && 'is-filled',
+                    )}
+                  />
+                  <span className="starting-grid-name">
+                    {seat.isYou ? (
+                      <>
+                        You
+                        {mp.isHost && (
+                          <span className="starting-grid-flag">HOST</span>
+                        )}
+                      </>
+                    ) : seat.filled ? (
+                      'Racer'
+                    ) : (
+                      'Open seat'
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      'starting-grid-state',
+                      !seat.filled && 'is-waiting',
+                    )}
+                  >
+                    {seat.filled ? 'Ready' : 'Waiting'}
+                  </span>
+                </div>
+              ))}
             </div>
 
             {mp.isHost ? (
@@ -120,7 +150,7 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">
+              <p className="text-center text-xs text-muted-foreground">
                 Waiting for {mp.code ? 'the host to start, or for' : ''} the
                 lobby to fill…
               </p>
@@ -275,26 +305,34 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               </div>
 
               {mp.results && (
-                <ol className="flex flex-col gap-1.5">
+                <div className="standings">
+                  <div className="standings-head">
+                    <span>Pos</span>
+                    <span>Racer</span>
+                    <span>Wpm</span>
+                    <span className="text-right">Time</span>
+                  </div>
                   {mp.results.map((result) => (
-                    <li
+                    <div
                       key={result.playerId}
                       className={cn(
-                        'flex items-center justify-between rounded-md px-3 py-1.5 text-sm',
-                        result.playerId === mp.myId
-                          ? 'bg-primary/10 font-semibold text-primary'
-                          : 'text-muted-foreground',
+                        'standings-row',
+                        result.playerId === mp.myId && 'is-you',
                       )}
                     >
-                      <span>
-                        #{result.rank} {shortName(result.playerId, mp.myId)}
+                      <span className="standings-pos">
+                        P{result.rank}
                       </span>
-                      <span className="tabular-nums">
-                        {result.wpm} wpm · {formatTime(result.elapsedMs)}
+                      <span className="standings-name">
+                        {shortName(result.playerId, mp.myId)}
                       </span>
-                    </li>
+                      <span className="standings-wpm">{result.wpm}</span>
+                      <span className="standings-time">
+                        {formatTime(result.elapsedMs)}
+                      </span>
+                    </div>
                   ))}
-                </ol>
+                </div>
               )}
 
               <div className="flex justify-end">
@@ -312,24 +350,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 {mp.phase === 'racing' ? 'Racing…' : 'Get ready…'}
               </p>
               <div className="flex items-center gap-4">
-                <Gauge
-                  icon={GaugeIcon}
-                  label="wpm"
-                  value={String(mp.wpm)}
-                  progress={Math.min(mp.wpm / WPM_GAUGE_MAX, 1)}
-                />
-                <Gauge
-                  icon={Target}
-                  label="accuracy"
-                  value={`${mp.accuracy}%`}
-                  progress={mp.accuracy / 100}
-                />
-                <Gauge
-                  icon={Timer}
-                  label="time"
-                  value={formatTime(mp.elapsedMs)}
-                  progress={null}
-                />
+                <Gauge label="wpm" value={mp.wpm} max={WPM_GAUGE_MAX} />
+                <Gauge label="accuracy" value={mp.accuracy} max={100} suffix="%" />
+                <DigitalReadout label="time" value={formatTime(mp.elapsedMs)} />
               </div>
             </div>
           )}
