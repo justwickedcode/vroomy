@@ -75,6 +75,7 @@ func (i *ipConnCounter) release(ip string) {
 func upgradeWS(w http.ResponseWriter, r *http.Request, conns *ipConnCounter, assign func(*Client)) {
 	ip := clientIP(r)
 	if !conns.tryAcquire(ip) {
+		log.Printf("[ws] rejected %s: too many concurrent connections from %s\n", r.URL.Path, ip)
 		http.Error(w, "too many concurrent connections", http.StatusTooManyRequests)
 		return
 	}
