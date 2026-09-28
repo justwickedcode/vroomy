@@ -130,16 +130,24 @@ services plus a Dockerfile-based Application for the crawler) rather than the si
   sudo swapon /swapfile
   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
   ```
-- **Optional: an in-app active-crawling window** (`CRAWL_ACTIVE_START_HOUR` /
-  `CRAWL_ACTIVE_END_HOUR`, server-local hours 0-23, e.g. `0`/`8` for midnight-8am) makes every
-  worker pause — no fetching, no discovery calls, no DB/Redis polling — outside that window,
-  cutting CPU/network load during the day without touching the process itself. **This does not
-  free the ~1.25GB RAM the crawler holds while paused** (the language-detection models loaded at
-  startup stay resident for the life of the process, whether it's actively fetching or idle) —
-  for that, the process has to actually exit, which only an external stop/start (cron calling
-  `docker stop`/`docker start` on the container, or Dokploy's own Scheduled Tasks if your version
-  has them) can do. Use this env var for smoother day/night CPU pacing, and pair it with an
-  external stop/start on the same schedule if the RAM also needs to be freed during the day.
+- **Day/night scheduling is handled by stopping and starting the crawler App itself** (via
+  Dokploy's Scheduled Tasks, targeting the App by its stable ID — never a raw container name,
+  which gets a new random suffix on every redeploy), not by anything inside the process. An
+  earlier in-app pause-only approach (an active-hours env var) was tried and reverted: pausing
+  the worker loops cut CPU/network but never freed the ~1.25GB RAM the crawler holds once its
+  language-detection models are loaded, since that memory stays resident for the life of the
+  process whether it's fetching or idle — only actually stopping the container frees it.
+- **`LOG_LEVEL` cuts log volume at the source, on top of the disk-side cap below.** Three levels:
+  `info` (unset, the default) is today's full output; `warn` drops the highest-volume routine
+  narration (one line per page parsed, per quote saved, per URL discovered) but keeps every
+  skip/retry/fallback line — a rejected quote, a low-yield category abandoned, a rate-limit
+  backoff, a retry after a failed fetch — alongside real failures, which are never suppressed at
+  any level; `error` drops warnings too, down to genuine failures only. **`warn` is the
+  recommended production setting** — enough to actually see what the crawler is doing and why
+  (rate-limited? skipping bad content? just quiet right now?) without the
+  per-item flood. `docker-compose.prod.yml` already sets `LOG_LEVEL: warn` for the `crawler`
+  service; for a Dokploy App, add `LOG_LEVEL=warn` alongside the other env vars from step 5
+  above. Leave it unset in dev if you want the full picture of what the crawler's doing.
 - **Cap container log size, or the crawler's own logs can fill the disk.** Docker's default
   `json-file` log driver has no size limit — the crawler logs roughly one line per URL
   discovered/fetched (`internal/crawler/crawler.go`), so left running for weeks that adds up.
