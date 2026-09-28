@@ -59,10 +59,18 @@ var wikiquoteExcludedNamespaces = []string{
 // and from an earlier attempt at this project (allpages enumeration) that blindly walked every
 // article on the site and pulled in massive amounts of non-biographical junk as a result.
 //
+// Accepts two forms for a same-wiki link: the relative "/wiki/Foo" this function originally only
+// handled, and the full absolute form MediaWiki's current (Parsoid-based) rendering now emits
+// instead — "https://de.wikiquote.org/wiki/Foo" — confirmed live as a second real regression
+// alongside the section-wrapping one: every citation link on every page was being rejected by
+// the old relative-only check, including on this exact Führer page the doc comment above already
+// cites as the original proof this mechanism worked (Volker Rühe's link is now
+// "https://de.wikiquote.org/wiki/Volker_Rühe", not "/wiki/Volker_Rühe").
+//
 // Rejects:
-//   - anything not starting with "/wiki/" — an interwiki citation link (e.g. Wikiquote linking
-//     out to en.wikipedia.org for further reading, seen live with class="extiw") is a full
-//     absolute URL to a different domain, not a relative path, so this alone excludes it
+//   - anything not matching wikiBase+"/wiki/" or a bare "/wiki/" prefix — an interwiki citation
+//     link (e.g. Wikiquote linking out to en.wikipedia.org for further reading, seen live with
+//     class="extiw") is a full absolute URL to a *different* host, so it matches neither prefix
 //     without needing to inspect the link's CSS class at all.
 //   - any of wikiquoteExcludedNamespaces.
 //   - a URL fragment (e.g. "/wiki/Aristotle#Politics") is stripped down to the page itself
@@ -70,13 +78,19 @@ var wikiquoteExcludedNamespaces = []string{
 //     within-page section," but the same page is still exactly what we want to queue, and
 //     leaving the fragment in would create a second, spurious URL for a page already known.
 func resolveWikiquoteLink(wikiBase string, href string) (string, bool) {
-	if !strings.HasPrefix(href, "/wiki/") {
+	var relative string
+	switch {
+	case strings.HasPrefix(href, wikiBase+"/wiki/"):
+		relative = strings.TrimPrefix(href, wikiBase)
+	case strings.HasPrefix(href, "/wiki/"):
+		relative = href
+	default:
 		return "", false
 	}
-	if hash := strings.IndexByte(href, '#'); hash != -1 {
-		href = href[:hash]
+	if hash := strings.IndexByte(relative, '#'); hash != -1 {
+		relative = relative[:hash]
 	}
-	title := strings.TrimPrefix(href, "/wiki/")
+	title := strings.TrimPrefix(relative, "/wiki/")
 	if title == "" {
 		return "", false
 	}
@@ -85,7 +99,7 @@ func resolveWikiquoteLink(wikiBase string, href string) (string, bool) {
 			return "", false
 		}
 	}
-	return wikiBase + href, true
+	return wikiBase + relative, true
 }
 
 // dedupeStrings returns ss with duplicates removed, preserving first-seen order — used to keep
