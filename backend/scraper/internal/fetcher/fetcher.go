@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"strings"
-	"sync"
 	"time"
 )
 
@@ -63,84 +60,26 @@ func IsRateLimited(err error) bool {
 	return errors.As(err, &se) && se.StatusCode == http.StatusTooManyRequests
 }
 
-// wikiquoteGlobalMu/wikiquoteGlobalLastRequest enforce ONE shared minimum delay across every
-// request to any *.wikiquote.org host, regardless of which of the crawler's many independent
-// per-edition workers (internal/crawler.go, one goroutine per Wikiquote language) is making it.
-//
-// Found live: each edition's own per-edition cooldown (5-6s, paced independently in crawler.go)
-// looked polite in isolation, but with fourteen editions running concurrently, the *combined*
-// request rate to wikiquote.org — roughly one request every ~0.4s in aggregate — was still
-// enough to trigger constant 429s across every single edition simultaneously. Confirmed this
-// wasn't just one edition being too aggressive: editions that had already independently widened
-// to their "proven-safe" 6s pace (via crawler.go's abandonExperimentalPace) kept getting
-// rate-limited anyway. That rules out per-edition pacing as the fix entirely — Wikimedia is
-// evidently rate-limiting by source IP across the whole wikiquote.org family, not per subdomain,
-// so no amount of tuning any single edition's own delay can help; only a limiter shared across
-// all of them, enforced here in the one place every Wikiquote request already funnels through
-// (Fetch), can.
-var (
-	wikiquoteGlobalMu          sync.Mutex
-	wikiquoteGlobalLastRequest time.Time
-)
-
-// wikiquoteGlobalMinDelay is a considered starting guess, not yet independently proven-safe the
-// way the per-edition values in crawler.go were before this bug surfaced — the previous "safe"
-// per-edition pace demonstrably was not actually safe in aggregate (see above), so this starts
-// deliberately conservative rather than reusing that same discredited number. Re-tune from live
-// 429 evidence after deploying, same as every other pacing constant in this codebase.
-const wikiquoteGlobalMinDelay = 2 * time.Second
-
-// isWikiquoteHost reports whether rawURL points at any wikiquote.org subdomain. Malformed input
-// (which Fetch's own http.NewRequestWithContext would reject moments later anyway) is treated as
-// "not wikiquote" rather than erroring here — this check exists purely to decide whether the
-// shared limiter applies, not to validate the URL.
-func isWikiquoteHost(rawURL string) bool {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return false
-	}
-	return strings.HasSuffix(u.Hostname(), "wikiquote.org")
-}
-
-// waitForWikiquoteSlot blocks — holding wikiquoteGlobalMu for the duration, so every other
-// concurrent Wikiquote caller queues behind it too; that's what actually turns fourteen
-// independently-paced streams into one shared one — until at least wikiquoteGlobalMinDelay has
-// passed since the last request to any wikiquote.org host. Returns true if ctx was cancelled
-// while waiting, so Fetch can bail out the same way sleepCtx's callers do elsewhere in this
-// codebase instead of still issuing the request after a shutdown signal.
-func waitForWikiquoteSlot(ctx context.Context) bool {
-	wikiquoteGlobalMu.Lock()
-	defer wikiquoteGlobalMu.Unlock()
-
-	if wait := wikiquoteGlobalMinDelay - time.Since(wikiquoteGlobalLastRequest); wait > 0 {
-		timer := time.NewTimer(wait)
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			return true
-		}
-	}
-	wikiquoteGlobalLastRequest = time.Now()
-	return false
-}
-
 // Fetch takes a context so a caller's graceful shutdown (or any other cancellation) can cut an
 // in-flight request short instead of always waiting up to requestTimeout — otherwise stopping
 // the crawler could still block for up to 90s on whatever fetch happened to be in flight.
 //
-// A wikiquote.org URL additionally waits for the shared cross-edition limiter (see
-// waitForWikiquoteSlot) before this function ever issues the request — every one of the
-// crawler's Wikiquote-family workers funnels through this exact call, so this is the one place
-// that can enforce a limit shared across all of them, not just Goodreads/Wikiquote as two
-// domains but the whole wikiquote.org family as one.
+// Superseded: this used to also enforce a shared minimum delay across every request to any
+// wikiquote.org host (one lock shared by all fourteen per-edition workers), on the theory that
+// Wikimedia was rate-limiting by source IP across the whole family rather than per-subdomain.
+// Reverted — that theory was wrong, or at least not the actual proximate cause. With fourteen
+// concurrent workers serialized behind one shared minimum-delay lock, the unlucky last worker in
+// the queue could wait up to ~13x that delay just for its turn, before any real network request
+// even happened — and crawler.go's own stall detection (slowFetchWarn, >10s) misread that
+// self-inflicted queueing delay as the source throttling us, piling an additional stall penalty
+// on top and making the next round of queueing worse. Confirmed live that plain curl/wget from
+// the same VPS, same IP, direct to both the IPv4 and IPv6 addresses Wikiquote resolves to, were
+// all fast (well under a second) — ruling out DNS, IPv6, and the target server itself, and
+// pointing squarely at the global limiter's own queueing as the cause. The User-Agent fix below
+// (confirmed separately, before the global limiter existed) appears to have been the actual fix
+// for the original 429 storm on its own; per-edition pacing (crawler.go's own minSourceDelayFor/
+// abandonExperimentalPace) is what's relied on now, same as every other source.
 func Fetch(ctx context.Context, url string) (string, error) {
-	if isWikiquoteHost(url) {
-		if waitForWikiquoteSlot(ctx) {
-			return "", ctx.Err()
-		}
-	}
-
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", err
