@@ -130,6 +130,116 @@ func LooksLikeWikiDiscussion(text string) bool {
 	return wikiSignatureRegex.MatchString(text) || wikiTalkLinkRegex.MatchString(text)
 }
 
+// MinGameWordCount is the fewest words a quote may have before GameSuitability flags it as
+// too_short for a typing race specifically — distinct from MinQuoteLength (a character-count
+// floor applied at ingest to reject citation fragments outright). Calibrated against the live
+// corpus: 37,740 of ~750K rows fall under this threshold — single names, date ranges, and
+// citation fragments too short to make a meaningful typing passage even though they pass
+// MinQuoteLength's character-count floor.
+const MinGameWordCount = 5
+
+// longBracketContentRegex matches a bracket pair whose content exceeds ~70 characters. Originally
+// calibrated at 21 from one confirmed-bad ~110-character stage-direction example
+// ("[il criminale Flowers, inseguito dal detective, si nasconde sotto un'automobile...]"), but a
+// full dry-run backfill pass over the live corpus (see cmd/backfill) surfaced real false
+// positives at that threshold — genuine, legitimate editorial clarifications like
+// "[all things being equal]" (23 chars) and "[seeking scientific knowledge or explanation of
+// fact]" (52 chars), both plain Aristotle-translation insertions, not markup leakage. Raised to
+// sit comfortably above both confirmed-legitimate examples and still well below the
+// confirmed-bad one — deliberately not "any bracket" at all: 43,812 quotes in the live corpus
+// contain one, and the vast majority are the short, legitimate kind (see
+// LooksLikeDictionaryEntry's own comment on the same finding).
+var longBracketContentRegex = regexp.MustCompile(`\[[^\[\]]{71,}\]`)
+
+// bracketedEllipsisRegex matches "[...]" or "[…]" — an editorial mark for omitted text, meaning
+// the quote is a fragment with a gap in it, found live to be common and unambiguous.
+var bracketedEllipsisRegex = regexp.MustCompile(`\[\s*(\.\.\.|…)\s*\]`)
+
+// urlRegex matches an embedded URL — found live to always be citation/reference leakage (a
+// footnote link, a source URL) rather than something a real quote would ever contain.
+var urlRegex = regexp.MustCompile(`https?://|www\.`)
+
+// numericOnlyRegex matches text made up of nothing but digits and date/range punctuation — found
+// live on a handful of rows (e.g. "1932-1934", "8.12.14.") that are clearly a citation date
+// captured as if it were the quote's own text, not real quotable content. Rare (6 rows in the
+// live corpus) but unambiguous.
+var numericOnlyRegex = regexp.MustCompile(`^[0-9\s.,\-]+$`)
+
+// tightAsteriskEmphasisRegex matches a "*word*"-shaped pair — asterisk, word characters, asterisk,
+// with nothing in between — the one legitimate-looking asterisk usage (markdown-style emphasis).
+// hasLeakedAsterisk strips every such pair out first, then checks whether any asterisk remains;
+// what's left after that is reliably a footnote marker ("...misstep.*", "place* of") or a
+// typographic section-break run ("* * * * *") rather than emphasis — a real bug found writing
+// this function's own test: a naive "asterisk adjacent to whitespace" check can't tell "*word*"
+// apart from either bad case, since a real emphasis pair is *also* whitespace-bounded on its
+// outside edges by definition (it's a separate token from the words around it).
+var tightAsteriskEmphasisRegex = regexp.MustCompile(`\*\w+\*`)
+
+func hasLeakedAsterisk(text string) bool {
+	return strings.Contains(tightAsteriskEmphasisRegex.ReplaceAllString(text, ""), "*")
+}
+
+// unwritableCharAllowlist are runes that fall into a Unicode category GameSuitability otherwise
+// treats as unwritable (Cc/Cf/Co/Cs/So — control, format, private-use, surrogate, other-symbol:
+// covers emoji, dingbats, zero-width joiners, directional marks) but are common enough in real
+// quotes to allow explicitly, rather than reject. Not exhaustive by design — meant to be extended
+// from real false positives found via the backfill tool's --dry-run sampling (see cmd/backfill),
+// the same live-evidence method used to calibrate every other rule in this file, rather than
+// guessed exhaustively up front.
+var unwritableCharAllowlist = map[rune]bool{
+	'°': true,                       // degree sign — temperatures, angles, common in real quotes
+	'©': true, '®': true, '™': true, // legal/trademark marks, occasionally quoted verbatim
+	'†': true, '‡': true, // dagger/double-dagger — historical footnote convention, not a citation leak itself
+	'§': true, '¶': true, // section/pilcrow — legal and literary text sometimes quotes these directly
+}
+
+// isUnwritableRune reports whether r falls into a Unicode category GameSuitability treats as
+// not reasonably typeable on a standard keyboard (control/format/private-use/surrogate/other-
+// symbol — covers emoji, dingbats, box-drawing, directional marks), unless explicitly allowed.
+func isUnwritableRune(r rune) bool {
+	if unwritableCharAllowlist[r] {
+		return false
+	}
+	return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Co, unicode.Cs, unicode.So)
+}
+
+// GameSuitability reports whether text is real, correctly-sourced content that isn't a good fit
+// for a typing-race game specifically — too short, or containing markup/characters that leaked
+// through extraction rather than being part of the actual quote. Every rule here is calibrated
+// against the live corpus (see PRODUCTION.md / the commit introducing this function for the full
+// evidence), not guessed: deliberately does NOT flag brackets in general, ALL-CAPS text, or
+// repeated ellipsis dots — all checked live and found to be dominated by genuine, legitimate
+// content, unlike the narrower patterns actually used below. reasons is empty (not nil) when
+// unsuitable is false, ordered deterministically (checks always run in the same order) so a
+// backfill re-run produces byte-identical output for byte-identical input.
+func GameSuitability(text string) (unsuitable bool, reasons []string) {
+	reasons = []string{}
+
+	if len(strings.Fields(text)) < MinGameWordCount {
+		reasons = append(reasons, "too_short")
+	}
+
+	leakedMarkup := strings.ContainsAny(text, "{~") ||
+		strings.Contains(text, "[[") || strings.Contains(text, "]]") ||
+		longBracketContentRegex.MatchString(text) ||
+		bracketedEllipsisRegex.MatchString(text) ||
+		urlRegex.MatchString(text) ||
+		numericOnlyRegex.MatchString(strings.TrimSpace(text)) ||
+		hasLeakedAsterisk(text)
+	if leakedMarkup {
+		reasons = append(reasons, "leaked_markup")
+	}
+
+	for _, r := range text {
+		if isUnwritableRune(r) {
+			reasons = append(reasons, "unwritable_characters")
+			break
+		}
+	}
+
+	return len(reasons) > 0, reasons
+}
+
 func SHA256(text string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(text)))
 }
