@@ -240,6 +240,155 @@ func (s *Store) SaveQuote(ctx context.Context, quote models.Quote) (bool, error)
 	return true, s.addToSimhashCache(ctx, simhash)
 }
 
+// SaveQuotes is SaveQuote for a whole page's worth of quotes at once — a single Goodreads page
+// yields ~30, each previously costing its own INSERT round trip. Returns a bool per input quote,
+// same order, true where it was actually saved (false for both a near-duplicate and an exact
+// sha256 duplicate, same as SaveQuote's single bool doesn't distinguish the two either).
+//
+// Near-duplicate checks still happen sequentially, one Redis round trip per quote, same as
+// SaveQuote — that's unavoidable, each check depends on the cache state so far. What's batched
+// is the Postgres side: every quote that passes its own near-dup check is collected, then
+// inserted in one multi-row statement (same unnest(...)/RETURNING pattern as SaveURLsBatch), and
+// only the sha256 hashes that come back from RETURNING (i.e. weren't rejected by ON CONFLICT as
+// an exact duplicate) get added to the simhash cache — never before confirming the row actually
+// landed in Postgres, or the cache would end up "remembering" quotes that were never saved.
+//
+// Accepted trade-off: two near-identical quotes within the *same* page no longer catch each
+// other via the near-dup check the way two SaveQuote calls in a row would (the second would see
+// the first already in the cache) — the whole batch's near-dup checks all read the cache before
+// any of the batch's own quotes are added to it. Rare in practice (near-dup exists to catch the
+// same quote resurfacing across different pages/sources, not to catch a single page repeating
+// itself), and worth it for cutting N Postgres round trips to 1.
+func (s *Store) SaveQuotes(ctx context.Context, quotes []models.Quote) ([]bool, error) {
+	saved := make([]bool, len(quotes))
+	if len(quotes) == 0 {
+		return saved, nil
+	}
+
+	type candidate struct {
+		idx        int
+		text       string
+		author     string
+		tagsJSON   string
+		source     string
+		sourceURL  string
+		language   string
+		sha256Hash string
+		simhash    int64
+		wordCount  int
+	}
+
+	var candidates []candidate
+	for i, quote := range quotes {
+		normalizedText := dedup.Normalize(quote.Text)
+		sha256Hash := dedup.SHA256(normalizedText)
+		simhash := dedup.Simhash(normalizedText)
+
+		nearDup, err := s.isNearDuplicate(ctx, simhash)
+		if err != nil {
+			return nil, err
+		}
+		if nearDup {
+			continue
+		}
+
+		language := quote.Language
+		if language == "" {
+			language = "en"
+		}
+		tagsJSON, err := json.Marshal(quote.Tags)
+		if err != nil {
+			return nil, err
+		}
+
+		candidates = append(candidates, candidate{
+			idx: i, text: quote.Text, author: quote.Author, tagsJSON: string(tagsJSON),
+			source: quote.Source, sourceURL: quote.SourceURL, language: language,
+			sha256Hash: sha256Hash, simhash: simhash, wordCount: len(strings.Fields(quote.Text)),
+		})
+	}
+	if len(candidates) == 0 {
+		return saved, nil
+	}
+
+	// De-duplicate by sha256Hash *before* building the batch — real bug found live (caught by
+	// a test deliberately including two same-text quotes in one batch): RETURNING only reports
+	// which hashes landed a row, not which specific input instance earned it, so if two
+	// candidates in this batch share a hash, a hash-keyed map marks both saved — inserting one
+	// physical row but incorrectly reporting two. Keeping only the first occurrence and letting
+	// any later same-hash candidate stay at its zero-value (unsaved) matches exactly what two
+	// sequential SaveQuote calls with the same text would do (the second always loses to the
+	// first via ON CONFLICT), whether or not either one turns out to already exist in Postgres.
+	seen := make(map[string]bool, len(candidates))
+	unique := candidates[:0]
+	for _, c := range candidates {
+		if seen[c.sha256Hash] {
+			continue
+		}
+		seen[c.sha256Hash] = true
+		unique = append(unique, c)
+	}
+	candidates = unique
+
+	texts := make([]string, len(candidates))
+	authors := make([]string, len(candidates))
+	tags := make([]string, len(candidates))
+	sources := make([]string, len(candidates))
+	sourceURLs := make([]string, len(candidates))
+	languages := make([]string, len(candidates))
+	sha256Hashes := make([]string, len(candidates))
+	simhashes := make([]int64, len(candidates))
+	wordCounts := make([]int32, len(candidates))
+	for i, c := range candidates {
+		texts[i] = c.text
+		authors[i] = c.author
+		tags[i] = c.tagsJSON
+		sources[i] = c.source
+		sourceURLs[i] = c.sourceURL
+		languages[i] = c.language
+		sha256Hashes[i] = c.sha256Hash
+		simhashes[i] = c.simhash
+		wordCounts[i] = int32(c.wordCount)
+	}
+
+	rows, err := s.pool.Query(ctx,
+		`INSERT INTO quotes (text, author, tags, source, source_url, language, sha256_hash, simhash, word_count)
+         SELECT text, author, tags::jsonb, source, source_url, language, sha256_hash, simhash, word_count
+         FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bigint[], $9::int[])
+              AS t(text, author, tags, source, source_url, language, sha256_hash, simhash, word_count)
+         ON CONFLICT (sha256_hash) DO NOTHING
+         RETURNING sha256_hash`,
+		texts, authors, tags, sources, sourceURLs, languages, sha256Hashes, simhashes, wordCounts,
+	)
+	if err != nil {
+		return nil, err
+	}
+	insertedHashes := make(map[string]bool)
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		insertedHashes[h] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, c := range candidates {
+		if !insertedHashes[c.sha256Hash] {
+			continue
+		}
+		saved[c.idx] = true
+		if err := s.addToSimhashCache(ctx, c.simhash); err != nil {
+			return saved, err
+		}
+	}
+	return saved, nil
+}
+
 func (s *Store) SaveURL(ctx context.Context, urlFrontier models.URLFrontier) (bool, error) {
 	if urlFrontier.URL == "" || urlFrontier.Source == "" {
 		return false, fmt.Errorf("URL and Source are required")
