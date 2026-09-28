@@ -309,6 +309,16 @@ func (c *Crawler) recordWikiquoteYield(ctx context.Context, site wikiquoteSite, 
 		return 0
 	}
 	cursor := decodeWikiquoteCursor(raw)
+	// Same out-of-range guard topUpWikiquoteSiteIfEmpty already applies when *reading* a
+	// cursor — needed here too, on the *write* path, or a run of dead-streak skips can push
+	// CategoryIndex arbitrarily far past the curated list's length before the next top-up call
+	// happens to catch and reset it. Purely cosmetic in the meantime (topUp's own guard means
+	// nothing actually gets stuck), but it did make this log line print a useless "?" instead
+	// of ever wrapping back to a real category name — found live, every one of those "?"s
+	// traced back to exactly this.
+	if cursor.CategoryIndex >= len(site.curatedCategories) {
+		cursor = wikiquoteDiscoveryCursor{}
+	}
 	skipped := cursor.Current
 	if skipped == "" && cursor.CategoryIndex < len(site.curatedCategories) {
 		skipped = site.curatedCategories[cursor.CategoryIndex]
