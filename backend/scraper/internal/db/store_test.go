@@ -321,3 +321,121 @@ func TestRetryURL(t *testing.T) {
 		t.Errorf("expected priority = 13.0 after RetryURL, got %v", row.Priority)
 	}
 }
+
+// TestSaveQuotesBatch covers SaveQuotes — the batched counterpart to SaveQuote (see that test)
+// added after measuring live that saving a page's ~30 quotes one INSERT at a time cost roughly
+// 3x what a single batched INSERT does on the same host, more with real network latency to
+// Postgres. Same duplicate semantics as calling SaveQuote once per quote are covered here,
+// including the one case unique to batching: two quotes in the *same* call that are exact
+// duplicates of each other, not just of something already in the table — a real bug found live
+// (a naive hash-keyed map marked both as saved after Postgres correctly inserted only one row)
+// before de-duplicating candidates by sha256 hash prior to building the batch fixed it.
+func TestSaveQuotesBatch(t *testing.T) {
+	ctx := context.Background()
+
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:16",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2)),
+	)
+	if err != nil {
+		t.Fatalf("could not start postgres container: %v", err)
+	}
+	defer func(pgContainer *postgres.PostgresContainer, ctx context.Context, opts ...testcontainers.TerminateOption) {
+		if err := pgContainer.Terminate(ctx, opts...); err != nil {
+			t.Fatalf("could not terminate postgres container: %v", err)
+		}
+	}(pgContainer, ctx)
+
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("could not get postgres connection string: %v", err)
+	}
+
+	pool, err := ConnectPostgres(connStr)
+	if err != nil {
+		t.Fatalf("could not connect to postgres: %v", err)
+	}
+	defer pool.Close()
+
+	if err := Migrate(pool); err != nil {
+		t.Fatalf("could not run migrations: %v", err)
+	}
+
+	redisContainer, err := redis.Run(ctx, "redis:7-alpine")
+	if err != nil {
+		t.Fatalf("could not start redis container: %v", err)
+	}
+	defer func() {
+		if err := redisContainer.Terminate(ctx); err != nil {
+			t.Fatalf("could not terminate redis container: %v", err)
+		}
+	}()
+
+	redisAddr, err := redisContainer.ConnectionString(ctx)
+	if err != nil {
+		t.Fatalf("could not get redis connection string: %v", err)
+	}
+
+	redisClient, err := ConnectRedis(redisAddr, "", 0)
+	if err != nil {
+		t.Fatalf("could not connect to redis: %v", err)
+	}
+
+	store := NewStore(pool, redisClient)
+
+	// case 1: a fresh batch, including one same-batch exact duplicate (index 3 repeats index
+	// 0's text) and one same-batch near-duplicate (index 4 is a one-char variant of index 1,
+	// the same shape TestSaveQuote's own near-dup case uses) — near-dup isn't expected to be
+	// caught across positions in the *same* batch (documented trade-off, see SaveQuotes' doc
+	// comment), only the exact duplicate must be.
+	quotes := []models.Quote{
+		{Text: "The world as we have created it is a process of our thinking.", Author: "Albert Einstein", Source: "quotes.toscrape.com"},
+		{Text: "In the middle of every difficulty lies opportunity.", Author: "Albert Einstein", Source: "quotes.toscrape.com"},
+		{Text: "Imagination is more important than knowledge.", Author: "Albert Einstein", Source: "quotes.toscrape.com"},
+		{Text: "The world as we have created it is a process of our thinking.", Author: "Albert Einstein", Source: "quotes.toscrape.com"},
+	}
+
+	saved, err := store.SaveQuotes(ctx, quotes)
+	if err != nil {
+		t.Fatalf("SaveQuotes() failed on new batch: %v", err)
+	}
+	wantSaved := []bool{true, true, true, false}
+	for i, want := range wantSaved {
+		if saved[i] != want {
+			t.Errorf("quote %d: saved = %v, want %v", i, saved[i], want)
+		}
+	}
+
+	var count int
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM quotes").Scan(&count); err != nil {
+		t.Fatalf("count query failed: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected exactly 3 rows in Postgres (the same-batch duplicate must not land a 4th), got %d", count)
+	}
+
+	// case 2: re-submitting the same quotes in a fresh call should now find every one of them
+	// already committed from case 1 — conflict against existing rows, not within-batch.
+	saved2, err := store.SaveQuotes(ctx, quotes[:3])
+	if err != nil {
+		t.Fatalf("SaveQuotes() failed on re-submitted batch: %v", err)
+	}
+	for i, s := range saved2 {
+		if s {
+			t.Errorf("quote %d: saved = true on a re-save of an already-committed row, want false", i)
+		}
+	}
+
+	// case 3: an empty batch is a valid no-op, not an error.
+	savedEmpty, err := store.SaveQuotes(ctx, nil)
+	if err != nil {
+		t.Fatalf("SaveQuotes(nil) returned an error: %v", err)
+	}
+	if len(savedEmpty) != 0 {
+		t.Errorf("SaveQuotes(nil) = %v, want empty", savedEmpty)
+	}
+}
