@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"math/rand"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -29,16 +30,52 @@ type TypingQuote struct {
 // time — filtering on it directly is far cheaper than re-splitting every candidate row's text
 // on every request. This API only ever reads the quotes table; it never writes to it and
 // never runs migrations — that's the scraper's job as the schema's owner (see README).
+//
+// Deliberately not "ORDER BY random() LIMIT 1": that forces Postgres to evaluate random() for
+// every row in the filtered candidate set and sort all of them just to keep the top 1 — an
+// O(N log N) full-set sort on this API's one public endpoint, on every single request. Fine at
+// today's corpus size, but the crawler this API reads from is explicitly designed to grow into
+// the hundreds of thousands of rows (Goodreads' own sitemap alone lists ~5.5M quote URLs — see
+// backend/scraper/README.md), at which point that sort becomes real, measurable cost paid by
+// every typing-race request. Instead: pick a random starting id (from the table's live min/max,
+// so it always tracks the crawler's growing corpus with no cache to invalidate) and scan forward
+// from there for the first row matching the filters — an index range scan on the primary key,
+// O(log N) to find the start plus a short forward scan, not a sort of the whole candidate set.
+// Wraps around to the very beginning if nothing matches going forward (e.g. a narrow word-count
+// range whose matches all happen to sit before the random starting point).
+//
+// Trade-off, deliberately accepted: not perfectly uniform — a row right after an id gap (a
+// skipped ON CONFLICT insert) is marginally more likely to be picked than one in a dense run of
+// consecutive ids, since it "absorbs" every random starting point landing in that gap. No player
+// in a typing race could ever notice that skew; it's the standard accepted cost of avoiding a
+// full-table sort for this exact problem.
 func RandomTypingQuote(ctx context.Context, pool *pgxpool.Pool, language string, minWords, maxWords int, exclude string) (TypingQuote, error) {
-	var q TypingQuote
-	err := pool.QueryRow(ctx,
-		`SELECT text, author, source, language
+	var minID, maxID int64
+	if err := pool.QueryRow(ctx, `SELECT COALESCE(MIN(id), 0), COALESCE(MAX(id), 0) FROM quotes`).Scan(&minID, &maxID); err != nil {
+		return TypingQuote{}, err
+	}
+	if maxID == 0 {
+		return TypingQuote{}, ErrNoEligibleQuote
+	}
+	randomID := minID + rand.Int63n(maxID-minID+1)
+
+	const selectQuery = `SELECT text, author, source, language
          FROM quotes
-         WHERE language = $1 AND word_count BETWEEN $2 AND $3 AND text != $4
-         ORDER BY random()
-         LIMIT 1`,
-		language, minWords, maxWords, exclude,
-	).Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+         WHERE id >= $1 AND language = $2 AND word_count BETWEEN $3 AND $4 AND text != $5
+         ORDER BY id
+         LIMIT 1`
+
+	var q TypingQuote
+	err := pool.QueryRow(ctx, selectQuery, randomID, language, minWords, maxWords, exclude).
+		Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Nothing at or after randomID matched — wrap around to the start of the id range
+		// instead of giving up.
+		err = pool.QueryRow(ctx, selectQuery, minID, language, minWords, maxWords, exclude).
+			Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TypingQuote{}, ErrNoEligibleQuote
 	}
