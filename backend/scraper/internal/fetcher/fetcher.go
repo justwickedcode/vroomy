@@ -18,6 +18,17 @@ import (
 // connection (network black hole), not to react to ordinary throttling.
 const requestTimeout = 90 * time.Second
 
+// userAgent identifies this crawler per Wikimedia's User-Agent policy
+// (https://foundation.wikimedia.org/wiki/Policy:User-Agent_policy), which requires a descriptive
+// User-Agent with a way to contact the operator — a generic one like the previous
+// "quotes-crawler/1.0" is exactly what that policy exists to catch. Confirmed live this actually
+// matters, not just a compliance nicety: plain `curl` (default User-Agent) against the same
+// wikiquote.org endpoints, from the same VPS IP, at a *faster* rate than this crawler's own
+// paced requests, got clean 200s the whole time, while the crawler was getting constant 429s —
+// ruling out both an IP-level block and a volume/burst limit, and pointing squarely at the
+// User-Agent (or another header the two clients differ on) as what was actually being flagged.
+const userAgent = "vroomy-quotes-crawler/1.0 (https://github.com/justwickedcode/vroomy)"
+
 // client is shared across every call to Fetch rather than constructed per-request. A fresh
 // http.Client (as this used to build) means a fresh http.Transport, which means every single
 // fetch pays for its own TCP handshake and TLS negotiation from scratch — no keep-alive reuse
@@ -135,7 +146,7 @@ func Fetch(ctx context.Context, url string) (string, error) {
 		return "", err
 	}
 
-	req.Header.Set("User-Agent", "quotes-crawler/1.0")
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
