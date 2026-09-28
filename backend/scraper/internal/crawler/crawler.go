@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/rand"
 	"quotes-crawler/internal/db"
@@ -11,6 +12,7 @@ import (
 	"quotes-crawler/internal/parser"
 	"quotes-crawler/internal/scoring"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,11 +27,6 @@ const (
 	// something is likely to free up soon (its cooldown ticking down), but not zero, to avoid
 	// busy-spinning Redis/Postgres.
 	idlePollInterval = 2 * time.Second
-
-	// activeWindowPollInterval is how long a worker sleeps between checks while paused outside
-	// its configured active window (see Crawler.inActiveWindow) — long, unlike idlePollInterval,
-	// since "is it still daytime" only ever needs checking every few minutes, not every 2s.
-	activeWindowPollInterval = 5 * time.Minute
 
 	// slowFetchWarn logs a warning when a single fetch takes longer than this — the visible,
 	// live signal for "this request just got soft-throttled" instead of only finding out via
@@ -202,6 +199,62 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
+// Log level thresholds, lowest (most restrictive) to highest (most verbose) — see
+// configuredLogLevel/SetLogLevel. A message at level L is shown iff L <= configuredLogLevel, so
+// "warn" shows both warnings and errors, "info" (the default) shows everything.
+const (
+	logLevelError = iota
+	logLevelWarn
+	logLevelInfo
+)
+
+// configuredLogLevel defaults to logLevelInfo — full output, exactly today's behavior — so local
+// dev/tests are unaffected unless a deployment explicitly opts into a quieter level via
+// SetLogLevel/LOG_LEVEL. A package-level var, not a Crawler field: every runWorker goroutine
+// reads it, and it's only ever written once, before Run starts.
+var configuredLogLevel = logLevelInfo
+
+// SetLogLevel parses "error", "warn" (or "warning"), or "info" (case-insensitive; "" also means
+// info, i.e. unset) and applies it — call once before Crawler.Run, from main.go based on
+// LOG_LEVEL. Returns an error for anything else so a typo'd env var fails loudly at startup
+// instead of silently doing nothing.
+func SetLogLevel(level string) error {
+	switch strings.ToLower(level) {
+	case "", "info":
+		configuredLogLevel = logLevelInfo
+	case "warn", "warning":
+		configuredLogLevel = logLevelWarn
+	case "error":
+		configuredLogLevel = logLevelError
+	default:
+		return fmt.Errorf("unknown log level %q (want error, warn, or info)", level)
+	}
+	return nil
+}
+
+// logWarn is log.Printf for a warning: the crawler tried something and skipped/backed off/gave
+// up on it (a rejected quote, a low-yield category abandoned, a retry after a transient
+// failure) — not a hard error, but the kind of thing an operator watching a quieted-down
+// production log still wants to see. Suppressed only at logLevelError.
+func logWarn(format string, args ...interface{}) {
+	if configuredLogLevel < logLevelWarn {
+		return
+	}
+	log.Printf(format, args...)
+}
+
+// logInfo is log.Printf for routine, high-volume narration only — one line per page
+// fetched/quote saved/URL discovered, the kind of output that dominates log volume over a long
+// run (see PRODUCTION.md). Suppressed at both logLevelWarn and logLevelError. Never used for an
+// error, a warning, a stall, a rate-limit, or anything else that should survive a quieted-down
+// production log — those all call log.Printf directly, unconditionally, elsewhere in this file.
+func logInfo(format string, args ...interface{}) {
+	if configuredLogLevel < logLevelInfo {
+		return
+	}
+	log.Printf(format, args...)
+}
+
 // topUpResult is what a source's top-up function reports back to runWorker. calledNetwork
 // distinguishes a real HTTP request to the source (Wikiquote's MediaWiki API calls) from a
 // pure DB/Redis operation (Goodreads' tag-seeding, which never calls goodreads.com itself
@@ -221,43 +274,10 @@ type topUpResult struct {
 
 type Crawler struct {
 	store *db.Store
-
-	// activeStartHour/activeEndHour gate crawling to a configured local-time window (e.g. only
-	// 00:00-08:00, to avoid competing with daytime traffic for CPU/RAM on a shared host) — see
-	// inActiveWindow. -1 means "not configured," which keeps every existing deployment (local
-	// dev, tests, anything that never sets the two env vars) crawling around the clock exactly
-	// as before; this is opt-in, not a new default.
-	activeStartHour int
-	activeEndHour   int
 }
 
 func New(store *db.Store) *Crawler {
-	return &Crawler{store: store, activeStartHour: -1, activeEndHour: -1}
-}
-
-// NewWithActiveWindow is New, plus an active-crawling window in server-local hours (0-23).
-// Outside [startHour, endHour) — wrapping past midnight if startHour > endHour, e.g. (22, 6) —
-// every worker pauses (no fetching, no topUp, no DB/Redis polling) instead of running, so an
-// external scheduler doesn't have to fully stop the process just to keep it quiet during the
-// day; see runWorker's use of inActiveWindow.
-func NewWithActiveWindow(store *db.Store, startHour, endHour int) *Crawler {
-	return &Crawler{store: store, activeStartHour: startHour, activeEndHour: endHour}
-}
-
-// inActiveWindow reports whether now falls inside the crawler's configured active window.
-// Always true if the window isn't configured (activeStartHour/activeEndHour still -1 from New).
-// A degenerate window (start == end) is also always-active rather than always-paused — an
-// accidentally-equal pair of hours shouldn't silently crawl nothing at all.
-func (c *Crawler) inActiveWindow(now time.Time) bool {
-	if c.activeStartHour < 0 || c.activeEndHour < 0 || c.activeStartHour == c.activeEndHour {
-		return true
-	}
-	h := now.Hour()
-	if c.activeStartHour < c.activeEndHour {
-		return h >= c.activeStartHour && h < c.activeEndHour
-	}
-	// Wraps past midnight, e.g. startHour=22, endHour=6.
-	return h >= c.activeStartHour || h < c.activeEndHour
+	return &Crawler{store: store}
 }
 
 // recordWikiquoteYield tracks consecutive zero-quote fetches for one Wikiquote edition.
@@ -304,7 +324,7 @@ func (c *Crawler) recordWikiquoteYield(ctx context.Context, site wikiquoteSite, 
 		log.Printf("Could not save %s discovery cursor after skipping a low-yield category: %s\n", site.source, err)
 		return 0
 	}
-	log.Printf("%s: %d consecutive pages with 0 quotes — skipping the rest of category %q for next time", site.source, wikiquoteDeadStreakThreshold, skipped)
+	logWarn("%s: %d consecutive pages with 0 quotes — skipping the rest of category %q for next time", site.source, wikiquoteDeadStreakThreshold, skipped)
 	return 0
 }
 
@@ -344,7 +364,7 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 	}
 	cursor := decodeWikiquoteCursor(raw)
 	if cursor.CategoryIndex >= len(site.curatedCategories) {
-		log.Printf("%s discovery: finished all %d curated categories (and their subcategories), restarting from the beginning", site.source, len(site.curatedCategories))
+		logInfo("%s discovery: finished all %d curated categories (and their subcategories), restarting from the beginning", site.source, len(site.curatedCategories))
 		cursor = wikiquoteDiscoveryCursor{}
 	}
 
@@ -376,7 +396,7 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 		newlyQueued = append(newlyQueued, sc)
 	}
 	if len(newlyQueued) > 0 {
-		log.Printf("%s discovery: category %q has %d new subcategory(ies) queued to explore (e.g. %q)", site.source, category, len(newlyQueued), newlyQueued[0])
+		logInfo("%s discovery: category %q has %d new subcategory(ies) queued to explore (e.g. %q)", site.source, category, len(newlyQueued), newlyQueued[0])
 	}
 	updatedVisited := make([]string, 0, len(visited))
 	for v := range visited {
@@ -410,7 +430,7 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 		}
 	default:
 		// Nothing left anywhere in this top-level category's subtree — move on.
-		log.Printf("%s discovery: category %q and all its subcategories are fully explored, moving to the next curated category", site.source, category)
+		logInfo("%s discovery: category %q and all its subcategories are fully explored, moving to the next curated category", site.source, category)
 		next = wikiquoteDiscoveryCursor{CategoryIndex: cursor.CategoryIndex + 1}
 	}
 	if err := c.store.SetDiscoveryCursor(ctx, site.source, next.encode()); err != nil {
@@ -418,7 +438,7 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 	}
 
 	if len(pages) == 0 {
-		log.Printf("%s discovery: category %q returned no member pages (%d subcategories queued)", site.source, category, len(newlyQueued))
+		logInfo("%s discovery: category %q returned no member pages (%d subcategories queued)", site.source, category, len(newlyQueued))
 		return topUpResult{calledNetwork: true}
 	}
 
@@ -437,7 +457,7 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 		return topUpResult{calledNetwork: true}
 	}
 	if len(inserted) == 0 {
-		log.Printf("%s discovery: category %q — fetched %d pages, added 0 new URLs to the frontier (all already known)", site.source, category, len(pages))
+		logInfo("%s discovery: category %q — fetched %d pages, added 0 new URLs to the frontier (all already known)", site.source, category, len(pages))
 		return topUpResult{calledNetwork: true}
 	}
 	if err := c.store.PushURLsBatch(ctx, site.source, inserted, priority); err != nil {
@@ -445,10 +465,10 @@ func (c *Crawler) topUpWikiquoteSiteIfEmpty(ctx context.Context, site wikiquoteS
 		return topUpResult{calledNetwork: true}
 	}
 	for _, u := range inserted {
-		log.Printf("Discovered URL [%s]: %s (via category %q)", site.source, u, category)
+		logInfo("Discovered URL [%s]: %s (via category %q)", site.source, u, category)
 	}
 
-	log.Printf("%s discovery: category %q — fetched %d pages, added %d new URLs to the frontier", site.source, category, len(pages), len(inserted))
+	logInfo("%s discovery: category %q — fetched %d pages, added %d new URLs to the frontier", site.source, category, len(pages), len(inserted))
 	return topUpResult{added: true, calledNetwork: true}
 }
 
@@ -467,7 +487,7 @@ func (c *Crawler) topUpWikiquoteRandomPages(ctx context.Context, site wikiquoteS
 		return topUpResult{calledNetwork: true, networkFailed: true, rateLimited: fetcher.IsRateLimited(err)}
 	}
 	if len(titles) == 0 {
-		log.Printf("%s random-page fallback returned no titles", site.source)
+		logWarn("%s random-page fallback returned no titles", site.source)
 		return topUpResult{calledNetwork: true}
 	}
 
@@ -483,7 +503,7 @@ func (c *Crawler) topUpWikiquoteRandomPages(ctx context.Context, site wikiquoteS
 		return topUpResult{calledNetwork: true}
 	}
 	if len(inserted) == 0 {
-		log.Printf("%s random-page fallback: fetched %d titles, added 0 new URLs (all already known)", site.source, len(titles))
+		logInfo("%s random-page fallback: fetched %d titles, added 0 new URLs (all already known)", site.source, len(titles))
 		return topUpResult{calledNetwork: true}
 	}
 	if err := c.store.PushURLsBatch(ctx, site.source, inserted, priority); err != nil {
@@ -491,10 +511,10 @@ func (c *Crawler) topUpWikiquoteRandomPages(ctx context.Context, site wikiquoteS
 		return topUpResult{calledNetwork: true}
 	}
 	for _, u := range inserted {
-		log.Printf("Discovered URL [%s]: %s (via random-page fallback)", site.source, u)
+		logInfo("Discovered URL [%s]: %s (via random-page fallback)", site.source, u)
 	}
 
-	log.Printf("%s random-page fallback: fetched %d titles, added %d new URLs to the frontier", site.source, len(titles), len(inserted))
+	logInfo("%s random-page fallback: fetched %d titles, added %d new URLs to the frontier", site.source, len(titles), len(inserted))
 	return topUpResult{added: true, calledNetwork: true}
 }
 
@@ -548,14 +568,14 @@ func (c *Crawler) topUpGoodreadsIfEmpty(ctx context.Context) topUpResult {
 		return topUpResult{}
 	}
 	if !inserted {
-		log.Printf("Goodreads tag %q already fully known; will try the next one on the next dead end", tag)
+		logInfo("Goodreads tag %q already fully known; will try the next one on the next dead end", tag)
 		return topUpResult{}
 	}
 	if err := c.store.PushURL(ctx, scoring.SourceGoodreads, tagURL, priority); err != nil {
 		log.Printf("Could not push Goodreads tag seed to frontier: %s\n", err)
 		return topUpResult{}
 	}
-	log.Printf("Discovered URL [goodreads]: %s (new tag seeded — the previous one had run dry)", tagURL)
+	logInfo("Discovered URL [goodreads]: %s (new tag seeded — the previous one had run dry)", tagURL)
 	return topUpResult{added: true}
 }
 
@@ -584,7 +604,7 @@ func (c *Crawler) failOrRetry(ctx context.Context, source string, row models.URL
 		log.Printf("[%s] Could not push %s back to the frontier for retry: %s\n", source, row.URL, err)
 		return
 	}
-	log.Printf("[%s] Will retry %s (attempt %d of %d)", source, row.URL, nextErrorCount+1, maxURLRetries)
+	logWarn("[%s] Will retry %s (attempt %d of %d)", source, row.URL, nextErrorCount+1, maxURLRetries)
 }
 
 // processURL fetches, parses, and saves everything for one URL — identical work regardless of
@@ -667,28 +687,28 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 		}
 		return false, stalled, false
 	}
-	log.Printf("Parsed %s (source=%s): found %d quotes, %d discovered URLs", url, source, len(result.Quotes), len(result.NextURLs))
+	logInfo("Parsed %s (source=%s): found %d quotes, %d discovered URLs", url, source, len(result.Quotes), len(result.NextURLs))
 
 	for _, quote := range result.Quotes {
 		quote.SourceURL = url
 		if !dedup.IsLatinScript(quote.Text) {
-			log.Printf("Skipped non-Latin-script quote [%s]: %q — %s", quote.Source, truncate(quote.Text, 40), quote.Author)
+			logWarn("Skipped non-Latin-script quote [%s]: %q — %s", quote.Source, truncate(quote.Text, 40), quote.Author)
 			continue
 		}
 		if dedup.IsTooShort(quote.Text) {
-			log.Printf("Skipped quote under %d characters [%s]: %q — %s", dedup.MinQuoteLength, quote.Source, quote.Text, quote.Author)
+			logWarn("Skipped quote under %d characters [%s]: %q — %s", dedup.MinQuoteLength, quote.Source, quote.Text, quote.Author)
 			continue
 		}
 		if dedup.LooksLikeDictionaryEntry(quote.Text) {
-			log.Printf("Skipped dictionary-style entry [%s]: %q — %s", quote.Source, truncate(quote.Text, 40), quote.Author)
+			logWarn("Skipped dictionary-style entry [%s]: %q — %s", quote.Source, truncate(quote.Text, 40), quote.Author)
 			continue
 		}
 		if dedup.LooksLikeWikiDiscussion(quote.Text) {
-			log.Printf("Skipped wiki discussion/signature content [%s]: %q — %s", quote.Source, truncate(quote.Text, 40), quote.Author)
+			logWarn("Skipped wiki discussion/signature content [%s]: %q — %s", quote.Source, truncate(quote.Text, 40), quote.Author)
 			continue
 		}
 		if !dedup.MatchesClaimedLanguage(quote.Text, quote.Language) {
-			log.Printf("Skipped quote not actually in its claimed language %q [%s]: %q — %s", quote.Language, quote.Source, truncate(quote.Text, 40), quote.Author)
+			logWarn("Skipped quote not actually in its claimed language %q [%s]: %q — %s", quote.Language, quote.Source, truncate(quote.Text, 40), quote.Author)
 			continue
 		}
 
@@ -698,9 +718,9 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 			continue
 		}
 		if inserted {
-			log.Printf("Saved quote [%s]: %q — %s", quote.Source, truncate(quote.Text, 60), quote.Author)
+			logInfo("Saved quote [%s]: %q — %s", quote.Source, truncate(quote.Text, 60), quote.Author)
 		} else {
-			log.Printf("Skipped duplicate [%s]: %q — %s", quote.Source, truncate(quote.Text, 60), quote.Author)
+			logWarn("Skipped duplicate [%s]: %q — %s", quote.Source, truncate(quote.Text, 60), quote.Author)
 		}
 	}
 
@@ -717,7 +737,7 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 				log.Printf("Could not push discovered URLs to frontier: %s\n", err)
 			} else {
 				for _, u := range inserted {
-					log.Printf("Discovered URL [%s]: %s (from %s)", source, u, url)
+					logInfo("Discovered URL [%s]: %s (from %s)", source, u, url)
 				}
 			}
 		}
@@ -775,25 +795,9 @@ func (c *Crawler) runWorker(ctx context.Context, source string, minDelay time.Du
 	}
 
 	var lastFetch time.Time
-	var pausedForWindow bool
 	for {
 		if ctx.Err() != nil {
 			return
-		}
-
-		if !c.inActiveWindow(time.Now()) {
-			if !pausedForWindow {
-				log.Printf("[%s] Outside the configured active crawl window — pausing until it reopens", source)
-				pausedForWindow = true
-			}
-			if sleepCtx(ctx, activeWindowPollInterval) {
-				return
-			}
-			continue
-		}
-		if pausedForWindow {
-			log.Printf("[%s] Active crawl window reopened — resuming", source)
-			pausedForWindow = false
 		}
 
 		if !lastFetch.IsZero() {
@@ -927,7 +931,7 @@ func (c *Crawler) wikiquoteTopUpFunc(site wikiquoteSite) func(ctx context.Contex
 		}
 		if emptyStreak >= wikiquoteEmptyStreakBeforeRandom {
 			emptyStreak = 0
-			log.Printf("%s: %d consecutive discovery attempts found nothing new — falling back to random pages", site.source, wikiquoteEmptyStreakBeforeRandom)
+			logWarn("%s: %d consecutive discovery attempts found nothing new — falling back to random pages", site.source, wikiquoteEmptyStreakBeforeRandom)
 			return c.topUpWikiquoteRandomPages(ctx, site)
 		}
 		return result
@@ -940,19 +944,19 @@ func (c *Crawler) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Simhash cache warmed up")
+	logInfo("Simhash cache warmed up")
 
 	// Loads all language models from disk up front (~3.4s, confirmed live) rather than paying
 	// that cost unexplained on whichever quote happens to be first through MatchesClaimedLanguage.
 	dedup.WarmLanguageDetector()
-	log.Printf("Language detector warmed up")
+	logInfo("Language detector warmed up")
 
 	requeued, err := c.store.RequeueStuckInProgress(ctx)
 	if err != nil {
 		return err
 	}
 	if requeued > 0 {
-		log.Printf("Requeued %d URL(s) stuck in_progress from a previous run", requeued)
+		logWarn("Requeued %d URL(s) stuck in_progress from a previous run", requeued)
 	}
 
 	err = c.store.WarmFrontierCache(ctx)
@@ -964,7 +968,7 @@ func (c *Crawler) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Seed frontier cache warmed up")
+	logInfo("Seed frontier cache warmed up")
 
 	// Each source gets its own goroutine, each with its own cooldown, so a stall or slow fetch
 	// on one never delays a fetch that's already ready on another (see runWorker). The three
@@ -1021,7 +1025,7 @@ func (c *Crawler) Run(ctx context.Context) error {
 	}
 
 	wg.Wait() // returns once ctx is cancelled and every worker has noticed and exited
-	log.Printf("All workers stopped, shutting down")
+	logInfo("All workers stopped, shutting down")
 	return nil
 }
 
@@ -1036,7 +1040,7 @@ func (c *Crawler) SeedFrontier(ctx context.Context) error {
 		return err
 	}
 	if seeded {
-		log.Printf("Frontier already seeded.")
+		logInfo("Frontier already seeded.")
 		return nil
 	}
 

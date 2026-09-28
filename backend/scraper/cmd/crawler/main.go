@@ -72,6 +72,18 @@ func main() {
 		log.Fatal("Error loading .env file: ", err)
 	}
 
+	// LOG_LEVEL controls verbosity: "info" (default, unset) is today's full output; "warn" drops
+	// routine per-page/per-quote/per-discovery narration but keeps every skip/retry/fallback/
+	// pause-resume line (crawler.logWarn) alongside real failures; "error" drops those too,
+	// leaving only genuine failures (a fetch/DB/Redis error, giving up on a URL, an unknown
+	// source — anything that calls log.Printf directly in internal/crawler/crawler.go).
+	if err := crawler.SetLogLevel(os.Getenv("LOG_LEVEL")); err != nil {
+		log.Fatal(err)
+	}
+	if level := os.Getenv("LOG_LEVEL"); level != "" {
+		log.Printf("LOG_LEVEL=%s", level)
+	}
+
 	// postgres
 	pool, err := db.ConnectPostgres(os.Getenv("DATABASE_URL"))
 	if err != nil {
@@ -102,29 +114,7 @@ func main() {
 	// store
 	store := db.NewStore(pool, redisClient)
 
-	// Optional active-crawling window (server-local hours, 0-23) — e.g. CRAWL_ACTIVE_START_HOUR=0
-	// CRAWL_ACTIVE_END_HOUR=8 to only crawl at full speed overnight and pause the rest of the
-	// day, so this process doesn't compete for CPU/RAM with daytime traffic on a shared host.
-	// Both unset (the common case) keeps crawling around the clock, same as always.
-	var c *crawler.Crawler
-	startRaw, endRaw := os.Getenv("CRAWL_ACTIVE_START_HOUR"), os.Getenv("CRAWL_ACTIVE_END_HOUR")
-	if startRaw == "" && endRaw == "" {
-		c = crawler.New(store)
-	} else {
-		startHour, err := strconv.Atoi(startRaw)
-		if err != nil {
-			log.Fatal("Invalid CRAWL_ACTIVE_START_HOUR value: ", err)
-		}
-		endHour, err := strconv.Atoi(endRaw)
-		if err != nil {
-			log.Fatal("Invalid CRAWL_ACTIVE_END_HOUR value: ", err)
-		}
-		if startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23 {
-			log.Fatal("CRAWL_ACTIVE_START_HOUR/CRAWL_ACTIVE_END_HOUR must each be 0-23")
-		}
-		log.Printf("Active crawl window configured: %02d:00-%02d:00 local", startHour, endHour)
-		c = crawler.NewWithActiveWindow(store, startHour, endHour)
-	}
+	c := crawler.New(store)
 
 	if err := c.Run(ctx); err != nil {
 		log.Fatal(err)
