@@ -102,7 +102,29 @@ func main() {
 	// store
 	store := db.NewStore(pool, redisClient)
 
-	c := crawler.New(store)
+	// Optional active-crawling window (server-local hours, 0-23) — e.g. CRAWL_ACTIVE_START_HOUR=0
+	// CRAWL_ACTIVE_END_HOUR=8 to only crawl at full speed overnight and pause the rest of the
+	// day, so this process doesn't compete for CPU/RAM with daytime traffic on a shared host.
+	// Both unset (the common case) keeps crawling around the clock, same as always.
+	var c *crawler.Crawler
+	startRaw, endRaw := os.Getenv("CRAWL_ACTIVE_START_HOUR"), os.Getenv("CRAWL_ACTIVE_END_HOUR")
+	if startRaw == "" && endRaw == "" {
+		c = crawler.New(store)
+	} else {
+		startHour, err := strconv.Atoi(startRaw)
+		if err != nil {
+			log.Fatal("Invalid CRAWL_ACTIVE_START_HOUR value: ", err)
+		}
+		endHour, err := strconv.Atoi(endRaw)
+		if err != nil {
+			log.Fatal("Invalid CRAWL_ACTIVE_END_HOUR value: ", err)
+		}
+		if startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23 {
+			log.Fatal("CRAWL_ACTIVE_START_HOUR/CRAWL_ACTIVE_END_HOUR must each be 0-23")
+		}
+		log.Printf("Active crawl window configured: %02d:00-%02d:00 local", startHour, endHour)
+		c = crawler.NewWithActiveWindow(store, startHour, endHour)
+	}
 
 	if err := c.Run(ctx); err != nil {
 		log.Fatal(err)

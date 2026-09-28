@@ -26,6 +26,11 @@ const (
 	// busy-spinning Redis/Postgres.
 	idlePollInterval = 2 * time.Second
 
+	// activeWindowPollInterval is how long a worker sleeps between checks while paused outside
+	// its configured active window (see Crawler.inActiveWindow) — long, unlike idlePollInterval,
+	// since "is it still daytime" only ever needs checking every few minutes, not every 2s.
+	activeWindowPollInterval = 5 * time.Minute
+
 	// slowFetchWarn logs a warning when a single fetch takes longer than this — the visible,
 	// live signal for "this request just got soft-throttled" instead of only finding out via
 	// manual curl testing after the fact.
@@ -216,10 +221,43 @@ type topUpResult struct {
 
 type Crawler struct {
 	store *db.Store
+
+	// activeStartHour/activeEndHour gate crawling to a configured local-time window (e.g. only
+	// 00:00-08:00, to avoid competing with daytime traffic for CPU/RAM on a shared host) — see
+	// inActiveWindow. -1 means "not configured," which keeps every existing deployment (local
+	// dev, tests, anything that never sets the two env vars) crawling around the clock exactly
+	// as before; this is opt-in, not a new default.
+	activeStartHour int
+	activeEndHour   int
 }
 
 func New(store *db.Store) *Crawler {
-	return &Crawler{store: store}
+	return &Crawler{store: store, activeStartHour: -1, activeEndHour: -1}
+}
+
+// NewWithActiveWindow is New, plus an active-crawling window in server-local hours (0-23).
+// Outside [startHour, endHour) — wrapping past midnight if startHour > endHour, e.g. (22, 6) —
+// every worker pauses (no fetching, no topUp, no DB/Redis polling) instead of running, so an
+// external scheduler doesn't have to fully stop the process just to keep it quiet during the
+// day; see runWorker's use of inActiveWindow.
+func NewWithActiveWindow(store *db.Store, startHour, endHour int) *Crawler {
+	return &Crawler{store: store, activeStartHour: startHour, activeEndHour: endHour}
+}
+
+// inActiveWindow reports whether now falls inside the crawler's configured active window.
+// Always true if the window isn't configured (activeStartHour/activeEndHour still -1 from New).
+// A degenerate window (start == end) is also always-active rather than always-paused — an
+// accidentally-equal pair of hours shouldn't silently crawl nothing at all.
+func (c *Crawler) inActiveWindow(now time.Time) bool {
+	if c.activeStartHour < 0 || c.activeEndHour < 0 || c.activeStartHour == c.activeEndHour {
+		return true
+	}
+	h := now.Hour()
+	if c.activeStartHour < c.activeEndHour {
+		return h >= c.activeStartHour && h < c.activeEndHour
+	}
+	// Wraps past midnight, e.g. startHour=22, endHour=6.
+	return h >= c.activeStartHour || h < c.activeEndHour
 }
 
 // recordWikiquoteYield tracks consecutive zero-quote fetches for one Wikiquote edition.
@@ -737,9 +775,25 @@ func (c *Crawler) runWorker(ctx context.Context, source string, minDelay time.Du
 	}
 
 	var lastFetch time.Time
+	var pausedForWindow bool
 	for {
 		if ctx.Err() != nil {
 			return
+		}
+
+		if !c.inActiveWindow(time.Now()) {
+			if !pausedForWindow {
+				log.Printf("[%s] Outside the configured active crawl window — pausing until it reopens", source)
+				pausedForWindow = true
+			}
+			if sleepCtx(ctx, activeWindowPollInterval) {
+				return
+			}
+			continue
+		}
+		if pausedForWindow {
+			log.Printf("[%s] Active crawl window reopened — resuming", source)
+			pausedForWindow = false
 		}
 
 		if !lastFetch.IsZero() {

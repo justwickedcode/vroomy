@@ -13,12 +13,24 @@
 # exposed for direct psql/redis-cli access), postgres and redis here are NOT exposed to the
 # host — only reachable from other containers on this compose network. crawler and api connect
 # to them by service name (postgres/redis), not localhost.
+#
+# Every service below caps its own container logs (x-logging) — Docker's json-file driver has
+# NO size limit by default, so a long-running background worker like the crawler (which logs
+# roughly one line per URL discovered/fetched) will otherwise grow its log file unbounded until
+# it fills the host's disk. 10m x 3 files = 30MB max per service, rotated automatically.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
 
 services:
   postgres:
     image: postgres:16
     container_name: quotes-postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -38,7 +50,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    logging: *default-logging
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 200mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     healthcheck:
@@ -54,6 +67,7 @@ services:
   crawler:
     build: ./backend/scraper
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,6 +96,7 @@ services:
   api:
     build: ./backend/api
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       postgres:
         condition: service_healthy
