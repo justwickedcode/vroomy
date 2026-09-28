@@ -187,3 +187,43 @@ func TestWikiquoteParser_Parse_ClassicalTranslation(t *testing.T) {
 		}
 	}
 }
+
+// TestWikiquoteParser_Parse_SectionWrapped is a regression test for a real, live systemic bug:
+// MediaWiki's current (Parsoid-based) rendering wraps each section's heading and body content in
+// its own <section data-mw-section-id="N">, confirmed live by direct-fetching
+// en.wikiquote.org/wiki/Mark_Twain and finding its real "Quotes" section — heading, images, and
+// the actual <ul><li> quote list — all nested inside one <section aria-labelledby="Quotes">
+// element, one level deeper than the flat sibling structure this parser (and
+// germanwikiquote.go/wikiquote_i18n.go, which share the same wikiquoteWalkChildren helper) was
+// built against. Before wikiquoteWalkChildren transparently descended into <section> wrappers,
+// this exact shape silently produced 0 quotes on every single page, every edition — the actual
+// root cause of a systemic corpus-wide regression that had nothing to do with the crawler's
+// fetching, discovery, or rate-limiting, all of which were working correctly the whole time.
+func TestWikiquoteParser_Parse_SectionWrapped(t *testing.T) {
+	html := `<html><body><h1 id="firstHeading"><span class="mw-page-title-main">Someone</span></h1>
+<div id="mw-content-text"><div class="mw-parser-output">
+<section data-mw-section-id="0"><p>Intro text, no heading yet.</p></section>
+<section data-mw-section-id="1" aria-labelledby="Quotes">
+<div class="mw-heading mw-heading2"><h2 id="Quotes">Quotes</h2></div>
+<ul><li>A real quote, nested inside a section wrapper.</li></ul>
+</section>
+<section data-mw-section-id="2" aria-labelledby="Disputed">
+<div class="mw-heading mw-heading2"><h2 id="Disputed">Disputed</h2></div>
+<ul><li>Not a real quote — should still be excluded even inside a section.</li></ul>
+</section>
+</div></div></body></html>`
+
+	result, err := (&WikiquoteParser{}).Parse(html)
+	if err != nil {
+		t.Fatalf("Parse() failed: %v", err)
+	}
+	if len(result.Quotes) != 1 {
+		t.Fatalf("got %d quotes, want 1: %+v", len(result.Quotes), result.Quotes)
+	}
+	if result.Quotes[0].Text != "A real quote, nested inside a section wrapper." {
+		t.Errorf("text = %q", result.Quotes[0].Text)
+	}
+	if result.Quotes[0].Author != "Someone" {
+		t.Errorf("author = %q, want %q", result.Quotes[0].Author, "Someone")
+	}
+}
