@@ -55,6 +55,11 @@ in `.env.prod` to the frontend's real deployed URL.
 
 ## 5. Set up backups
 
+**If Postgres/Redis are managed by an orchestrator with its own backup scheduler (e.g. Dokploy's
+built-in per-database scheduled backups to S3-compatible storage), use that instead of the
+script below** — it already handles off-host storage and scheduling, which the script does not.
+The script here is for a plain `docker compose` deployment with no orchestrator backing it:
+
 ```bash
 export POSTGRES_USER=quotes POSTGRES_DB=quotes POSTGRES_CONTAINER=quotes-postgres
 ./backend/scraper/scripts/backup.sh
@@ -71,6 +76,91 @@ This writes to local disk only — for real disaster recovery (surviving the hos
 lost), `BACKUP_DIR` should point somewhere that's itself synced offsite, or the script extended
 to push each dump to object storage. Not built in here since the right destination depends on
 where you're actually deploying, not something worth guessing at.
+
+## 6. Deploying via Dokploy instead of raw Compose
+
+Dokploy can run this stack as separate managed services (its own Postgres/Redis database
+services plus a Dockerfile-based Application for the crawler) rather than the single
+`docker-compose.prod.yml` stack above. A few things are specific to that path:
+
+- **Build config for the crawler App** (it's a monorepo — the Dockerfile isn't at the repo
+  root): set **Docker Context Path** to `backend/scraper` and **Docker File** to
+  `backend/scraper/Dockerfile`, both relative to the repo root. Leave the App's own "Build Path"
+  field at `/` — it's not what resolves the Dockerfile location for a Dockerfile-type build, only
+  Docker Context Path / Docker File are.
+- **No domain/port/health-check** for the crawler App — it's a background worker with no HTTP
+  server, so there's nothing for a reverse proxy to route to or poll.
+- **`REDIS_ADDR` accepts Dokploy's internal Redis connection URL directly** (`redis://...`) —
+  `ConnectRedis` (see finding #1 below) switches to URL parsing for anything containing `://`,
+  so `REDIS_PASSWORD`/`REDIS_DB` env vars are unused in that case; only set `REDIS_ADDR`.
+- **Memory limits, split three ways** (sized for the crawler's real measured ~1.25GB working set
+  — see finding #2 below — on top of Postgres/Redis running as separate containers instead of
+  bundled with the crawler on one unconstrained host):
+
+  | Service  | Reservation (soft) | Limit (hard) | Also set                                           |
+  | -------- | ------------------ | ------------ | -------------------------------------------------- |
+  | crawler  | 2048 MB            | ~2560 MB     | `GOMEMLIMIT=1536MiB`                               |
+  | postgres | 512 MB             | ~768 MB      | —                                                  |
+  | redis    | 256 MB             | ~384 MB      | `--maxmemory 200mb --maxmemory-policy allkeys-lru` |
+
+  Use Dokploy's Reservation field (a soft target, doesn't kill on overage) where available, and
+  Limit as the hard ceiling with some slack above it — a bare single hard limit with no slack
+  turns an ordinary transient spike into an unnecessary SIGKILL. **Redis specifically needs its
+  own `--maxmemory` set** (start command / args in Dokploy): unlike a limit enforced from
+  outside, Redis has no built-in awareness of a cgroup memory cap and will keep allocating past
+  it until the kernel OOM-killer SIGKILLs it ungracefully, rather than evicting keys on its own
+  terms. `allkeys-lru` is safe here specifically because Redis is only an accelerator cache in
+  this architecture (see `backend/scraper/README.md`'s "Redis simhash cache" section) — Postgres
+  is the source of truth, so an evicted key just costs one missed near-duplicate check, not data
+  loss.
+
+- **A memory-limit kill is a blip here, not a real incident, by design**: `WarmSimhashCache` and
+  `WarmFrontierCache` fully rehydrate Redis from Postgres on every restart, and
+  `db.RequeueStuckInProgress` recovers any URL a killed process left stuck mid-fetch — both
+  already exist for the ordinary case of the crawler process itself dying, and apply equally to
+  an OOM-triggered container restart. Combined with `restart: unless-stopped`, the practical
+  effect of hitting a limit is a few seconds of downtime, not lost work.
+- **On a small host (e.g. 4-5GB total), add a swapfile** as a cheap way to reduce how often a
+  transient spike escalates to an OOM-kill at all — the kernel pages out cold memory first
+  instead of immediately SIGKILLing on hitting a hard limit:
+  ```bash
+  sudo fallocate -l 2G /swapfile
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  ```
+- **Optional: an in-app active-crawling window** (`CRAWL_ACTIVE_START_HOUR` /
+  `CRAWL_ACTIVE_END_HOUR`, server-local hours 0-23, e.g. `0`/`8` for midnight-8am) makes every
+  worker pause — no fetching, no discovery calls, no DB/Redis polling — outside that window,
+  cutting CPU/network load during the day without touching the process itself. **This does not
+  free the ~1.25GB RAM the crawler holds while paused** (the language-detection models loaded at
+  startup stay resident for the life of the process, whether it's actively fetching or idle) —
+  for that, the process has to actually exit, which only an external stop/start (cron calling
+  `docker stop`/`docker start` on the container, or Dokploy's own Scheduled Tasks if your version
+  has them) can do. Use this env var for smoother day/night CPU pacing, and pair it with an
+  external stop/start on the same schedule if the RAM also needs to be freed during the day.
+- **Cap container log size, or the crawler's own logs can fill the disk.** Docker's default
+  `json-file` log driver has no size limit — the crawler logs roughly one line per URL
+  discovered/fetched (`internal/crawler/crawler.go`), so left running for weeks that adds up.
+  `docker-compose.prod.yml` already caps every service at 10MB × 3 files via its `x-logging`
+  anchor, but that only takes effect on the raw-Compose path — Dokploy's individually-managed
+  Applications/Databases don't read that file, so the crawler App's own log file has no limit
+  by default. Set a **host-wide** default instead (covers the crawler App, Postgres/Redis
+  services, and Dokploy's own Traefik/dashboard containers in one place) via
+  `/etc/docker/daemon.json`:
+  ```json
+  {
+    "log-driver": "json-file",
+    "log-opts": { "max-size": "10m", "max-file": "3" }
+  }
+  ```
+  ```bash
+  sudo systemctl restart docker
+  ```
+  This only applies to _new_ containers — existing ones keep their old (unlimited) log config
+  until they're recreated, so redeploy the crawler App (and anything else already running)
+  after making this change for it to actually take effect.
 
 ## What's already handled
 
