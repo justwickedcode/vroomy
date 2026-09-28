@@ -215,6 +215,17 @@ func (s *Store) SaveQuote(ctx context.Context, quote models.Quote) (bool, error)
 		return false, err
 	}
 
+	// Flagged (not rejected) at write time — see dedup.GameSuitability's own doc comment for the
+	// live-corpus evidence behind each rule. Unsuitable content is still real, correctly-sourced
+	// quote data, just not a good fit for a typing race; keeping it (flagged) rather than
+	// dropping it preserves the corpus for any future non-typing-game consumer.
+	gameUnsuitable, reasons := dedup.GameSuitability(quote.Text)
+	var unsuitableReason *string
+	if gameUnsuitable {
+		joined := strings.Join(reasons, ",")
+		unsuitableReason = &joined
+	}
+
 	nearDup, err := s.isNearDuplicate(ctx, simhash)
 	if err != nil {
 		return false, err
@@ -224,10 +235,10 @@ func (s *Store) SaveQuote(ctx context.Context, quote models.Quote) (bool, error)
 	}
 
 	tag, err := s.pool.Exec(ctx,
-		`INSERT INTO quotes (text, author, tags, source, source_url, language, sha256_hash, simhash, word_count)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO quotes (text, author, tags, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (sha256_hash) DO NOTHING`,
-		quote.Text, quote.Author, tagsJSON, quote.Source, quote.SourceURL, language, sha256Hash, simhash, wordCount,
+		quote.Text, quote.Author, tagsJSON, quote.Source, quote.SourceURL, language, sha256Hash, simhash, wordCount, gameUnsuitable, unsuitableReason,
 	)
 	if err != nil {
 		return false, err
@@ -266,16 +277,18 @@ func (s *Store) SaveQuotes(ctx context.Context, quotes []models.Quote) ([]bool, 
 	}
 
 	type candidate struct {
-		idx        int
-		text       string
-		author     string
-		tagsJSON   string
-		source     string
-		sourceURL  string
-		language   string
-		sha256Hash string
-		simhash    int64
-		wordCount  int
+		idx              int
+		text             string
+		author           string
+		tagsJSON         string
+		source           string
+		sourceURL        string
+		language         string
+		sha256Hash       string
+		simhash          int64
+		wordCount        int
+		gameUnsuitable   bool
+		unsuitableReason *string
 	}
 
 	var candidates []candidate
@@ -301,10 +314,18 @@ func (s *Store) SaveQuotes(ctx context.Context, quotes []models.Quote) ([]bool, 
 			return nil, err
 		}
 
+		gameUnsuitable, reasons := dedup.GameSuitability(quote.Text)
+		var unsuitableReason *string
+		if gameUnsuitable {
+			joined := strings.Join(reasons, ",")
+			unsuitableReason = &joined
+		}
+
 		candidates = append(candidates, candidate{
 			idx: i, text: quote.Text, author: quote.Author, tagsJSON: string(tagsJSON),
 			source: quote.Source, sourceURL: quote.SourceURL, language: language,
 			sha256Hash: sha256Hash, simhash: simhash, wordCount: len(strings.Fields(quote.Text)),
+			gameUnsuitable: gameUnsuitable, unsuitableReason: unsuitableReason,
 		})
 	}
 	if len(candidates) == 0 {
@@ -339,6 +360,8 @@ func (s *Store) SaveQuotes(ctx context.Context, quotes []models.Quote) ([]bool, 
 	sha256Hashes := make([]string, len(candidates))
 	simhashes := make([]int64, len(candidates))
 	wordCounts := make([]int32, len(candidates))
+	gameUnsuitables := make([]bool, len(candidates))
+	unsuitableReasons := make([]*string, len(candidates))
 	for i, c := range candidates {
 		texts[i] = c.text
 		authors[i] = c.author
@@ -349,16 +372,18 @@ func (s *Store) SaveQuotes(ctx context.Context, quotes []models.Quote) ([]bool, 
 		sha256Hashes[i] = c.sha256Hash
 		simhashes[i] = c.simhash
 		wordCounts[i] = int32(c.wordCount)
+		gameUnsuitables[i] = c.gameUnsuitable
+		unsuitableReasons[i] = c.unsuitableReason
 	}
 
 	rows, err := s.pool.Query(ctx,
-		`INSERT INTO quotes (text, author, tags, source, source_url, language, sha256_hash, simhash, word_count)
-         SELECT text, author, tags::jsonb, source, source_url, language, sha256_hash, simhash, word_count
-         FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bigint[], $9::int[])
-              AS t(text, author, tags, source, source_url, language, sha256_hash, simhash, word_count)
+		`INSERT INTO quotes (text, author, tags, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason)
+         SELECT text, author, tags::jsonb, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason
+         FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bigint[], $9::int[], $10::bool[], $11::text[])
+              AS t(text, author, tags, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason)
          ON CONFLICT (sha256_hash) DO NOTHING
          RETURNING sha256_hash`,
-		texts, authors, tags, sources, sourceURLs, languages, sha256Hashes, simhashes, wordCounts,
+		texts, authors, tags, sources, sourceURLs, languages, sha256Hashes, simhashes, wordCounts, gameUnsuitables, unsuitableReasons,
 	)
 	if err != nil {
 		return nil, err
