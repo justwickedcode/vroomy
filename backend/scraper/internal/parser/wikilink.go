@@ -1,6 +1,41 @@
 package parser
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/PuerkitoBio/goquery"
+)
+
+// wikiquoteWalkChildren calls fn once for each element in children, in document order,
+// transparently descending into any <section> wrapper instead of treating it as an opaque leaf.
+//
+// MediaWiki's current (Parsoid-based) rendering wraps each section's heading and body content in
+// its own <section data-mw-section-id="N"> — e.g. <section ...><div class="mw-heading
+// mw-heading2"><h2>Quotes</h2></div><ul>...real quotes...</ul></section> — one level deeper than
+// the flat sibling structure every Wikiquote parser in this package (wikiquotes.go,
+// germanwikiquote.go, wikiquote_i18n.go) was built against, where the heading div and its
+// following <ul> were direct siblings of #mw-content-text div.mw-parser-output. A plain
+// children.Each(fn) only ever sees the <section> elements themselves as direct children — never
+// the heading/list elements nested inside them — so inQuotesSection never flips true and no <ul>
+// is ever reached, on any page.
+//
+// Confirmed live as the actual root cause of a systemic "found 0 quotes on every page, every
+// edition" regression (Sept 2026): direct-fetched a real, known-good page (Mark Twain's) and
+// found its "Quotes" section — heading, images, and the real <ul><li> quote list all — wrapped
+// inside a single <section aria-labelledby="Quotes">. Not any one parser's bug (all three use
+// the identical children.Each(...) pattern), so fixed once, shared, rather than three times. A
+// page still using the older, unwrapped flat structure (no <section> present at all — the
+// existing unit test fixtures, and possibly some pages MediaWiki hasn't migrated) walks exactly
+// as before; this only adds transparency for the wrapper when it's there.
+func wikiquoteWalkChildren(children *goquery.Selection, fn func(*goquery.Selection)) {
+	children.Each(func(_ int, s *goquery.Selection) {
+		if goquery.NodeName(s) == "section" {
+			wikiquoteWalkChildren(s.Children(), fn)
+			return
+		}
+		fn(s)
+	})
+}
 
 // wikiquoteExcludedNamespaces are non-content MediaWiki namespace prefixes — both English and
 // German checked regardless of which edition is being parsed, since a namespace name from the

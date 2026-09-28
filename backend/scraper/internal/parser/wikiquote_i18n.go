@@ -128,7 +128,7 @@ func (p *LocalizedWikiquoteParser) Parse(html string) (Result, error) {
 	// Scoped to #mw-content-text — see the identical comment in wikiquotes.go's Parse for why
 	// an unscoped "div.mw-parser-output" selector silently returns 0 quotes on any
 	// semi-protected page.
-	doc.Find("#mw-content-text div.mw-parser-output").First().Children().Each(func(i int, s *goquery.Selection) {
+	wikiquoteWalkChildren(doc.Find("#mw-content-text div.mw-parser-output").First().Children(), func(s *goquery.Selection) {
 		if class, ok := s.Attr("class"); ok && strings.Contains(class, "mw-heading") {
 			heading, level := headingTextAndLevel(s)
 			if level == 0 {

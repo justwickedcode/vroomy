@@ -108,7 +108,7 @@ func (p *WikiquoteParser) Parse(html string) (Result, error) {
 	// other semi-protected one — likely disproportionately the *more* popular authors, the ones
 	// most worth having) returned 0 quotes and 0 discovered URLs with no error at all.
 	// "#mw-content-text" is the real, unique content wrapper and never contains the indicator.
-	doc.Find("#mw-content-text div.mw-parser-output").First().Children().Each(func(i int, s *goquery.Selection) {
+	wikiquoteWalkChildren(doc.Find("#mw-content-text div.mw-parser-output").First().Children(), func(s *goquery.Selection) {
 		if s.HasClass("mw-heading2") {
 			heading := strings.TrimSpace(s.Find("h2").Text())
 			inQuotesSection = !hasAnyPrefix(heading, englishWikiquoteExcludedHeadingPrefixes)
