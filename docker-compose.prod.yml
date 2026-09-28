@@ -88,10 +88,9 @@ services:
       # once it's set *above* what the process actually needs, so the GC has genuine slack to
       # collect proactively instead of constantly fighting an impossible target.
       GOMEMLIMIT: 1536MiB
-      # Suppresses routine per-page/per-quote/per-discovery narration but keeps every
-      # skip/retry/fallback/pause-resume line alongside real failures — see .env.example and
-      # PRODUCTION.md's "Cap container log size" note. Use "error" instead for failures only.
-      LOG_LEVEL: warn
+      # Failures only — see .env.example and PRODUCTION.md's "Cap container log size" note.
+      # Use "warn" instead to also keep skip/retry/fallback lines for debugging.
+      LOG_LEVEL: error
     deploy:
       resources:
         limits:

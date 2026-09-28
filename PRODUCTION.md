@@ -141,13 +141,14 @@ services plus a Dockerfile-based Application for the crawler) rather than the si
   `info` (unset, the default) is today's full output; `warn` drops the highest-volume routine
   narration (one line per page parsed, per quote saved, per URL discovered) but keeps every
   skip/retry/fallback line — a rejected quote, a low-yield category abandoned, a rate-limit
-  backoff, a retry after a failed fetch — alongside real failures, which are never suppressed at
-  any level; `error` drops warnings too, down to genuine failures only. **`warn` is the
-  recommended production setting** — enough to actually see what the crawler is doing and why
-  (rate-limited? skipping bad content? just quiet right now?) without the
-  per-item flood. `docker-compose.prod.yml` already sets `LOG_LEVEL: warn` for the `crawler`
-  service; for a Dokploy App, add `LOG_LEVEL=warn` alongside the other env vars from step 5
-  above. Leave it unset in dev if you want the full picture of what the crawler's doing.
+  backoff, a retry after a failed fetch — alongside real failures; `error` drops warnings too,
+  down to genuine failures only (`Could not ...`, a fetch/DB error, giving up on a URL) — never
+  suppressed at any level. **`error` is the recommended production setting** for a low-noise log
+  — `warn` is there for when you actually want to see _why_ the crawler's doing what it's doing
+  (rate-limited? skipping bad content? just quiet right now?) without the full per-item flood.
+  `docker-compose.prod.yml` already sets `LOG_LEVEL: error` for the `crawler` service; for a
+  Dokploy App, add `LOG_LEVEL=error` alongside the other env vars from step 5 above. Leave it
+  unset in dev if you want the full picture of what the crawler's doing.
 - **Cap container log size, or the crawler's own logs can fill the disk.** Docker's default
   `json-file` log driver has no size limit — the crawler logs roughly one line per URL
   discovered/fetched (`internal/crawler/crawler.go`), so left running for weeks that adds up.
