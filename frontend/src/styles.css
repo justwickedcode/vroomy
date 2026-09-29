@@ -1330,6 +1330,38 @@ body::before {
   border-radius: 4px;
 }
 
+/* WordStream (the /guide practice drill) renders its queue directly inside .race-words, which
+   is itself a flex column — without this row wrapper each word span would become its own flex
+   item and stack one per line instead of flowing as a single scrolling line of words. */
+.word-stream-track {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.55ch;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* A word that just committed: kept in the DOM for one extra beat, starting at its natural
+   width, so collapsing it to zero (see the --collapsed variant) is an actual visible transition
+   rather than jumping straight there — everything after it in the flex row glides left to fill
+   the shrinking gap. */
+.word-stream-leaving {
+  max-width: 20ch;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    max-width 220ms ease,
+    opacity 180ms ease,
+    margin-right 220ms ease;
+}
+
+.word-stream-leaving--collapsed {
+  max-width: 0;
+  opacity: 0;
+  margin-right: -0.55ch;
+}
+
 .race-char-space {
   display: inline-block;
   width: 0.55ch;
