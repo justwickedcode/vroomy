@@ -1144,93 +1144,139 @@ body::before {
   }
 }
 
-/* Trails off the rear of the car (nose faces right, so the flame sits at
-   the wrapper's left edge) — only rendered while a racer is actively
-   moving, see the `racing` guard in RaceTrack.tsx. */
+/* Trails off the rear of the car (nose faces right, so effects sit at the wrapper's left edge)
+   — only rendered while a racer is actively moving, see the `racing` guard in RaceTrack.tsx.
+   Sized and colored to read as aggressive propulsion at a glance — direct feedback was that the
+   original set (small twinkly dots, soft bubbles) looked "cute" next to the car, not powerful. */
 .race-nitro {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 1.1rem;
-  height: 0.3rem;
-  border-radius: 999px;
-  transform-origin: right center;
+  width: 3.6rem;
+  height: 1.4rem;
   transform: translateY(-50%);
-  filter: blur(2px);
+  pointer-events: none;
+}
+
+.race-nitro span {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  border-radius: 999px 999px 999px 0;
+}
+
+.race-nitro span:nth-child(1) {
+  width: 100%;
+  height: 100%;
+  transform: translateY(-50%);
+  filter: blur(3px);
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in oklab, #ffd23f 88%, transparent) 45%,
-    color-mix(in oklab, var(--color-primary) 85%, transparent)
+    color-mix(in oklab, #ff4d1f 88%, transparent) 30%,
+    color-mix(in oklab, #ffb020 90%, transparent) 65%,
+    #fff6c8
   );
-  animation: nitro-flicker 220ms ease-in-out infinite alternate;
+  animation: nitro-flicker-big 170ms ease-in-out infinite alternate;
 }
 
-@keyframes nitro-flicker {
+.race-nitro span:nth-child(2) {
+  width: 55%;
+  height: 55%;
+  transform: translateY(-50%);
+  filter: blur(1.5px);
+  background: linear-gradient(90deg, transparent, #fff2b8 60%, #fffef2);
+  animation: nitro-flicker-big 130ms ease-in-out infinite alternate-reverse;
+}
+
+.race-nitro span:nth-child(3) {
+  top: 15%;
+  right: 80%;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #ffb020;
+  box-shadow: 0 0 8px 2px rgb(255 176 32 / 90%);
+  animation: ember-pop 420ms ease-out infinite;
+}
+
+@keyframes nitro-flicker-big {
   from {
-    transform: translateY(-50%) scaleX(0.82);
-    opacity: 0.6;
+    transform: translateY(-50%) scaleX(0.8) scaleY(0.85);
+    opacity: 0.8;
   }
   to {
-    transform: translateY(-50%) scaleX(1.15);
-    opacity: 0.95;
+    transform: translateY(-50%) scaleX(1.2) scaleY(1.1);
+    opacity: 1;
   }
 }
 
-/* Bots cycle through three trail effects — colorful orbs, a smoke puff,
-   a lightning spark — so the pack reads as varied racers with their own
-   gear, not five copies of one effect. */
+@keyframes ember-pop {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.7);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-16px, -12px) scale(0.2);
+  }
+}
+
+/* Bots cycle through three trail effects — flying embers, a thick smoke blast, a thunderbolt —
+   so the pack reads as varied racers with their own gear, not five copies of one effect. */
 .race-trail-orbs {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.1rem;
-  height: 1rem;
+  width: 3.6rem;
+  height: 1.7rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .race-trail-orbs span {
   position: absolute;
-  width: 5px;
-  height: 5px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  background: #fbbf24;
-  box-shadow: 0 0 6px 1px rgb(251 191 36 / 80%);
-  animation: orb-twinkle 650ms ease-in-out infinite;
+  background: radial-gradient(circle, #fff3c4 0%, #ff8c14 55%, transparent 75%);
+  box-shadow: 0 0 10px 3px rgb(255 140 20 / 85%);
+  animation: ember-fly 550ms ease-out infinite;
 }
 
 .race-trail-orbs span:nth-child(1) {
-  top: 5%;
-  left: 68%;
+  top: 12%;
+  left: 78%;
   animation-delay: 0ms;
 }
 
 .race-trail-orbs span:nth-child(2) {
   top: 55%;
-  left: 38%;
-  animation-delay: 150ms;
-  background: #f472b6;
-  box-shadow: 0 0 6px 1px rgb(244 114 182 / 80%);
+  left: 55%;
+  animation-delay: 130ms;
+  background: radial-gradient(circle, #fff 0%, #ff5b1f 55%, transparent 75%);
+  box-shadow: 0 0 10px 3px rgb(255 91 31 / 85%);
 }
 
 .race-trail-orbs span:nth-child(3) {
-  top: 25%;
-  left: 8%;
-  animation-delay: 300ms;
-  background: #38bdf8;
-  box-shadow: 0 0 6px 1px rgb(56 189 248 / 80%);
+  top: 30%;
+  left: 25%;
+  animation-delay: 260ms;
+  background: radial-gradient(circle, #fff3c4 0%, #f43f5e 55%, transparent 75%);
+  box-shadow: 0 0 10px 3px rgb(244 63 94 / 85%);
 }
 
-@keyframes orb-twinkle {
-  0%,
-  100% {
-    opacity: 0.2;
-    transform: scale(0.6);
-  }
-  50% {
+@keyframes ember-fly {
+  0% {
     opacity: 1;
-    transform: scale(1.15);
+    transform: translateX(0) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-28px) scale(0.3);
   }
 }
 
@@ -1238,8 +1284,8 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.6rem;
-  height: 1.4rem;
+  width: 4.6rem;
+  height: 2.8rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -1248,33 +1294,45 @@ body::before {
   position: absolute;
   top: 50%;
   border-radius: 999px;
-  background: rgb(255 255 255 / 22%);
+  background: radial-gradient(
+    circle,
+    rgb(226 226 232 / 85%) 0%,
+    rgb(180 180 190 / 55%) 55%,
+    transparent 75%
+  );
   filter: blur(3px);
-  animation: smoke-puff 700ms ease-out infinite;
+  animation: smoke-puff-big 900ms ease-out infinite;
 }
 
 .race-trail-smoke span:nth-child(1) {
-  right: 60%;
-  width: 0.85rem;
-  height: 0.85rem;
+  right: 58%;
+  width: 1.7rem;
+  height: 1.7rem;
   animation-delay: 0ms;
 }
 
 .race-trail-smoke span:nth-child(2) {
-  right: 20%;
-  width: 0.6rem;
-  height: 0.6rem;
-  animation-delay: 250ms;
+  right: 28%;
+  width: 1.3rem;
+  height: 1.3rem;
+  animation-delay: 220ms;
 }
 
-@keyframes smoke-puff {
+.race-trail-smoke span:nth-child(3) {
+  right: 6%;
+  width: 0.95rem;
+  height: 0.95rem;
+  animation-delay: 440ms;
+}
+
+@keyframes smoke-puff-big {
   0% {
-    opacity: 0.5;
-    transform: translateY(-50%) scale(0.6);
+    opacity: 0.7;
+    transform: translateY(-50%) scale(0.7);
   }
   100% {
     opacity: 0;
-    transform: translateY(-90%) scale(1.4);
+    transform: translateY(-150%) scale(2.2);
   }
 }
 
@@ -1282,21 +1340,28 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 1.6rem;
-  height: 0.9rem;
+  width: 2.8rem;
+  height: 1.7rem;
   transform: translateY(-50%);
   pointer-events: none;
-  filter: drop-shadow(0 0 3px rgb(56 189 248 / 80%));
-  animation: spark-flicker 180ms step-end infinite;
+  filter: drop-shadow(0 0 6px rgb(56 189 248 / 95%))
+    drop-shadow(0 0 14px rgb(56 189 248 / 65%));
+  animation: bolt-crackle 140ms steps(2) infinite;
 }
 
-@keyframes spark-flicker {
+@keyframes bolt-crackle {
   0%,
+  60% {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  75% {
+    opacity: 0.55;
+    transform: translateY(-50%) scale(0.92);
+  }
   100% {
     opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
+    transform: translateY(-50%) scale(1.08);
   }
 }
 
@@ -1304,8 +1369,8 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.2rem;
-  height: 1.3rem;
+  width: 3.8rem;
+  height: 2.4rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -1313,44 +1378,34 @@ body::before {
 .race-trail-bubbles span {
   position: absolute;
   top: 50%;
+  left: 0;
+  width: 1.5rem;
+  height: 1.5rem;
   border-radius: 999px;
-  background: rgb(125 211 252 / 35%);
-  border: 1px solid rgb(224 242 254 / 80%);
-  animation: bubble-rise 900ms ease-in infinite;
-}
-
-.race-trail-bubbles span:nth-child(1) {
-  right: 65%;
-  width: 0.5rem;
-  height: 0.5rem;
-  animation-delay: 0ms;
+  border: 2px solid rgb(125 211 252 / 90%);
+  box-shadow: 0 0 10px 1px rgb(125 211 252 / 55%);
+  transform: translate(0, -50%) scale(0.2);
+  animation: shockwave-ring 750ms ease-out infinite;
 }
 
 .race-trail-bubbles span:nth-child(2) {
-  right: 35%;
-  width: 0.35rem;
-  height: 0.35rem;
-  animation-delay: 300ms;
+  animation-delay: 250ms;
+  border-color: rgb(224 242 254 / 90%);
 }
 
 .race-trail-bubbles span:nth-child(3) {
-  right: 10%;
-  width: 0.4rem;
-  height: 0.4rem;
-  animation-delay: 550ms;
+  animation-delay: 500ms;
+  border-color: rgb(56 189 248 / 90%);
 }
 
-@keyframes bubble-rise {
+@keyframes shockwave-ring {
   0% {
-    opacity: 0;
-    transform: translateY(-30%) scale(0.6);
-  }
-  25% {
     opacity: 1;
+    transform: translate(0, -50%) scale(0.2);
   }
   100% {
     opacity: 0;
-    transform: translateY(-220%) scale(1.1);
+    transform: translate(0, -50%) scale(2.6);
   }
 }
 
@@ -1358,18 +1413,18 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.2rem;
-  height: 1.2rem;
+  width: 3.6rem;
+  height: 2rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .race-trail-stars span {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
   background: #fde68a;
-  box-shadow: 0 0 5px 1px rgb(253 230 138 / 85%);
+  box-shadow: 0 0 12px 2px rgb(253 230 138 / 90%);
   clip-path: polygon(
     50% 0%,
     61% 35%,
@@ -1382,100 +1437,105 @@ body::before {
     2% 35%,
     39% 35%
   );
-  animation: star-twinkle 750ms ease-in-out infinite;
+  animation: meteor-streak 600ms ease-in infinite;
 }
 
 .race-trail-stars span:nth-child(1) {
-  top: 10%;
-  left: 70%;
+  top: 5%;
+  left: 75%;
   animation-delay: 0ms;
 }
 
 .race-trail-stars span:nth-child(2) {
-  top: 55%;
-  left: 35%;
-  animation-delay: 200ms;
+  top: 50%;
+  left: 40%;
+  animation-delay: 160ms;
+  background: #fca5a5;
+  box-shadow: 0 0 12px 2px rgb(252 165 165 / 90%);
 }
 
 .race-trail-stars span:nth-child(3) {
   top: 20%;
   left: 5%;
-  animation-delay: 420ms;
+  animation-delay: 320ms;
 }
 
-@keyframes star-twinkle {
-  0%,
-  100% {
-    opacity: 0.25;
-    transform: scale(0.5) rotate(0deg);
+@keyframes meteor-streak {
+  0% {
+    opacity: 0;
+    transform: translateX(8px) scale(0.4) rotate(0deg);
   }
-  50% {
+  25% {
     opacity: 1;
-    transform: scale(1.15) rotate(25deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-24px) scale(1.35) rotate(45deg);
   }
 }
 
-/* A cluster of round dots, same weight as orbs/bubbles — a thin gradient bar was the first cut
-   here, but next to round-and-filled orbs/bubbles it read as a flimsy little line, not a trail. */
+/* Small jagged energy-bolt chips instead of soft dots — same colorful cycle as before, but
+   shaped and glowing like the thunderbolt trail rather than a twinkling sprinkle. */
 .race-trail-rainbow {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.3rem;
-  height: 1.1rem;
+  width: 3.6rem;
+  height: 1.8rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .race-trail-rainbow span {
   position: absolute;
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  animation: rainbow-pulse 650ms ease-in-out infinite;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  transform: rotate(45deg);
+  animation: plasma-pulse 500ms ease-in-out infinite;
 }
 
 .race-trail-rainbow span:nth-child(1) {
-  top: 10%;
-  left: 72%;
+  top: 5%;
+  left: 75%;
   background: #f87171;
-  box-shadow: 0 0 6px 1px rgb(248 113 113 / 80%);
+  box-shadow: 0 0 10px 2px rgb(248 113 113 / 85%);
   animation-delay: 0ms;
 }
 
 .race-trail-rainbow span:nth-child(2) {
   top: 55%;
-  left: 45%;
+  left: 48%;
   background: #4ade80;
-  box-shadow: 0 0 6px 1px rgb(74 222 128 / 80%);
-  animation-delay: 130ms;
+  box-shadow: 0 0 10px 2px rgb(74 222 128 / 85%);
+  animation-delay: 110ms;
 }
 
 .race-trail-rainbow span:nth-child(3) {
-  top: 15%;
-  left: 20%;
+  top: 12%;
+  left: 22%;
   background: #38bdf8;
-  box-shadow: 0 0 6px 1px rgb(56 189 248 / 80%);
-  animation-delay: 260ms;
+  box-shadow: 0 0 10px 2px rgb(56 189 248 / 85%);
+  animation-delay: 220ms;
 }
 
 .race-trail-rainbow span:nth-child(4) {
-  top: 65%;
+  top: 60%;
   left: 0%;
   background: #a78bfa;
-  box-shadow: 0 0 6px 1px rgb(167 139 250 / 80%);
-  animation-delay: 390ms;
+  box-shadow: 0 0 10px 2px rgb(167 139 250 / 85%);
+  animation-delay: 330ms;
 }
 
-@keyframes rainbow-pulse {
+@keyframes plasma-pulse {
   0%,
   100% {
-    opacity: 0.3;
-    transform: scale(0.6);
+    opacity: 0.4;
+    transform: rotate(45deg) scale(0.75);
   }
   50% {
     opacity: 1;
-    transform: scale(1.2);
+    transform: rotate(45deg) scale(1.4);
   }
 }
 
