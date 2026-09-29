@@ -253,7 +253,9 @@ function SponsorStrip() {
 // #/lib/trails) — only the player's own trail choice is gated.
 const BOT_TRAILS: Array<TrailVariant> = ['orbs', 'smoke', 'spark']
 
-function Trail({ variant }: { variant: TrailVariant }) {
+// Exported for reuse in the Garage's Trail picker — a preview needs to render the exact same
+// visual, not a re-description of it.
+export function Trail({ variant }: { variant: TrailVariant }) {
   if (variant === 'orbs') {
     return (
       <span className="race-trail-orbs" aria-hidden="true">
