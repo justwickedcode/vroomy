@@ -274,9 +274,8 @@ export function Trail({ variant }: { variant: TrailVariant }) {
     )
   }
   if (variant === 'spark') {
-    // Three separate bolts, spread out (not clustered right on the bumper) and each cracking on
-    // its own delay — a single bolt (even a thick one) read as one thin line no matter its size;
-    // scattered bolts at different distances/angles read as an aggressive lightning barrage.
+    // Three bolts stacked as a column — all the same distance behind the car, one above another
+    // — rather than strung out in a line at different distances/scales (the previous cut here).
     const bolt = (
       <>
         <polyline
@@ -306,25 +305,25 @@ export function Trail({ variant }: { variant: TrailVariant }) {
       </>
     )
     return (
-      <svg className="race-trail-spark" viewBox="0 0 108 40" aria-hidden="true">
+      <svg className="race-trail-spark" viewBox="0 0 56 62" aria-hidden="true">
         <g
           className="spark-bolt"
           style={{ animationDelay: '0ms' }}
-          transform="translate(62,15) rotate(-8) scale(1.15)"
+          transform="translate(6,1) rotate(-4) scale(0.95)"
         >
           {bolt}
         </g>
         <g
           className="spark-bolt"
-          style={{ animationDelay: '70ms' }}
-          transform="translate(28,2) rotate(10) scale(0.85)"
+          style={{ animationDelay: '80ms' }}
+          transform="translate(6,20) rotate(3) scale(0.95)"
         >
           {bolt}
         </g>
         <g
           className="spark-bolt"
-          style={{ animationDelay: '140ms' }}
-          transform="translate(0,24) rotate(-14) scale(0.65)"
+          style={{ animationDelay: '160ms' }}
+          transform="translate(6,39) rotate(-3) scale(0.95)"
         >
           {bolt}
         </g>
