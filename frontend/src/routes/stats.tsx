@@ -28,7 +28,26 @@ function StatsPage() {
           </h1>
         </div>
 
-        {!hydrated || stats.racesPlayed === 0 ? (
+        {!hydrated ? (
+          // Distinct from the "No races yet" empty state below — this is only shown for the one
+          // tick before useProfile reads localStorage. Without this separate branch, a page load
+          // with real race history reproducibly flashed "No races yet" for a frame before the
+          // real numbers popped in, since both cases used to share the same empty-state markup.
+          <Card className="rise-in overflow-hidden">
+            <CardContent className="flex flex-wrap justify-around gap-4 pt-6">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-20 w-[6.5rem] animate-pulse rounded-2xl bg-secondary/40"
+                />
+              ))}
+            </CardContent>
+            <div className="glass-divider" />
+            <CardContent className="pt-6 pb-6">
+              <div className="h-32 w-full animate-pulse rounded-lg bg-secondary/40" />
+            </CardContent>
+          </Card>
+        ) : stats.racesPlayed === 0 ? (
           <Card className="rise-in overflow-hidden text-center">
             <CardHeader className="items-center py-10">
               <Trophy className="mb-2 size-8 text-muted-foreground" />

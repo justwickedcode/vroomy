@@ -70,26 +70,37 @@ function Dashboard() {
                 </Link>
               </CardHeader>
               <CardContent className="flex flex-wrap justify-around gap-4 pt-0">
-                <Gauge
-                  label="best wpm"
-                  value={hasRaced ? stats.bestWpm : 0}
-                  max={WPM_GAUGE_MAX}
-                />
-                <Gauge
-                  label="avg wpm"
-                  value={hasRaced ? stats.avgWpm : 0}
-                  max={WPM_GAUGE_MAX}
-                />
-                <Gauge
-                  label="avg accuracy"
-                  value={hasRaced ? stats.avgAccuracy : 0}
-                  max={100}
-                  suffix="%"
-                />
-                <DigitalReadout
-                  label="races run"
-                  value={hasRaced ? String(stats.racesPlayed) : '0'}
-                />
+                {!hydrated ? (
+                  [0, 1, 2, 3].map((i) => (
+                    <div
+                      key={i}
+                      className="h-20 w-[6.5rem] animate-pulse rounded-2xl bg-secondary/40"
+                    />
+                  ))
+                ) : (
+                  <>
+                    <Gauge
+                      label="best wpm"
+                      value={hasRaced ? stats.bestWpm : 0}
+                      max={WPM_GAUGE_MAX}
+                    />
+                    <Gauge
+                      label="avg wpm"
+                      value={hasRaced ? stats.avgWpm : 0}
+                      max={WPM_GAUGE_MAX}
+                    />
+                    <Gauge
+                      label="avg accuracy"
+                      value={hasRaced ? stats.avgAccuracy : 0}
+                      max={100}
+                      suffix="%"
+                    />
+                    <DigitalReadout
+                      label="races run"
+                      value={hasRaced ? String(stats.racesPlayed) : '0'}
+                    />
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -98,7 +109,9 @@ function Dashboard() {
                 <p className="kicker">Recent races</p>
               </CardHeader>
               <CardContent className="pt-0 pb-5">
-                {hasRaced ? (
+                {!hydrated ? (
+                  <div className="h-24 w-full animate-pulse rounded-lg bg-secondary/40" />
+                ) : hasRaced ? (
                   <div className="flex flex-col gap-1">
                     {races.slice(0, 5).map((race, i) => (
                       <RaceHistoryRow
