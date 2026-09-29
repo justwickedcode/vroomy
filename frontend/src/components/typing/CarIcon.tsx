@@ -75,7 +75,7 @@ export const VEHICLES: Array<Vehicle> = [
     id: 'rally',
     label: 'Rally',
     category: 'Cars',
-    aspect: 96 / 51,
+    aspect: 86 / 45,
     requiresAchievement: 'Checkered flag',
   },
   {
@@ -133,7 +133,8 @@ export const VEHICLES: Array<Vehicle> = [
   // (marcusvh's "2D Top Down Pixel Art Car Pack" and Aim Studios' "Top down pixel art Race
   // cars"), rather than another painterly set — mixing painterly and pixel art *within* one
   // roster would be the same inconsistency problem as before, so it gets its own category
-  // instead of blending into Cars/Fleet.
+  // instead of blending into Cars/Fleet. (The pack's semi trailer was dropped — a flatbed with
+  // no cab attached to pull it doesn't read as a vehicle on its own.)
   { id: 'pixel-compact', label: 'Compact', category: 'Pixel', aspect: 58 / 26 },
   {
     id: 'pixel-coupe',
@@ -158,40 +159,34 @@ export const VEHICLES: Array<Vehicle> = [
     requiresAchievement: 'Long hauler',
   },
   {
-    id: 'pixel-trailer',
-    label: 'Semi Trailer',
-    category: 'Pixel',
-    aspect: 162 / 36,
-  },
-  {
     id: 'pixel-racer-blue',
     label: 'Blue Racer',
     category: 'Pixel',
-    aspect: 220 / 112,
+    aspect: 280 / 142,
   },
   {
     id: 'pixel-racer-red',
     label: 'Red Racer',
     category: 'Pixel',
-    aspect: 220 / 112,
+    aspect: 280 / 142,
     requiresAchievement: 'Night owl',
   },
   {
     id: 'pixel-buggy-neon',
     label: 'Neon Buggy',
     category: 'Pixel',
-    aspect: 187 / 104,
+    aspect: 239 / 132,
   },
   {
     id: 'pixel-buggy-woods',
     label: 'Forest Buggy',
     category: 'Pixel',
-    aspect: 187 / 104,
+    aspect: 239 / 132,
   },
   // Aircraft — a genuine change of medium (you're racing a gunship down the track), same
   // painterly-detail bar as Cars/Fleet. From Aralepixel's "Attack helicopter in top down pixel
   // art game asset pack" (free for personal/commercial use).
-  { id: 'gunship', label: 'Gunship', category: 'Aircraft', aspect: 112 / 156 },
+  { id: 'gunship', label: 'Gunship', category: 'Aircraft', aspect: 134 / 186 },
 ]
 
 // The achievement (see #/lib/achievements) that unlocks underglow — matches its "neon glow"
@@ -234,7 +229,15 @@ export default function CarIcon({
   style?: CSSProperties
 }) {
   const src = spriteSrc(model)
-  const aspect = (VEHICLE_BY_ID[model] ?? VEHICLES[0]).aspect
+  const rawAspect = (VEHICLE_BY_ID[model] ?? VEHICLES[0]).aspect
+  // Clamped, not used as-is: a caller sizing this by a fixed width (every picker card, the
+  // garage/dashboard preview) derives height from this aspect ratio, so an unusually
+  // portrait-or-narrow sprite — the gunship's wingspan becomes its vertical dimension once
+  // rotated to face right — would blow up its own container far taller than every other
+  // vehicle's card. objectFit "contain" on the <img> below already letterboxes any real
+  // mismatch between this box and the sprite's own shape without distorting it, so clamping
+  // here only affects layout size, never how the sprite itself renders.
+  const aspect = Math.min(Math.max(rawAspect, 1.3), 2.6)
 
   return (
     <div
