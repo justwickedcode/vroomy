@@ -7,7 +7,6 @@ import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
 import { ordinal } from '#/lib/utils'
-import { isAchievementUnlocked } from '#/lib/achievements'
 import { POWERUPS } from '#/lib/powerups'
 import RaceTrack from '#/components/typing/RaceTrack'
 import Gauge from '#/components/typing/Gauge'
@@ -144,27 +143,12 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     nextSpawnAtRef.current = randomSpawnGap()
   }, [text])
 
-  // Spawns whichever powerup the player has equipped (see Garage's Powerups section) — falls
-  // back to boost (no requiresAchievement, always safe) if the equipped kind's achievement
-  // somehow isn't unlocked, e.g. a saved profile pointing at one from before it was earned.
-  const equippedDef = POWERUPS.find((p) => p.id === profile.equippedPowerup)
-  const equippedUnlocked =
-    profile.hydrated &&
-    (!equippedDef?.requiresAchievement ||
-      isAchievementUnlocked(
-        equippedDef.requiresAchievement,
-        profile.stats,
-        profile.races,
-      ))
-  const spawnKind: PowerupKind = equippedUnlocked
-    ? profile.equippedPowerup
-    : 'boost'
-
+  // Spawns whichever powerup the player has equipped (see Garage's Powerups section).
   useEffect(() => {
     if (finished || powerup || activeWordIndex < nextSpawnAtRef.current) return
-    setPowerup(spawnKind)
+    setPowerup(profile.equippedPowerup)
     nextSpawnAtRef.current = activeWordIndex + randomSpawnGap()
-  }, [activeWordIndex, finished, powerup, spawnKind])
+  }, [activeWordIndex, finished, powerup, profile.equippedPowerup])
 
   useEffect(() => {
     return () => {

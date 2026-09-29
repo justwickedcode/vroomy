@@ -286,6 +286,34 @@ export function Trail({ variant }: { variant: TrailVariant }) {
       </svg>
     )
   }
+  if (variant === 'bubbles') {
+    return (
+      <span className="race-trail-bubbles" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    )
+  }
+  if (variant === 'stars') {
+    return (
+      <span className="race-trail-stars" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    )
+  }
+  if (variant === 'rainbow') {
+    return (
+      <span className="race-trail-rainbow" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+        <span />
+      </span>
+    )
+  }
   return <span className="race-nitro" aria-hidden="true" />
 }
 

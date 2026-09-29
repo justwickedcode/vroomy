@@ -1300,6 +1300,185 @@ body::before {
   }
 }
 
+.race-trail-bubbles {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 2.2rem;
+  height: 1.3rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-bubbles span {
+  position: absolute;
+  top: 50%;
+  border-radius: 999px;
+  background: rgb(125 211 252 / 35%);
+  border: 1px solid rgb(224 242 254 / 80%);
+  animation: bubble-rise 900ms ease-in infinite;
+}
+
+.race-trail-bubbles span:nth-child(1) {
+  right: 65%;
+  width: 0.5rem;
+  height: 0.5rem;
+  animation-delay: 0ms;
+}
+
+.race-trail-bubbles span:nth-child(2) {
+  right: 35%;
+  width: 0.35rem;
+  height: 0.35rem;
+  animation-delay: 300ms;
+}
+
+.race-trail-bubbles span:nth-child(3) {
+  right: 10%;
+  width: 0.4rem;
+  height: 0.4rem;
+  animation-delay: 550ms;
+}
+
+@keyframes bubble-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(-30%) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-220%) scale(1.1);
+  }
+}
+
+.race-trail-stars {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 2.2rem;
+  height: 1.2rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-stars span {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #fde68a;
+  box-shadow: 0 0 5px 1px rgb(253 230 138 / 85%);
+  clip-path: polygon(
+    50% 0%,
+    61% 35%,
+    98% 35%,
+    68% 57%,
+    79% 91%,
+    50% 70%,
+    21% 91%,
+    32% 57%,
+    2% 35%,
+    39% 35%
+  );
+  animation: star-twinkle 750ms ease-in-out infinite;
+}
+
+.race-trail-stars span:nth-child(1) {
+  top: 10%;
+  left: 70%;
+  animation-delay: 0ms;
+}
+
+.race-trail-stars span:nth-child(2) {
+  top: 55%;
+  left: 35%;
+  animation-delay: 200ms;
+}
+
+.race-trail-stars span:nth-child(3) {
+  top: 20%;
+  left: 5%;
+  animation-delay: 420ms;
+}
+
+@keyframes star-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.5) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(25deg);
+  }
+}
+
+/* A cluster of round dots, same weight as orbs/bubbles — a thin gradient bar was the first cut
+   here, but next to round-and-filled orbs/bubbles it read as a flimsy little line, not a trail. */
+.race-trail-rainbow {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 2.3rem;
+  height: 1.1rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-rainbow span {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  animation: rainbow-pulse 650ms ease-in-out infinite;
+}
+
+.race-trail-rainbow span:nth-child(1) {
+  top: 10%;
+  left: 72%;
+  background: #f87171;
+  box-shadow: 0 0 6px 1px rgb(248 113 113 / 80%);
+  animation-delay: 0ms;
+}
+
+.race-trail-rainbow span:nth-child(2) {
+  top: 55%;
+  left: 45%;
+  background: #4ade80;
+  box-shadow: 0 0 6px 1px rgb(74 222 128 / 80%);
+  animation-delay: 130ms;
+}
+
+.race-trail-rainbow span:nth-child(3) {
+  top: 15%;
+  left: 20%;
+  background: #38bdf8;
+  box-shadow: 0 0 6px 1px rgb(56 189 248 / 80%);
+  animation-delay: 260ms;
+}
+
+.race-trail-rainbow span:nth-child(4) {
+  top: 65%;
+  left: 0%;
+  background: #a78bfa;
+  box-shadow: 0 0 6px 1px rgb(167 139 250 / 80%);
+  animation-delay: 390ms;
+}
+
+@keyframes rainbow-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.6);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
 /* One-shot celebration when the player's own car crosses the finish line —
    mounts fresh exactly when `racer.finished` first flips true (see
    RaceTrack.tsx's FinishBurst), so the animation always plays from its
