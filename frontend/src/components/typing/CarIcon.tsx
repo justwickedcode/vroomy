@@ -108,6 +108,12 @@ export const VEHICLES: Array<Vehicle> = [
     aspect: 260 / 132,
     requiresAchievement: 'Long hauler',
   },
+  // The rest of the achievement pool (see #/lib/achievements) is already spoken for by other
+  // vehicles/trails/underglow, so these three — from looneybits' "2D Sport Cars" (CC BY 4.0,
+  // attribution required) — ship as free starters rather than reusing a name.
+  { id: 'roadster', label: 'Speedster', category: 'Cars', aspect: 260 / 129 },
+  { id: 'coupe-gt', label: 'Coupe GT', category: 'Cars', aspect: 260 / 124 },
+  { id: 'coupe-white', label: 'Coupe White', category: 'Cars', aspect: 260 / 124 },
   // Fleet — service/utility vehicles, same pack. Taxi is this category's free starter.
   { id: 'taxi', label: 'Taxi', category: 'Fleet', aspect: 99 / 51 },
   {
