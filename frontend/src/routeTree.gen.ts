@@ -17,7 +17,6 @@ import { Route as GarageRouteImport } from './routes/garage'
 import { Route as GarageUpgradesRouteImport } from './routes/garage-upgrades'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
-import { Route as PlayRouteImport } from './routes/play'
 import { Route as ReplaysRouteImport } from './routes/replays'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as ThemesRouteImport } from './routes/themes'
@@ -66,11 +65,6 @@ const GuideRoute = GuideRouteImport.update({
 const LeaderboardsRoute = LeaderboardsRouteImport.update({
   id: '/leaderboards',
   path: '/leaderboards',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PlayRoute = PlayRouteImport.update({
-  id: '/play',
-  path: '/play',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReplaysRoute = ReplaysRouteImport.update({
@@ -128,7 +122,6 @@ export interface FileRoutesByFullPath {
   '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
-  '/play': typeof PlayRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
   '/themes': typeof ThemesRoute
@@ -148,7 +141,6 @@ export interface FileRoutesByTo {
   '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
-  '/play': typeof PlayRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
   '/themes': typeof ThemesRoute
@@ -168,7 +160,6 @@ export interface FileRoutesById {
   '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
-  '/play': typeof PlayRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
   '/themes': typeof ThemesRoute
@@ -190,7 +181,6 @@ export interface FileRouteTypes {
     | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
-    | '/play'
     | '/replays'
     | '/stats'
     | '/themes'
@@ -210,7 +200,6 @@ export interface FileRouteTypes {
     | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
-    | '/play'
     | '/replays'
     | '/stats'
     | '/themes'
@@ -229,7 +218,6 @@ export interface FileRouteTypes {
     | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
-    | '/play'
     | '/replays'
     | '/stats'
     | '/themes'
@@ -250,7 +238,6 @@ export interface RootRouteChildren {
   GarageUpgradesRoute: typeof GarageUpgradesRoute
   GuideRoute: typeof GuideRoute
   LeaderboardsRoute: typeof LeaderboardsRoute
-  PlayRoute: typeof PlayRoute
   ReplaysRoute: typeof ReplaysRoute
   StatsRoute: typeof StatsRoute
   ThemesRoute: typeof ThemesRoute
@@ -316,13 +303,6 @@ declare module '@tanstack/react-router' {
       path: '/leaderboards'
       fullPath: '/leaderboards'
       preLoaderRoute: typeof LeaderboardsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/play': {
-      id: '/play'
-      path: '/play'
-      fullPath: '/play'
-      preLoaderRoute: typeof PlayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/replays': {
@@ -414,7 +394,6 @@ const rootRouteChildren: RootRouteChildren = {
   GarageUpgradesRoute: GarageUpgradesRoute,
   GuideRoute: GuideRoute,
   LeaderboardsRoute: LeaderboardsRoute,
-  PlayRoute: PlayRoute,
   ReplaysRoute: ReplaysRoute,
   StatsRoute: StatsRoute,
   ThemesRoute: ThemesRoute,

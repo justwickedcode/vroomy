@@ -18,13 +18,15 @@ import { cn } from '#/lib/utils'
 // Grouped like lichess's sidebar rather than one flat list of 13 links —
 // Guide/Stats/Achievements sit together as "about your progress", the
 // Garage group covers every car-cosmetic destination (including the two
-// still-stub ones), Compete is the social/comparison cluster. The wordmark
-// itself is the "/" link, so there's no separate "Dashboard" row here.
+// still-stub ones), Compete is the social/comparison cluster. "Play" points
+// at "/" (the dashboard) rather than a separate page — the mode picker that
+// used to live on its own /play route is now part of the dashboard itself,
+// same place the wordmark links to, so there's no separate "Dashboard" row.
 export const NAV_GROUPS = [
   {
     label: 'Play',
     items: [
-      { to: '/play', label: 'Play', icon: Flag, soon: false },
+      { to: '/', label: 'Play', icon: Flag, soon: false },
       {
         to: '/daily-challenge',
         label: 'Daily challenge',

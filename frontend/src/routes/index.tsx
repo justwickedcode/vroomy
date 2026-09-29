@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Flag, Link2, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import Gauge from '#/components/typing/Gauge'
@@ -8,11 +8,34 @@ import RaceHistoryRow from '#/components/stats/RaceHistoryRow'
 import CarIcon from '#/components/typing/CarIcon'
 import { ACHIEVEMENTS } from '#/lib/achievements'
 import { useProfile } from '#/lib/profile/useProfile'
-import { cn } from '#/lib/utils'
+import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
 
 export const Route = createFileRoute('/')({ component: Dashboard })
 
 const WPM_GAUGE_MAX = 130
+
+// Used to live on its own /play page — folded onto the dashboard so there's one landing page
+// instead of two, since this was the very next thing anyone hit after "Start racing" anyway.
+const MODES = [
+  {
+    to: '/race/solo',
+    icon: Flag,
+    title: 'Solo',
+    detail: 'Race the clock against AI bots at your speed.',
+  },
+  {
+    to: '/race/multiplayer',
+    icon: Users,
+    title: 'Multiplayer',
+    detail: 'Get matched against real players.',
+  },
+  {
+    to: '/race/friends',
+    icon: Link2,
+    title: 'With friends',
+    detail: 'Create a room and send the link.',
+  },
+] as const
 
 function Dashboard() {
   const { hydrated, stats, races, carModel, carColor } = useProfile()
@@ -36,7 +59,7 @@ function Dashboard() {
                 line first.
               </p>
               <Button size="lg" className="mt-5" asChild>
-                <Link to="/play">Start racing</Link>
+                <Link to="/race/solo">Start racing</Link>
               </Button>
             </div>
 
@@ -56,6 +79,37 @@ function Dashboard() {
             </div>
           </CardContent>
         </Card>
+
+        <div>
+          <p className="kicker mb-3">Play</p>
+          <div className="grid grid-cols-1 divide-y divide-border overflow-hidden rounded-xl border border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {MODES.map(({ to, icon: Icon, title, detail }, i) => (
+              <Link
+                key={to}
+                to={to}
+                onMouseMove={handleTiltMove}
+                onMouseLeave={handleTiltLeave}
+                className="ignition group relative flex min-h-56 flex-col overflow-hidden p-6 transition-colors hover:bg-accent/40"
+              >
+                <span className="font-mono text-[0.65rem] font-medium tracking-[0.2em] text-muted-foreground uppercase">
+                  Bay 0{i + 1}
+                </span>
+                <Icon
+                  className="pointer-events-none absolute -right-6 -bottom-8 size-40 text-foreground/[0.05] transition-transform duration-500 ease-out group-hover:scale-110 group-hover:text-foreground/[0.07]"
+                  strokeWidth={1}
+                />
+                <div className="relative mt-auto">
+                  <p className="font-display text-3xl font-extrabold tracking-tight uppercase sm:text-4xl">
+                    {title}
+                  </p>
+                  <p className="mt-2 max-w-64 text-sm text-muted-foreground">
+                    {detail}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="flex flex-col gap-6 lg:col-span-2">
