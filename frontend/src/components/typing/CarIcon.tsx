@@ -87,6 +87,27 @@ export const VEHICLES: Array<Vehicle> = [
     aspect: 260 / 130,
     requiresAchievement: 'Daily driver',
   },
+  {
+    id: 'convertible',
+    label: 'Convertible',
+    category: 'Cars',
+    aspect: 260 / 132,
+    requiresAchievement: 'Marathoner',
+  },
+  {
+    id: 'wedge',
+    label: 'Wedge',
+    category: 'Cars',
+    aspect: 260 / 132,
+    requiresAchievement: 'Road warrior',
+  },
+  {
+    id: 'hot-hatch',
+    label: 'Hot Hatch',
+    category: 'Cars',
+    aspect: 260 / 132,
+    requiresAchievement: 'Long hauler',
+  },
   // Fleet — service/utility vehicles, same pack. Taxi is this category's free starter.
   { id: 'taxi', label: 'Taxi', category: 'Fleet', aspect: 99 / 51 },
   {
