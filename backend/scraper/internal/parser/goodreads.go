@@ -57,7 +57,10 @@ func (p *GoodreadsParser) Parse(html string) (Result, error) {
 		// Removes both the author <span> and any trailing work-title <a> — both share this
 		// class regardless of tag, and leaving the title in would bleed into the quote text.
 		textContainer.Find(".authorOrTitle").Remove()
-		textContainer.Find("br").ReplaceWithHtml(" ")
+		// A real '\n', not a space — a Goodreads quote can be a submitted poem excerpt just as
+		// much as ordinary prose, and normalizeWhitespace (below) now preserves single newlines
+		// instead of flattening them, matching the same fix applied to every Wikiquote parser.
+		textContainer.Find("br").ReplaceWithHtml("\n")
 
 		text := strings.TrimSpace(textContainer.Text())
 		text = goodreadsTrailingSeparator.ReplaceAllString(text, "")
