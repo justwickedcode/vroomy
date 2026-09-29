@@ -6,9 +6,14 @@ import type { CSSProperties } from 'react'
 // need to change.
 export type CarModel = string
 
-export type VehicleCategory = 'Cars' | 'Fleet'
+export type VehicleCategory = 'Cars' | 'Fleet' | 'Pixel' | 'Aircraft'
 
-export const VEHICLE_CATEGORIES: Array<VehicleCategory> = ['Cars', 'Fleet']
+export const VEHICLE_CATEGORIES: Array<VehicleCategory> = [
+  'Cars',
+  'Fleet',
+  'Pixel',
+  'Aircraft',
+]
 
 interface Vehicle {
   id: CarModel
@@ -124,6 +129,69 @@ export const VEHICLES: Array<Vehicle> = [
     aspect: 137 / 60,
     requiresAchievement: 'Win streak',
   },
+  // Pixel — genuine chunky pixel art from two more free/permissively-licensed itch.io packs
+  // (marcusvh's "2D Top Down Pixel Art Car Pack" and Aim Studios' "Top down pixel art Race
+  // cars"), rather than another painterly set — mixing painterly and pixel art *within* one
+  // roster would be the same inconsistency problem as before, so it gets its own category
+  // instead of blending into Cars/Fleet.
+  { id: 'pixel-compact', label: 'Compact', category: 'Pixel', aspect: 58 / 26 },
+  {
+    id: 'pixel-coupe',
+    label: 'Coupe',
+    category: 'Pixel',
+    aspect: 75 / 29,
+    requiresAchievement: 'Ludicrous speed',
+  },
+  { id: 'pixel-sedan', label: 'Sedan', category: 'Pixel', aspect: 78 / 30 },
+  {
+    id: 'pixel-sport',
+    label: 'Roadster',
+    category: 'Pixel',
+    aspect: 71 / 31,
+    requiresAchievement: 'Early bird',
+  },
+  {
+    id: 'pixel-truck',
+    label: 'Box Truck',
+    category: 'Pixel',
+    aspect: 80 / 40,
+    requiresAchievement: 'Long hauler',
+  },
+  {
+    id: 'pixel-trailer',
+    label: 'Semi Trailer',
+    category: 'Pixel',
+    aspect: 162 / 36,
+  },
+  {
+    id: 'pixel-racer-blue',
+    label: 'Blue Racer',
+    category: 'Pixel',
+    aspect: 220 / 112,
+  },
+  {
+    id: 'pixel-racer-red',
+    label: 'Red Racer',
+    category: 'Pixel',
+    aspect: 220 / 112,
+    requiresAchievement: 'Night owl',
+  },
+  {
+    id: 'pixel-buggy-neon',
+    label: 'Neon Buggy',
+    category: 'Pixel',
+    aspect: 187 / 104,
+  },
+  {
+    id: 'pixel-buggy-woods',
+    label: 'Forest Buggy',
+    category: 'Pixel',
+    aspect: 187 / 104,
+  },
+  // Aircraft — a genuine change of medium (you're racing a gunship down the track), same
+  // painterly-detail bar as Cars/Fleet. From Aralepixel's "Attack helicopter in top down pixel
+  // art game asset pack" (free for personal/commercial use).
+  { id: 'gunship', label: 'Gunship', category: 'Aircraft', aspect: 112 / 156 },
 ]
 
 // The achievement (see #/lib/achievements) that unlocks underglow — matches its "neon glow"
