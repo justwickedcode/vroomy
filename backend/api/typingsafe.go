@@ -24,11 +24,26 @@ var typingSafeReplacer = strings.NewReplacer(
 )
 
 // MakeTypingSafe returns text with keyboard-unfriendly punctuation normalized to plain-ASCII
-// equivalents, and any run of whitespace collapsed to a single space (defensive — the
-// scraper's write path already produces single-spaced text, but this is what the typing race's
+// equivalents, and any run of spaces/tabs within a line collapsed to a single space (defensive —
+// the scraper's write path already produces this shape, but this is what the typing race's
 // exact-match input handling depends on, so it's worth guaranteeing here too rather than
 // trusting an upstream service).
+//
+// Deliberately preserves a single '\n' between lines instead of flattening it away too — the
+// scraper now intentionally keeps a real line break for poem-shaped quotes (see
+// backend/scraper's preserveLineBreaks/normalizeWhitespace) specifically so a line break can be
+// typed (Enter) in a race; collapsing it back to a space here would silently undo that fix for
+// every client of this API. An empty line (a run of several consecutive newlines) is dropped
+// rather than kept, matching the scraper's own normalization exactly.
 func MakeTypingSafe(text string) string {
 	text = typingSafeReplacer.Replace(text)
-	return strings.Join(strings.Fields(text), " ")
+	lines := strings.Split(text, "\n")
+	cleaned := lines[:0]
+	for _, line := range lines {
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" {
+			cleaned = append(cleaned, line)
+		}
+	}
+	return strings.Join(cleaned, "\n")
 }
