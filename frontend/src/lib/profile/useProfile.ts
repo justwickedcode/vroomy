@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
 import type { TrailVariant } from '#/lib/trails'
+import type { PowerupKind } from '#/lib/powerups'
 
 const STORAGE_KEY = 'vroomy:profile:v1'
 const MAX_RACE_HISTORY = 50
@@ -19,6 +20,8 @@ export const CAR_COLORS = [
 const DEFAULT_COLOR: string = CAR_COLORS[0].value
 const DEFAULT_MODEL: CarModel = 'sport'
 const DEFAULT_TRAIL: TrailVariant = 'nitro'
+const DEFAULT_UNDERGLOW_COLOR: string = CAR_COLORS[4].value
+const DEFAULT_POWERUP: PowerupKind = 'boost'
 
 export interface RaceRecord {
   id: string
@@ -33,11 +36,17 @@ interface Profile {
   carModel: CarModel
   carColor: string
   // Underglow is free to toggle, but only once unlocked (see #/components/typing/CarIcon's
-  // UNDERGLOW_ACHIEVEMENT) — its color always matches carColor rather than a separate palette.
+  // UNDERGLOW_ACHIEVEMENT). underglowColor is independent of carColor — its own freely-chosen
+  // swatch, not forced to match the paint.
   underglow: boolean
+  underglowColor: string
   // Which trail effect (see #/lib/trails) renders behind the player's own car in a race —
   // same achievement-unlock pattern as the model and underglow.
   trail: TrailVariant
+  // Which powerup (see #/lib/powerups) spawns during solo races — 'boost' has no unlock
+  // requirement so it's always a safe fallback if a saved profile somehow points at one that
+  // isn't unlocked (e.g. achievements data changes under an old save).
+  equippedPowerup: PowerupKind
   races: Array<RaceRecord>
   // Lifetime race count, tracked separately from races.length: races itself is capped to
   // MAX_RACE_HISTORY so storage doesn't grow forever, which means races.length alone
@@ -51,7 +60,9 @@ const DEFAULT_PROFILE: Profile = {
   carModel: DEFAULT_MODEL,
   carColor: DEFAULT_COLOR,
   underglow: false,
+  underglowColor: DEFAULT_UNDERGLOW_COLOR,
   trail: DEFAULT_TRAIL,
+  equippedPowerup: DEFAULT_POWERUP,
   races: [],
   racesPlayedTotal: 0,
 }
@@ -67,7 +78,9 @@ function readProfile(): Profile {
       carModel: parsed.carModel ?? DEFAULT_MODEL,
       carColor: parsed.carColor ?? DEFAULT_COLOR,
       underglow: parsed.underglow ?? false,
+      underglowColor: parsed.underglowColor ?? DEFAULT_UNDERGLOW_COLOR,
       trail: parsed.trail ?? DEFAULT_TRAIL,
+      equippedPowerup: parsed.equippedPowerup ?? DEFAULT_POWERUP,
       races,
       // A profile saved before racesPlayedTotal existed has no lifetime count on record —
       // races.length is the best available floor for it (never an overcount, since the total
@@ -162,9 +175,25 @@ export function useProfile() {
     })
   }, [])
 
+  const setUnderglowColor = useCallback((underglowColor: string) => {
+    setProfile((prev) => {
+      const next = { ...prev, underglowColor }
+      writeProfile(next)
+      return next
+    })
+  }, [])
+
   const setTrail = useCallback((trail: TrailVariant) => {
     setProfile((prev) => {
       const next = { ...prev, trail }
+      writeProfile(next)
+      return next
+    })
+  }, [])
+
+  const setEquippedPowerup = useCallback((equippedPowerup: PowerupKind) => {
+    setProfile((prev) => {
+      const next = { ...prev, equippedPowerup }
       writeProfile(next)
       return next
     })
@@ -193,13 +222,17 @@ export function useProfile() {
     carModel: profile.carModel,
     carColor: profile.carColor,
     underglow: profile.underglow,
+    underglowColor: profile.underglowColor,
     trail: profile.trail,
+    equippedPowerup: profile.equippedPowerup,
     races: profile.races,
     stats: computeStats(profile.races, profile.racesPlayedTotal),
     setCarModel,
     setCarColor,
     setUnderglow,
+    setUnderglowColor,
     setTrail,
+    setEquippedPowerup,
     addRace,
   }
 }

@@ -144,26 +144,27 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     nextSpawnAtRef.current = randomSpawnGap()
   }, [text])
 
-  // Shell only spawns once its achievement is unlocked (see #/lib/powerups) — boost has no
-  // requiresAchievement, so it's always in the pool.
-  const shellDef = POWERUPS.find((p) => p.id === 'shell')
-  const shellUnlocked =
+  // Spawns whichever powerup the player has equipped (see Garage's Powerups section) — falls
+  // back to boost (no requiresAchievement, always safe) if the equipped kind's achievement
+  // somehow isn't unlocked, e.g. a saved profile pointing at one from before it was earned.
+  const equippedDef = POWERUPS.find((p) => p.id === profile.equippedPowerup)
+  const equippedUnlocked =
     profile.hydrated &&
-    (!shellDef?.requiresAchievement ||
+    (!equippedDef?.requiresAchievement ||
       isAchievementUnlocked(
-        shellDef.requiresAchievement,
+        equippedDef.requiresAchievement,
         profile.stats,
         profile.races,
       ))
+  const spawnKind: PowerupKind = equippedUnlocked
+    ? profile.equippedPowerup
+    : 'boost'
 
   useEffect(() => {
     if (finished || powerup || activeWordIndex < nextSpawnAtRef.current) return
-    const pool: Array<PowerupKind> = shellUnlocked
-      ? ['boost', 'shell']
-      : ['boost']
-    setPowerup(pool[Math.floor(Math.random() * pool.length)])
+    setPowerup(spawnKind)
     nextSpawnAtRef.current = activeWordIndex + randomSpawnGap()
-  }, [activeWordIndex, finished, powerup, shellUnlocked])
+  }, [activeWordIndex, finished, powerup, spawnKind])
 
   useEffect(() => {
     return () => {
@@ -220,6 +221,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       color: profile.carColor,
       model: profile.carModel,
       underglow: profile.underglow,
+      underglowColor: profile.underglowColor,
       trail: profile.trail,
     },
     ...bots.map((bot) => ({

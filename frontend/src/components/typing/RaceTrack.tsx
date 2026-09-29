@@ -17,6 +17,7 @@ export interface Racer {
   // Only ever set for the player's own racer entry — bots/opponents stay in their stock look
   // (see BOT_TRAILS below for theirs).
   underglow?: boolean
+  underglowColor?: string
   trail?: TrailVariant
 }
 
@@ -350,6 +351,7 @@ function Lane({
           color={color}
           model={racer.model ?? 'sport'}
           underglow={racer.underglow}
+          underglowColor={racer.underglowColor}
           className={cn(
             'race-car-svg w-20 drop-shadow-[0_4px_8px_rgb(0_0_0/0.55)]',
             racing && 'race-car-bob',

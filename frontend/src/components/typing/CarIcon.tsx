@@ -23,10 +23,11 @@ interface Vehicle {
 // history) never got past looking like a soft rounded blob at this icon size no matter how the
 // path math was tuned, where these read as actual cars immediately.
 //
-// A wider "tanks/trucks, way more variety" roster was tried and reverted (see git history) —
-// mixing this pack's realistic painterly shading with a flat-shaded cartoon pack (Kenney's
-// Racing/Tanks packs) read as visibly inconsistent side by side, so the roster stays a single
-// consistent art style rather than max quantity.
+// A wider roster (tanks/trucks/spaceships from Kenney's CC0 packs) was tried twice and reverted
+// both times (see git history) — direct feedback was that the flat-shaded/low-poly look reads as
+// noticeably lower effort next to this pack's own painterly shading ("way too simple... slop").
+// Sourcing more vehicles in a *matching* style is still an open TODO; until then the roster stays
+// these 7 rather than adding variety at the cost of visibly inconsistent quality.
 export const VEHICLES: Array<Vehicle> = [
   // No requiresAchievement — the starter car, always available.
   { id: 'sport', label: 'Sport', aspect: 95 / 55 },
@@ -91,19 +92,21 @@ export default function CarIcon({
   color,
   model = 'sport',
   underglow = false,
+  underglowColor,
   style,
 }: {
   className?: string
   color: string
   model?: CarModel
-  // On/off only — when equipped, the glow always matches the car's own paint color rather than
-  // a separate palette, so every one of the 8 paint colors gets a matching glow for free instead
-  // of picking from a handful of preset glow colors.
   underglow?: boolean
+  // Independently selectable (see Garage's Underglow section) — falls back to the paint color
+  // only if a caller doesn't pass one at all.
+  underglowColor?: string
   style?: CSSProperties
 }) {
   const src = spriteSrc(model)
   const aspect = (VEHICLE_BY_ID[model] ?? VEHICLES[0]).aspect
+  const glowColor = underglowColor ?? color
 
   const maskStyle: CSSProperties = {
     position: 'absolute',
@@ -137,7 +140,7 @@ export default function CarIcon({
             position: 'absolute',
             inset: '-18%',
             borderRadius: '9999px',
-            background: `radial-gradient(ellipse at center, ${color}88 0%, transparent 70%)`,
+            background: `radial-gradient(ellipse at center, ${glowColor}88 0%, transparent 70%)`,
           }}
         />
       )}
@@ -153,18 +156,20 @@ export default function CarIcon({
           imageRendering: 'pixelated',
         }}
       />
-      {/* Recolors the sprite while keeping every bit of its own shading/highlights/window
-          tint intact: mix-blend-mode "hue" takes this layer's hue but the *image's own*
-          saturation and lightness at each pixel — so an already-neutral area (black tires,
-          tinted glass) stays neutral instead of the whole car flattening to one tone the way
-          a sepia+hue-rotate filter did on the first attempt, and a highlight stays a highlight
-          instead of being overwritten. */}
+      {/* Recolors the sprite while keeping its own per-pixel shading (highlights/shadows) intact:
+          mix-blend-mode "color" takes this layer's hue+saturation but the *image's own*
+          lightness at each pixel. Went through "hue" blend first (see git history) — it takes
+          the backdrop's own saturation too, which looks great on painterly sprites that already
+          have color variation, but does nothing at all on a flat white/gray sprite (0 backdrop
+          saturation stays 0 no matter what hue you apply) — exactly the sci-fi/space sprites
+          added for the Military/Aircraft categories. "color" recolors those too, since it
+          supplies the saturation itself rather than reading it from the backdrop. */}
       <div
         aria-hidden="true"
         style={{
           ...maskStyle,
           backgroundColor: color,
-          mixBlendMode: 'hue',
+          mixBlendMode: 'color',
         }}
       />
     </div>
