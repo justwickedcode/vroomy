@@ -274,13 +274,16 @@ export function Trail({ variant }: { variant: TrailVariant }) {
     )
   }
   if (variant === 'spark') {
-    return (
-      <svg className="race-trail-spark" viewBox="0 0 44 14" aria-hidden="true">
+    // Rendered twice at different sizes/positions (a big foreground bolt plus a smaller one
+    // crackling behind it) rather than a single line — a lone bolt read as thin no matter how
+    // thick its stroke got; a cluster reads as a genuine lightning strike.
+    const bolt = (
+      <>
         <polyline
           points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
           fill="none"
           stroke="#0c4a6e"
-          strokeWidth="7"
+          strokeWidth="9"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
@@ -288,7 +291,7 @@ export function Trail({ variant }: { variant: TrailVariant }) {
           points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
           fill="none"
           stroke="#38bdf8"
-          strokeWidth="4.5"
+          strokeWidth="6"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
@@ -296,10 +299,18 @@ export function Trail({ variant }: { variant: TrailVariant }) {
           points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
           fill="none"
           stroke="#f0f9ff"
-          strokeWidth="1.8"
+          strokeWidth="2.6"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
+      </>
+    )
+    return (
+      <svg className="race-trail-spark" viewBox="0 0 60 30" aria-hidden="true">
+        <g transform="translate(1,2) scale(0.65)" opacity="0.85">
+          {bolt}
+        </g>
+        <g transform="translate(15,8) scale(1)">{bolt}</g>
       </svg>
     )
   }
