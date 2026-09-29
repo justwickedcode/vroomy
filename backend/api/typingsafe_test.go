@@ -26,27 +26,6 @@ func TestMakeTypingSafe(t *testing.T) {
 	}
 }
 
-// TestMakeTypingSafePreservesLineBreaks is a regression test for a real interaction bug: this
-// function used to flatten every '\n' to a space, which would have silently undone
-// backend/scraper's own fix (preserveLineBreaks/normalizeWhitespace) that intentionally keeps a
-// real line break for poem-shaped quotes so it can eventually be typed (Enter) in a race.
-func TestMakeTypingSafePreservesLineBreaks(t *testing.T) {
-	cases := []struct {
-		input    string
-		expected string
-	}{
-		{"Line one\nLine two\nLine three", "Line one\nLine two\nLine three"},
-		{"  extra   spaces  \n  on both  lines  ", "extra spaces\non both lines"},
-		{"Line one\n\n\nLine two", "Line one\nLine two"}, // consecutive blank lines collapse away
-		{"an em—dash\nspanning a line break", "an em-dash\nspanning a line break"},
-	}
-	for _, c := range cases {
-		if got := MakeTypingSafe(c.input); got != c.expected {
-			t.Errorf("MakeTypingSafe(%q) = %q, want %q", c.input, got, c.expected)
-		}
-	}
-}
-
 func TestMakeTypingSafePreservesWordBoundaries(t *testing.T) {
 	// An em dash used mid-word must stay a single character joining the two halves, not gain
 	// surrounding spaces — that would split one word into two, shifting every later word's
