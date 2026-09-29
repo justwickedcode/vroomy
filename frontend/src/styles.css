@@ -71,9 +71,14 @@
   --signal: oklch(0.78 0.15 80);
 }
 
-* {
-  box-sizing: border-box;
-  border-color: var(--color-border);
+/* @layer base (not bare): same reasoning as .glass-chip's @layer components below — a bare
+   `* { border-color }` reset is unlayered and would beat every border-color utility
+   (border-primary, border-destructive, ...) app-wide, same bug, much bigger blast radius. */
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--color-border);
+  }
 }
 
 html,
@@ -133,9 +138,19 @@ body::before {
     0 24px 48px -16px rgb(0 0 0 / 70%);
 }
 
-.glass-chip {
-  background: var(--color-secondary);
-  border: 1px solid var(--color-border);
+/* @layer components, not a bare rule: Tailwind's own utilities (border-primary,
+   bg-primary/12, etc.) live in @layer utilities, which only beats an *unlayered* rule when the
+   unlayered one doesn't already win outright — an unlayered rule always wins over every layer
+   regardless of source order. A bare `.glass-chip` here was doing exactly that: its `border`
+   shorthand silently beat every "selected" state's border-primary across the whole Garage page
+   (Model/Powerups/Underglow too, not just Trail — those just had a checkmark or "Equipped"/"On"
+   label as a fallback tell, so the missing border went unnoticed until Trail, which has no other
+   indicator at all). */
+@layer components {
+  .glass-chip {
+    background: var(--color-secondary);
+    border: 1px solid var(--color-border);
+  }
 }
 
 .glass-divider {

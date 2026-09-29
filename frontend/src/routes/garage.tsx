@@ -5,6 +5,7 @@ import CarIcon, {
   UNDERGLOW_ACHIEVEMENT,
   VEHICLES,
 } from '#/components/typing/CarIcon'
+import { Trail } from '#/components/typing/RaceTrack'
 import { CAR_COLORS, useProfile } from '#/lib/profile/useProfile'
 import { isAchievementUnlocked } from '#/lib/achievements'
 import { TRAILS } from '#/lib/trails'
@@ -231,6 +232,14 @@ function GaragePage() {
                   {!unlocked && (
                     <Lock className="absolute top-2 right-2 size-3.5 text-muted-foreground" />
                   )}
+                  {/* Live preview, not just a name — the trail is rendered exactly like it is
+                      mid-race (see RaceTrack's Trail), anchored to a small dot standing in for
+                      the car so the effect has something to trail off of. */}
+                  <div className="flex h-7 w-16 items-center justify-end">
+                    <span className="relative inline-block size-2 shrink-0 rounded-full bg-foreground/70">
+                      <Trail variant={option.id} />
+                    </span>
+                  </div>
                   <p className="text-sm font-bold">{option.label}</p>
                   {!unlocked && option.requiresAchievement && (
                     <span className="text-[0.65rem] leading-tight text-muted-foreground">
