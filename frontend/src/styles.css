@@ -1285,6 +1285,72 @@ body::before {
   }
 }
 
+/* One-shot celebration when the player's own car crosses the finish line —
+   mounts fresh exactly when `racer.finished` first flips true (see
+   RaceTrack.tsx's FinishBurst), so the animation always plays from its
+   0% keyframe once and then holds its faded-out end frame. */
+.race-finish-burst {
+  position: absolute;
+  inset: -60% -90%;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.race-finish-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgb(255 255 255 / 85%) 0%,
+    color-mix(in oklab, var(--color-primary) 65%, transparent) 40%,
+    transparent 72%
+  );
+  animation: finish-flash 550ms ease-out forwards;
+}
+
+@keyframes finish-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.race-finish-confetti {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 10px;
+  margin: -5px 0 0 -3px;
+  background: var(--c, #fbbf24);
+  opacity: 0;
+  animation: finish-confetti 900ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes finish-confetti {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--r, 0deg)) translate(0, 0) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--r, 0deg))
+      translate(var(--tx, 40px), var(--ty, -30px)) scale(1);
+  }
+}
+
 .race-words {
   position: relative;
   overflow: hidden;
