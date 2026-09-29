@@ -9,7 +9,10 @@ import (
 func TestGoodreadsParser_Parse(t *testing.T) {
 	expected := []models.Quote{
 		{
-			Text:   "You've gotta dance like there's nobody watching, Love like you'll never be hurt, Sing like there's nobody listening, And live like it's heaven on earth.",
+			// Real <br>-separated lines in the fixture HTML — now preserved as real newlines
+			// (see preserveLineBreaks/normalizeWhitespace) instead of flattened to spaces, since
+			// this is exactly the kind of poem-shaped quote that fix exists for.
+			Text:   "You've gotta dance like there's nobody watching,\nLove like you'll never be hurt,\nSing like there's nobody listening,\nAnd live like it's heaven on earth.",
 			Author: "William W. Purkey",
 			Tags:   []string{"dance", "heaven", "hurt", "inspirational", "life", "love", "sing"},
 			Source: "goodreads",

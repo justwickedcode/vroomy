@@ -191,6 +191,14 @@ var unwritableCharAllowlist = map[rune]bool{
 	'©': true, '®': true, '™': true, // legal/trademark marks, occasionally quoted verbatim
 	'†': true, '‡': true, // dagger/double-dagger — historical footnote convention, not a citation leak itself
 	'§': true, '¶': true, // section/pilcrow — legal and literary text sometimes quotes these directly
+
+	// '\n' is Unicode category Cc (control) — genuinely unwritable in general, but a very
+	// specific, deliberate exception here: the parser (see preserveLineBreaks/normalizeWhitespace
+	// in internal/parser) now intentionally preserves a real line break for poem-shaped quotes
+	// instead of destroying it, exactly so it can eventually be typed (Enter) in a race — without
+	// this exception every multi-line quote that fix produces would immediately be flagged
+	// unsuitable by the check the fix exists to make usable in the first place.
+	'\n': true,
 }
 
 // isUnwritableRune reports whether r falls into a Unicode category GameSuitability treats as

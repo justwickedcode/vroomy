@@ -227,3 +227,32 @@ func TestWikiquoteParser_Parse_SectionWrapped(t *testing.T) {
 		t.Errorf("author = %q, want %q", result.Quotes[0].Author, "Someone")
 	}
 }
+
+// TestWikiquoteParser_Parse_PreservesLineBreaks is a regression test for a real, live bug:
+// Wikiquote renders verse as <br>-separated text within a single <li> (confirmed live on
+// en.wikiquote.org/wiki/Edgar_Allan_Poe), and goquery's .Text() inserts nothing at all at a
+// <br> boundary on its own — previously flattening a poem's lines into one run-on sentence, or
+// in a worse case found live on a Polish poem page, fusing words together with zero separator
+// ("KICIA KOCIAWpłynęłam"). preserveLineBreaks (htmltext.go) converts each <br> to a real '\n'
+// text node before any .Text() call in the walk; normalizeWhitespace then preserves that
+// newline while still collapsing space runs within each line.
+func TestWikiquoteParser_Parse_PreservesLineBreaks(t *testing.T) {
+	html := `<html><body><h1 id="firstHeading"><span class="mw-page-title-main">Edgar Allan Poe</span></h1>
+<div id="mw-content-text"><div class="mw-parser-output">
+<section><div class="mw-heading mw-heading2"><h2 id="Quotes">Quotes</h2></div>
+<ul><li><b>A dark unfathom'd tide <br/>Of interminable pride —   <br/>A mystery, and a dream, <br/>Should my early life seem.</b></li></ul>
+</section>
+</div></div></body></html>`
+
+	result, err := (&WikiquoteParser{}).Parse(html)
+	if err != nil {
+		t.Fatalf("Parse() failed: %v", err)
+	}
+	if len(result.Quotes) != 1 {
+		t.Fatalf("got %d quotes, want 1: %+v", len(result.Quotes), result.Quotes)
+	}
+	want := "A dark unfathom'd tide\nOf interminable pride —\nA mystery, and a dream,\nShould my early life seem."
+	if result.Quotes[0].Text != want {
+		t.Errorf("text = %q, want %q", result.Quotes[0].Text, want)
+	}
+}

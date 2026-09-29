@@ -136,7 +136,9 @@ func (p *GermanWikiquoteParser) Parse(html string) (Result, error) {
 	// Scoped to #mw-content-text — see the identical comment in wikiquotes.go's Parse for why
 	// an unscoped "div.mw-parser-output" selector silently returns 0 quotes on any
 	// semi-protected page.
-	wikiquoteWalkChildren(doc.Find("#mw-content-text div.mw-parser-output").First().Children(), func(s *goquery.Selection) {
+	contentScope := doc.Find("#mw-content-text div.mw-parser-output").First()
+	preserveLineBreaks(contentScope)
+	wikiquoteWalkChildren(contentScope.Children(), func(s *goquery.Selection) {
 		if s.HasClass("mw-heading2") {
 			heading := strings.TrimSpace(s.Find("h2").Text())
 			inQuotesSection = !hasAnyPrefix(heading, germanWikiquoteExcludedHeadingPrefixes)

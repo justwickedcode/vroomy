@@ -108,7 +108,9 @@ func (p *WikiquoteParser) Parse(html string) (Result, error) {
 	// other semi-protected one — likely disproportionately the *more* popular authors, the ones
 	// most worth having) returned 0 quotes and 0 discovered URLs with no error at all.
 	// "#mw-content-text" is the real, unique content wrapper and never contains the indicator.
-	wikiquoteWalkChildren(doc.Find("#mw-content-text div.mw-parser-output").First().Children(), func(s *goquery.Selection) {
+	contentScope := doc.Find("#mw-content-text div.mw-parser-output").First()
+	preserveLineBreaks(contentScope)
+	wikiquoteWalkChildren(contentScope.Children(), func(s *goquery.Selection) {
 		if s.HasClass("mw-heading2") {
 			heading := strings.TrimSpace(s.Find("h2").Text())
 			inQuotesSection = !hasAnyPrefix(heading, englishWikiquoteExcludedHeadingPrefixes)
@@ -185,6 +187,31 @@ func (p *WikiquoteParser) Parse(html string) (Result, error) {
 	return result, nil
 }
 
+// normalizeWhitespace collapses runs of spaces/tabs within each line down to a single space
+// (same as the previous behavior, which just used strings.Fields — unchanged for any input with
+// no newline in it), but preserves single '\n' line breaks instead of flattening them away too.
+// An empty line (including a run of several consecutive newlines) is dropped rather than kept,
+// so "Line one\n\n\nLine two" becomes "Line one\nLine two" — a deliberate stanza break in a poem
+// isn't distinguished from accidental blank-line noise, an accepted simplification rather than
+// something worth the added complexity to preserve.
+//
+// Real newlines only ever reach this function because preserveLineBreaks (htmltext.go) already
+// converted each <br> element to a literal '\n' text node before .Text() was called — a plain
+// goquery .Text() call never inserts anything at a <br> boundary on its own, which used to mean
+// a Wikiquote-rendered poem's lines were either silently flattened into one run-on sentence, or
+// in a worse case found live on a Polish poem page, fused together with *zero* separator at all
+// ("KICIA KOCIAWpłynęłam"). dedup.Normalize (used only for the sha256/simhash fingerprint, not
+// the stored/served text) is a separate function and intentionally still collapses all
+// whitespace including newlines — dedup should stay whitespace-insensitive regardless of how the
+// text ends up rendered.
 func normalizeWhitespace(text string) string {
-	return strings.Join(strings.Fields(text), " ")
+	lines := strings.Split(text, "\n")
+	cleaned := lines[:0]
+	for _, line := range lines {
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" {
+			cleaned = append(cleaned, line)
+		}
+	}
+	return strings.Join(cleaned, "\n")
 }

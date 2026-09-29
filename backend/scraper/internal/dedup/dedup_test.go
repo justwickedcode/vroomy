@@ -314,6 +314,12 @@ func TestGameSuitability(t *testing.T) {
 		{"degree sign is allowed, not flagged", "Water boils at 100° Celsius under normal atmospheric pressure conditions.", false, ""},
 		{"superscript two (E=mc2 style) is allowed, not flagged", "The famous equation E=mc² changed how we understand energy and mass.", false, ""},
 		{"emoji is flagged as unwritable", "This is a real quote with a hidden emoji 🎉 stuck in the middle of it.", true, "unwritable_characters"},
+		// A real newline is category Cc (control) same as any other unwritable control
+		// character, but must NOT be flagged — the parser now deliberately preserves a real line
+		// break for poem-shaped quotes (see internal/parser's preserveLineBreaks), specifically
+		// so it can eventually be typed via Enter. Without this exception, every multi-line quote
+		// that fix produces would be immediately flagged unsuitable by this very check.
+		{"real newline (preserved poem line break) is allowed, not flagged", "A dark unfathom'd tide\nOf interminable pride —\nA mystery, and a dream,\nShould my early life seem enough.", false, ""},
 	}
 
 	for _, c := range cases {
