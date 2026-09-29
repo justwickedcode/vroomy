@@ -2,10 +2,23 @@ import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
 import MultiplayerRace from '#/components/typing/MultiplayerRace'
+import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
+import { useIsDesktopViewport } from '#/lib/layout/useIsDesktopViewport'
 
 export const Route = createFileRoute('/race/multiplayer')({
-  component: QuickMatchPage,
+  component: QuickMatchGate,
 })
+
+// Gates on viewport before useMultiplayerRace is ever called — not just before rendering its
+// result — so the WebSocket connect below never fires on mobile at all, not even briefly.
+function QuickMatchGate() {
+  const isDesktop = useIsDesktopViewport()
+
+  if (isDesktop === false) return <DesktopOnlyRace />
+  if (isDesktop === null) return null
+
+  return <QuickMatchPage />
+}
 
 function QuickMatchPage() {
   const navigate = useNavigate()

@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
 import MultiplayerRace from '#/components/typing/MultiplayerRace'
+import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
+import { useIsDesktopViewport } from '#/lib/layout/useIsDesktopViewport'
 
 // "new" is a reserved sentinel roomCode meaning "mint one" rather than "join this one" — real
 // codes are always exactly 6 characters from backend/ws's codeAlphabet (see private.go), so
@@ -9,8 +11,19 @@ import MultiplayerRace from '#/components/typing/MultiplayerRace'
 const CREATE_SENTINEL = 'new'
 
 export const Route = createFileRoute('/race/$roomCode')({
-  component: RoomPage,
+  component: RoomGate,
 })
+
+// Gates on viewport before useMultiplayerRace is ever called — not just before rendering its
+// result — so the create/join WebSocket connect below never fires on mobile at all.
+function RoomGate() {
+  const isDesktop = useIsDesktopViewport()
+
+  if (isDesktop === false) return <DesktopOnlyRace />
+  if (isDesktop === null) return null
+
+  return <RoomPage />
+}
 
 function RoomPage() {
   const { roomCode } = Route.useParams()
