@@ -283,6 +283,42 @@ function Trail({ variant }: { variant: TrailVariant }) {
   return <span className="race-nitro" aria-hidden="true" />
 }
 
+// ─── Finish celebration ─────────────────────────────────────────────
+
+const CONFETTI: Array<{ c: string; r: number; tx: number; ty: number; d: number }> = [
+  { c: '#fbbf24', r: -40, tx: -46, ty: -54, d: 0 },
+  { c: '#f472b6', r: 20, tx: 40, ty: -58, d: 30 },
+  { c: '#38bdf8', r: 70, tx: 58, ty: -8, d: 70 },
+  { c: '#4ade80', r: -90, tx: -60, ty: 4, d: 40 },
+  { c: '#a78bfa', r: 140, tx: 36, ty: 50, d: 90 },
+  { c: '#fb7185', r: -140, tx: -34, ty: 52, d: 20 },
+  { c: '#fbbf24', r: 10, tx: 8, ty: -66, d: 110 },
+  { c: '#38bdf8', r: -20, tx: -10, ty: 62, d: 60 },
+]
+
+function FinishBurst() {
+  return (
+    <div className="race-finish-burst" aria-hidden="true">
+      <div className="race-finish-flash" />
+      {CONFETTI.map((piece, i) => (
+        <span
+          key={i}
+          className="race-finish-confetti"
+          style={
+            {
+              '--c': piece.c,
+              '--r': `${piece.r}deg`,
+              '--tx': `${piece.tx}px`,
+              '--ty': `${piece.ty}px`,
+              '--d': `${piece.d}ms`,
+            } as CSSProperties
+          }
+        />
+      ))}
+    </div>
+  )
+}
+
 // ─── Lane ───────────────────────────────────────────────────────────
 
 function Lane({
@@ -305,6 +341,7 @@ function Lane({
           {racer.name}
         </span>
         {racing && <Trail variant={trailVariant} />}
+        {racer.isYou && racer.finished && <FinishBurst />}
         <CarIcon
           color={color}
           model={racer.model ?? 'sport'}
