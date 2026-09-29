@@ -1,22 +1,41 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Check } from 'lucide-react'
+import { Check, Lock } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
-import CarIcon, { CAR_MODELS } from '#/components/typing/CarIcon'
+import CarIcon, {
+  UNDERGLOW_ACHIEVEMENT,
+  VEHICLES,
+} from '#/components/typing/CarIcon'
 import { CAR_COLORS, useProfile } from '#/lib/profile/useProfile'
+import { ACHIEVEMENTS } from '#/lib/achievements'
 import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
 import type { CarModel } from '#/components/typing/CarIcon'
+import type { ProfileStats, RaceRecord } from '#/lib/profile/useProfile'
 
 export const Route = createFileRoute('/garage')({ component: GaragePage })
 
+function isAchievementUnlocked(
+  title: string,
+  stats: ProfileStats,
+  races: Array<RaceRecord>,
+): boolean {
+  return ACHIEVEMENTS.some((a) => a.title === title && a.unlocked(stats, races))
+}
+
 function GaragePage() {
   const {
+    hydrated,
+    stats,
+    races,
     carModel,
     carColor,
-    carLivery,
-    equippedUpgrades,
+    underglow,
     setCarModel,
     setCarColor,
+    setUnderglow,
   } = useProfile()
+
+  const underglowUnlocked =
+    hydrated && isAchievementUnlocked(UNDERGLOW_ACHIEVEMENT, stats, races)
 
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
@@ -27,10 +46,11 @@ function GaragePage() {
             aria-hidden="true"
           />
           <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Pick your ride.
+            Garage.
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Saved automatically.
+            Model, paint, and upgrades — saved automatically. Locked stuff
+            unlocks through achievements, not purchases.
           </p>
         </div>
 
@@ -45,8 +65,7 @@ function GaragePage() {
                 <CarIcon
                   color={carColor}
                   model={carModel}
-                  livery={carLivery}
-                  upgrades={equippedUpgrades}
+                  underglow={underglow}
                   className="race-car-svg race-car-bob w-36 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]"
                 />
               </div>
@@ -60,16 +79,28 @@ function GaragePage() {
             <p className="kicker">Model</p>
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 pt-0 sm:grid-cols-3 lg:grid-cols-4">
-            {CAR_MODELS.map((option) => (
-              <ModelOption
-                key={option.id}
-                id={option.id}
-                label={option.label}
-                color={carColor}
-                selected={option.id === carModel}
-                onSelect={() => setCarModel(option.id)}
-              />
-            ))}
+            {VEHICLES.map((vehicle) => {
+              const unlocked =
+                !vehicle.requiresAchievement ||
+                (hydrated &&
+                  isAchievementUnlocked(
+                    vehicle.requiresAchievement,
+                    stats,
+                    races,
+                  ))
+              return (
+                <ModelOption
+                  key={vehicle.id}
+                  id={vehicle.id}
+                  label={vehicle.label}
+                  color={carColor}
+                  selected={vehicle.id === carModel}
+                  unlocked={unlocked}
+                  requirement={vehicle.requiresAchievement}
+                  onSelect={() => setCarModel(vehicle.id)}
+                />
+              )
+            })}
           </CardContent>
 
           <div className="glass-divider" />
@@ -98,6 +129,49 @@ function GaragePage() {
               </button>
             ))}
           </CardContent>
+
+          <div className="glass-divider" />
+
+          <CardHeader className="py-5">
+            <p className="kicker">Underglow</p>
+          </CardHeader>
+          <CardContent className="pt-0 pb-8">
+            <button
+              type="button"
+              disabled={!underglowUnlocked}
+              onClick={() => setUnderglow(!underglow)}
+              className={cn(
+                'glass-chip flex w-full items-center gap-4 rounded-xl p-4 text-left transition-colors disabled:opacity-60',
+                underglow && underglowUnlocked && 'border-primary bg-primary/12',
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className="size-8 shrink-0 rounded-full border border-border"
+                style={{
+                  backgroundColor: underglowUnlocked ? carColor : undefined,
+                }}
+              />
+              <span className="flex-1">
+                <p className="text-sm font-bold">Neon underglow</p>
+                <p className="text-xs text-muted-foreground">
+                  {underglowUnlocked
+                    ? 'Always matches your current paint color.'
+                    : `Unlock by earning "${UNDERGLOW_ACHIEVEMENT}".`}
+                </p>
+              </span>
+              {underglowUnlocked ? (
+                underglow && (
+                  <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
+                    <Check className="size-3.5" />
+                    On
+                  </span>
+                )
+              ) : (
+                <Lock className="size-4 shrink-0 text-muted-foreground" />
+              )}
+            </button>
+          </CardContent>
         </Card>
       </div>
     </main>
@@ -109,27 +183,46 @@ function ModelOption({
   label,
   color,
   selected,
+  unlocked,
+  requirement,
   onSelect,
 }: {
   id: CarModel
   label: string
   color: string
   selected: boolean
+  unlocked: boolean
+  requirement?: string
   onSelect: () => void
 }) {
   return (
     <button
       type="button"
+      disabled={!unlocked}
       onClick={onSelect}
-      onMouseMove={handleTiltMove}
-      onMouseLeave={handleTiltLeave}
+      onMouseMove={unlocked ? handleTiltMove : undefined}
+      onMouseLeave={unlocked ? handleTiltLeave : undefined}
       className={cn(
-        'tilt-card speed-option glass-chip flex flex-col items-center gap-2 py-4',
+        'tilt-card speed-option glass-chip relative flex flex-col items-center gap-2 py-4',
         selected && 'border-primary bg-primary/12',
+        !unlocked && 'opacity-50',
       )}
     >
-      <CarIcon color={color} model={id} className="w-24" />
+      {!unlocked && (
+        <Lock className="absolute top-2 right-2 size-3.5 text-muted-foreground" />
+      )}
+      <CarIcon
+        color={unlocked ? color : '#64748b'}
+        model={id}
+        className="w-24"
+        style={unlocked ? undefined : { filter: 'grayscale(1)' }}
+      />
       <span className="text-sm font-bold">{label}</span>
+      {!unlocked && requirement && (
+        <span className="px-1 text-center text-[0.65rem] leading-tight text-muted-foreground">
+          {requirement}
+        </span>
+      )}
     </button>
   )
 }

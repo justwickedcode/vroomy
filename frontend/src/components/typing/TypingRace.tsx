@@ -121,8 +121,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       isYou: true,
       color: profile.carColor,
       model: profile.carModel,
-      livery: profile.carLivery,
-      upgrades: profile.equippedUpgrades,
+      underglow: profile.underglow,
     },
     ...bots.map((bot) => ({
       id: bot.id,

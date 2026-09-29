@@ -14,12 +14,10 @@ import { Route as AchievementsRouteImport } from './routes/achievements'
 import { Route as DailyChallengeRouteImport } from './routes/daily-challenge'
 import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as GarageRouteImport } from './routes/garage'
-import { Route as GarageUpgradesRouteImport } from './routes/garage-upgrades'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
 import { Route as ReplaysRouteImport } from './routes/replays'
 import { Route as StatsRouteImport } from './routes/stats'
-import { Route as ThemesRouteImport } from './routes/themes'
 import { Route as RaceRoomCodeRouteImport } from './routes/race.$roomCode'
 import { Route as RaceFriendsRouteImport } from './routes/race.friends'
 import { Route as RaceMultiplayerRouteImport } from './routes/race.multiplayer'
@@ -52,11 +50,6 @@ const GarageRoute = GarageRouteImport.update({
   path: '/garage',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GarageUpgradesRoute = GarageUpgradesRouteImport.update({
-  id: '/garage-upgrades',
-  path: '/garage-upgrades',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const GuideRoute = GuideRouteImport.update({
   id: '/guide',
   path: '/guide',
@@ -75,11 +68,6 @@ const ReplaysRoute = ReplaysRouteImport.update({
 const StatsRoute = StatsRouteImport.update({
   id: '/stats',
   path: '/stats',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ThemesRoute = ThemesRouteImport.update({
-  id: '/themes',
-  path: '/themes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RaceRoomCodeRoute = RaceRoomCodeRouteImport.update({
@@ -119,12 +107,10 @@ export interface FileRoutesByFullPath {
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
-  '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
-  '/themes': typeof ThemesRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -138,12 +124,10 @@ export interface FileRoutesByTo {
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
-  '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
-  '/themes': typeof ThemesRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -157,12 +141,10 @@ export interface FileRoutesById {
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
-  '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
-  '/themes': typeof ThemesRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -178,12 +160,10 @@ export interface FileRouteTypes {
     | '/daily-challenge'
     | '/friends'
     | '/garage'
-    | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
     | '/replays'
     | '/stats'
-    | '/themes'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -197,12 +177,10 @@ export interface FileRouteTypes {
     | '/daily-challenge'
     | '/friends'
     | '/garage'
-    | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
     | '/replays'
     | '/stats'
-    | '/themes'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -215,12 +193,10 @@ export interface FileRouteTypes {
     | '/daily-challenge'
     | '/friends'
     | '/garage'
-    | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
     | '/replays'
     | '/stats'
-    | '/themes'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -235,12 +211,10 @@ export interface RootRouteChildren {
   DailyChallengeRoute: typeof DailyChallengeRoute
   FriendsRoute: typeof FriendsRoute
   GarageRoute: typeof GarageRoute
-  GarageUpgradesRoute: typeof GarageUpgradesRoute
   GuideRoute: typeof GuideRoute
   LeaderboardsRoute: typeof LeaderboardsRoute
   ReplaysRoute: typeof ReplaysRoute
   StatsRoute: typeof StatsRoute
-  ThemesRoute: typeof ThemesRoute
   RaceRoomCodeRoute: typeof RaceRoomCodeRoute
   RaceFriendsRoute: typeof RaceFriendsRoute
   RaceMultiplayerRoute: typeof RaceMultiplayerRoute
@@ -284,13 +258,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GarageRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/garage-upgrades': {
-      id: '/garage-upgrades'
-      path: '/garage-upgrades'
-      fullPath: '/garage-upgrades'
-      preLoaderRoute: typeof GarageUpgradesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/guide': {
       id: '/guide'
       path: '/guide'
@@ -317,13 +284,6 @@ declare module '@tanstack/react-router' {
       path: '/stats'
       fullPath: '/stats'
       preLoaderRoute: typeof StatsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/themes': {
-      id: '/themes'
-      path: '/themes'
-      fullPath: '/themes'
-      preLoaderRoute: typeof ThemesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/race/$roomCode': {
@@ -391,12 +351,10 @@ const rootRouteChildren: RootRouteChildren = {
   DailyChallengeRoute: DailyChallengeRoute,
   FriendsRoute: FriendsRoute,
   GarageRoute: GarageRoute,
-  GarageUpgradesRoute: GarageUpgradesRoute,
   GuideRoute: GuideRoute,
   LeaderboardsRoute: LeaderboardsRoute,
   ReplaysRoute: ReplaysRoute,
   StatsRoute: StatsRoute,
-  ThemesRoute: ThemesRoute,
   RaceRoomCodeRoute: RaceRoomCodeRoute,
   RaceFriendsRoute: RaceFriendsRoute,
   RaceMultiplayerRoute: RaceMultiplayerRoute,
