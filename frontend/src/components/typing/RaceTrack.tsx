@@ -279,8 +279,8 @@ export function Trail({ variant }: { variant: TrailVariant }) {
         <polyline
           points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
           fill="none"
-          stroke="#7dd3fc"
-          strokeWidth="3"
+          stroke="#e0f2fe"
+          strokeWidth="4"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
