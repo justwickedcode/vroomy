@@ -197,7 +197,8 @@ function ErrorView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
 }
 
 function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
-  const { carColor, carModel, underglow, trail } = useProfile()
+  const { carColor, carModel, underglow, underglowColor, trail } =
+    useProfile()
   const [countdown, setCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -226,6 +227,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       color: carColor,
       model: carModel,
       underglow,
+      underglowColor,
       trail,
     },
     ...mp.opponents.map((opponent, index) => ({

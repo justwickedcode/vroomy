@@ -28,11 +28,15 @@ function GaragePage() {
     carModel,
     carColor,
     underglow,
+    underglowColor,
     trail,
+    equippedPowerup,
     setCarModel,
     setCarColor,
     setUnderglow,
+    setUnderglowColor,
     setTrail,
+    setEquippedPowerup,
   } = useProfile()
 
   const underglowUnlocked =
@@ -67,6 +71,7 @@ function GaragePage() {
                   color={carColor}
                   model={carModel}
                   underglow={underglow}
+                  underglowColor={underglowColor}
                   className="race-car-svg race-car-bob w-36 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]"
                 />
               </div>
@@ -136,7 +141,7 @@ function GaragePage() {
           <CardHeader className="py-5">
             <p className="kicker">Underglow</p>
           </CardHeader>
-          <CardContent className="pt-0 pb-8">
+          <CardContent className="flex flex-col gap-4 pt-0 pb-8">
             <button
               type="button"
               disabled={!underglowUnlocked}
@@ -150,14 +155,14 @@ function GaragePage() {
                 aria-hidden="true"
                 className="size-8 shrink-0 rounded-full border border-border"
                 style={{
-                  backgroundColor: underglowUnlocked ? carColor : undefined,
+                  backgroundColor: underglowUnlocked ? underglowColor : undefined,
                 }}
               />
               <span className="flex-1">
                 <p className="text-sm font-bold">Neon underglow</p>
                 <p className="text-xs text-muted-foreground">
                   {underglowUnlocked
-                    ? 'Always matches your current paint color.'
+                    ? 'Pick any color below — independent of your paint.'
                     : `Unlock by earning "${UNDERGLOW_ACHIEVEMENT}".`}
                 </p>
               </span>
@@ -172,6 +177,29 @@ function GaragePage() {
                 <Lock className="size-4 shrink-0 text-muted-foreground" />
               )}
             </button>
+            {underglowUnlocked && underglow && (
+              <div className="flex flex-wrap gap-3 pl-1">
+                {CAR_COLORS.map((swatch) => (
+                  <button
+                    key={swatch.id}
+                    type="button"
+                    aria-label={`${swatch.id} underglow`}
+                    onClick={() => setUnderglowColor(swatch.value)}
+                    className={cn(
+                      'flex size-9 items-center justify-center rounded-full border-2 transition-transform hover:scale-110',
+                      swatch.value === underglowColor
+                        ? 'border-foreground'
+                        : 'border-transparent',
+                    )}
+                    style={{ backgroundColor: swatch.value }}
+                  >
+                    {swatch.value === underglowColor && (
+                      <Check className="size-3.5 text-white drop-shadow" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </CardContent>
 
           <div className="glass-divider" />
@@ -230,12 +258,16 @@ function GaragePage() {
                     races,
                   ))
               const Icon = POWERUP_ICONS[option.id]
+              const equipped = option.id === equippedPowerup
               return (
-                <div
+                <button
                   key={option.id}
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => setEquippedPowerup(option.id)}
                   className={cn(
-                    'glass-chip flex items-center gap-3 rounded-xl p-4',
-                    !unlocked && 'opacity-60',
+                    'glass-chip flex items-center gap-3 rounded-xl p-4 text-left transition-colors disabled:opacity-60',
+                    equipped && unlocked && 'border-primary bg-primary/12',
                   )}
                 >
                   <Icon className="size-5 shrink-0 text-primary" />
@@ -247,10 +279,17 @@ function GaragePage() {
                         : `Unlock by earning "${option.requiresAchievement}".`}
                     </p>
                   </span>
-                  {!unlocked && (
+                  {unlocked ? (
+                    equipped && (
+                      <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
+                        <Check className="size-3.5" />
+                        Equipped
+                      </span>
+                    )
+                  ) : (
                     <Lock className="size-4 shrink-0 text-muted-foreground" />
                   )}
-                </div>
+                </button>
               )
             })}
           </CardContent>

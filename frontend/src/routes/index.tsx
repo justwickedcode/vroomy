@@ -49,8 +49,15 @@ const MODES = [
 const TEASER_COUNT = 6
 
 function Dashboard() {
-  const { hydrated, stats, races, carModel, carColor, underglow } =
-    useProfile()
+  const {
+    hydrated,
+    stats,
+    races,
+    carModel,
+    carColor,
+    underglow,
+    underglowColor,
+  } = useProfile()
   const hasRaced = hydrated && stats.racesPlayed > 0
   const unlockedCount = hydrated
     ? ACHIEVEMENTS.filter((a) => a.unlocked(stats, races)).length
@@ -109,6 +116,7 @@ function Dashboard() {
                   color={carColor}
                   model={carModel}
                   underglow={underglow}
+                  underglowColor={underglowColor}
                   className="race-car-svg race-car-bob w-32 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]"
                 />
               </div>
