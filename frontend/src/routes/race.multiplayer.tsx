@@ -35,5 +35,5 @@ function QuickMatchPage() {
     mp.quickMatch()
   }, [])
 
-  return <MultiplayerRace mp={mp} onLeave={() => navigate({ to: '/play' })} />
+  return <MultiplayerRace mp={mp} onLeave={() => navigate({ to: '/' })} />
 }
