@@ -3,6 +3,7 @@ import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
+import type { TrailVariant } from '#/lib/trails'
 
 export interface Racer {
   id: string
@@ -13,8 +14,10 @@ export interface Racer {
   finished?: boolean
   color?: string
   model?: CarModel
-  // Only ever set for the player's own racer entry — bots/opponents stay in their stock look.
+  // Only ever set for the player's own racer entry — bots/opponents stay in their stock look
+  // (see BOT_TRAILS below for theirs).
   underglow?: boolean
+  trail?: TrailVariant
 }
 
 // Cars start at 12% and stop at 92% (finish band position)
@@ -245,8 +248,9 @@ function SponsorStrip() {
 
 // ─── Trail effects ──────────────────────────────────────────────────
 
-const BOT_TRAILS = ['orbs', 'smoke', 'spark'] as const
-type TrailVariant = 'nitro' | (typeof BOT_TRAILS)[number]
+// Bots always cycle through these three regardless of what the player has unlocked (see
+// #/lib/trails) — only the player's own trail choice is gated.
+const BOT_TRAILS: Array<TrailVariant> = ['orbs', 'smoke', 'spark']
 
 function Trail({ variant }: { variant: TrailVariant }) {
   if (variant === 'orbs') {
@@ -440,7 +444,7 @@ export default function RaceTrack({
         <div className="race-curb" aria-hidden="true" />
         {racers.map((racer, index) => {
           const trailVariant: TrailVariant = racer.isYou
-            ? 'nitro'
+            ? (racer.trail ?? 'nitro')
             : BOT_TRAILS[index % BOT_TRAILS.length]
           return (
             <Lane key={racer.id} racer={racer} trailVariant={trailVariant} />

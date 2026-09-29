@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Medal, RotateCcw, Sparkles, Trophy } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Crosshair, Medal, RotateCcw, Sparkles, Trophy, Zap } from 'lucide-react'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
@@ -7,12 +7,29 @@ import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
 import { ordinal } from '#/lib/utils'
+import { isAchievementUnlocked } from '#/lib/achievements'
+import { POWERUPS } from '#/lib/powerups'
 import RaceTrack from '#/components/typing/RaceTrack'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
 import type { Racer } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
+import type { PowerupKind } from '#/lib/powerups'
+
+const POWERUP_ICONS: Record<PowerupKind, typeof Zap> = {
+  boost: Zap,
+  shell: Crosshair,
+}
+
+// Words between spawns is randomized in this range so pickups don't land on a predictable
+// cadence — re-rolled every time one is granted or used.
+const SPAWN_EVERY_WORDS: [number, number] = [3, 6]
+
+function randomSpawnGap() {
+  const [min, max] = SPAWN_EVERY_WORDS
+  return min + Math.floor(Math.random() * (max - min + 1))
+}
 
 const MEDAL_COLORS: Record<number, string> = {
   1: '#facc15',
@@ -48,13 +65,14 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     progress,
     errorSeq,
     handleInputChange,
+    skipWord,
     start,
     reset,
   } = useTypingRace()
 
   const profile = useProfile()
 
-  const bots = useBotRacers({
+  const { bots, hitBot } = useBotRacers({
     raceKey: text,
     started,
     startedAt,
@@ -111,6 +129,86 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     return () => clearTimeout(t)
   }, [phase, countdown, start])
 
+  // ── Powerups ─────────────────────────────────────────────────────
+  // Spawns roughly every 3-6 words typed (see randomSpawnGap) while the player holds none —
+  // ties the cadence to actual typing progress instead of a wall-clock timer, so slower typists
+  // don't get flooded and faster ones don't wait around.
+  const [powerup, setPowerup] = useState<PowerupKind | null>(null)
+  const [lastEvent, setLastEvent] = useState<string | null>(null)
+  const nextSpawnAtRef = useRef(randomSpawnGap())
+  const eventTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    setPowerup(null)
+    setLastEvent(null)
+    nextSpawnAtRef.current = randomSpawnGap()
+  }, [text])
+
+  // Shell only spawns once its achievement is unlocked (see #/lib/powerups) — boost has no
+  // requiresAchievement, so it's always in the pool.
+  const shellDef = POWERUPS.find((p) => p.id === 'shell')
+  const shellUnlocked =
+    profile.hydrated &&
+    (!shellDef?.requiresAchievement ||
+      isAchievementUnlocked(
+        shellDef.requiresAchievement,
+        profile.stats,
+        profile.races,
+      ))
+
+  useEffect(() => {
+    if (finished || powerup || activeWordIndex < nextSpawnAtRef.current) return
+    const pool: Array<PowerupKind> = shellUnlocked
+      ? ['boost', 'shell']
+      : ['boost']
+    setPowerup(pool[Math.floor(Math.random() * pool.length)])
+    nextSpawnAtRef.current = activeWordIndex + randomSpawnGap()
+  }, [activeWordIndex, finished, powerup, shellUnlocked])
+
+  useEffect(() => {
+    return () => {
+      if (eventTimeoutRef.current) clearTimeout(eventTimeoutRef.current)
+    }
+  }, [])
+
+  // Boost force-commits the current word (see useTypingRace's skipWord). Shell targets whoever's
+  // currently leading among the bots — pulling yourself back would be pointless — ignoring any
+  // that have already finished, since there's nothing left to pull back.
+  const usePowerup = useCallback(() => {
+    if (!powerup || finished || locked) return
+    if (powerup === 'boost') {
+      skipWord()
+      setLastEvent('Boost!')
+    } else {
+      const contenders = bots.filter((b) => !b.finished)
+      if (contenders.length > 0) {
+        const leader = contenders.reduce((a, b) =>
+          b.progress > a.progress ? b : a,
+        )
+        hitBot(leader.id)
+        setLastEvent(`Shelled ${leader.name}!`)
+      }
+    }
+    setPowerup(null)
+    if (eventTimeoutRef.current) clearTimeout(eventTimeoutRef.current)
+    eventTimeoutRef.current = setTimeout(() => setLastEvent(null), 1800)
+  }, [powerup, finished, locked, skipWord, bots, hitBot])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      // Always swallow Tab during an active race, whether or not a powerup happens to be
+      // available right now — letting its default focus-shift through even once yanks focus
+      // off the hidden typing input, which then dumps subsequent keystrokes onto whatever
+      // element Tab landed on instead.
+      if (event.key !== 'Tab' || locked || finished) return
+      event.preventDefault()
+      if (powerup) usePowerup()
+      inputRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [powerup, locked, finished, usePowerup])
+
   const racers: Array<Racer> = [
     {
       id: 'you',
@@ -122,6 +220,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       color: profile.carColor,
       model: profile.carModel,
       underglow: profile.underglow,
+      trail: profile.trail,
     },
     ...bots.map((bot) => ({
       id: bot.id,
@@ -196,18 +295,45 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
           inputRef={inputRef}
           className="shrink-0"
           overlay={
-            finished && (
-              <div className="countdown-overlay">
-                <Button
-                  onClick={reset}
-                  size="lg"
-                  className="pointer-events-auto"
-                >
-                  <RotateCcw />
-                  Race Again
-                </Button>
-              </div>
-            )
+            <>
+              {finished && (
+                <div className="countdown-overlay">
+                  <Button
+                    onClick={reset}
+                    size="lg"
+                    className="pointer-events-auto"
+                  >
+                    <RotateCcw />
+                    Race Again
+                  </Button>
+                </div>
+              )}
+              {!finished && (powerup || lastEvent) && (
+                <div className="pointer-events-none absolute top-3 right-3 z-10 flex flex-col items-end gap-1.5">
+                  {powerup && (
+                    <button
+                      type="button"
+                      onClick={usePowerup}
+                      className="glass-chip pointer-events-auto flex animate-pulse items-center gap-1.5 rounded-full border-primary px-3 py-1.5 text-xs font-bold"
+                    >
+                      {(() => {
+                        const Icon = POWERUP_ICONS[powerup]
+                        return <Icon className="size-3.5 text-primary" />
+                      })()}
+                      {POWERUPS.find((p) => p.id === powerup)?.label} ready
+                      <kbd className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[0.6rem] font-semibold text-muted-foreground">
+                        Tab
+                      </kbd>
+                    </button>
+                  )}
+                  {lastEvent && (
+                    <span className="rounded-full bg-secondary/80 px-3 py-1 text-[0.7rem] font-semibold text-muted-foreground">
+                      {lastEvent}
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
           }
         />
       </CardContent>

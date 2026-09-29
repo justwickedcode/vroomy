@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
 import type { CarModel } from '#/components/typing/CarIcon'
 
@@ -69,6 +69,15 @@ function generateBots(
   }))
 }
 
+export interface BotRacersResult {
+  bots: Array<BotRacer>
+  // Powerup effect (the "tank shell" — see TypingRace.tsx): pulls a bot back roughly one word's
+  // worth of typing time. Bot progress is a pure closed-form function of elapsed time (see the
+  // integral below), not accumulated state, so "pulling back" means rewinding that bot's own
+  // clock rather than subtracting from a stored progress value.
+  hitBot: (id: string) => void
+}
+
 export function useBotRacers({
   raceKey,
   started,
@@ -85,7 +94,7 @@ export function useBotRacers({
   playerFinished: boolean
   wpmRange: [number, number]
   count?: number
-}): Array<BotRacer> {
+}): BotRacersResult {
   const configs = useMemo(
     () => generateBots(count, wpmRange),
     [raceKey, count, wpmRange[0], wpmRange[1]],
@@ -96,11 +105,27 @@ export function useBotRacers({
   // recalculating forever and a "finished" car's number would keep
   // drifting even though it's sitting still at the finish line.
   const finishedRef = useRef<Record<string, number | undefined>>({})
+  // Accumulated time penalty per bot, in ms — see BotRacersResult.hitBot above.
+  const penaltyRef = useRef<Record<string, number>>({})
 
   useEffect(() => {
     setNow(null)
     finishedRef.current = {}
+    penaltyRef.current = {}
   }, [raceKey])
+
+  const hitBot = useCallback(
+    (id: string) => {
+      if (finishedRef.current[id] !== undefined) return
+      const bot = configs.find((b) => b.id === id)
+      if (!bot) return
+      // Time to type one 5-char "word" at this bot's own base wpm — wpm is already defined as
+      // 5-char words per minute, so one word takes 60000 / wpm ms.
+      const penaltyMs = 60000 / bot.baseWpm
+      penaltyRef.current[id] = (penaltyRef.current[id] ?? 0) + penaltyMs
+    },
+    [configs],
+  )
 
   useEffect(() => {
     if (!started || playerFinished) return
@@ -108,7 +133,7 @@ export function useBotRacers({
     return () => clearInterval(id)
   }, [started, playerFinished])
 
-  return configs.map((bot) => {
+  const bots = configs.map((bot) => {
     const frozenWpm = finishedRef.current[bot.id]
     if (frozenWpm !== undefined) {
       return {
@@ -133,7 +158,12 @@ export function useBotRacers({
         finished: false,
       }
     }
-    const elapsedMs = now - startedAt
+    // Clamped to 0 so a shell landing right at the start can't rewind a bot to "before the
+    // race began" and produce a negative elapsed time.
+    const elapsedMs = Math.max(
+      0,
+      now - startedAt - (penaltyRef.current[bot.id] ?? 0),
+    )
     const wobble =
       1 + WOBBLE_AMPLITUDE * Math.sin(elapsedMs / WOBBLE_PERIOD_MS + bot.seed)
     const effectiveWpm = Math.max(0, bot.baseWpm * wobble)
@@ -164,4 +194,6 @@ export function useBotRacers({
       finished,
     }
   })
+
+  return { bots, hitBot }
 }

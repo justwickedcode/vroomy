@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
+import type { TrailVariant } from '#/lib/trails'
 
 const STORAGE_KEY = 'vroomy:profile:v1'
 const MAX_RACE_HISTORY = 50
@@ -17,6 +18,7 @@ export const CAR_COLORS = [
 
 const DEFAULT_COLOR: string = CAR_COLORS[0].value
 const DEFAULT_MODEL: CarModel = 'sport'
+const DEFAULT_TRAIL: TrailVariant = 'nitro'
 
 export interface RaceRecord {
   id: string
@@ -33,6 +35,9 @@ interface Profile {
   // Underglow is free to toggle, but only once unlocked (see #/components/typing/CarIcon's
   // UNDERGLOW_ACHIEVEMENT) — its color always matches carColor rather than a separate palette.
   underglow: boolean
+  // Which trail effect (see #/lib/trails) renders behind the player's own car in a race —
+  // same achievement-unlock pattern as the model and underglow.
+  trail: TrailVariant
   races: Array<RaceRecord>
   // Lifetime race count, tracked separately from races.length: races itself is capped to
   // MAX_RACE_HISTORY so storage doesn't grow forever, which means races.length alone
@@ -46,6 +51,7 @@ const DEFAULT_PROFILE: Profile = {
   carModel: DEFAULT_MODEL,
   carColor: DEFAULT_COLOR,
   underglow: false,
+  trail: DEFAULT_TRAIL,
   races: [],
   racesPlayedTotal: 0,
 }
@@ -61,6 +67,7 @@ function readProfile(): Profile {
       carModel: parsed.carModel ?? DEFAULT_MODEL,
       carColor: parsed.carColor ?? DEFAULT_COLOR,
       underglow: parsed.underglow ?? false,
+      trail: parsed.trail ?? DEFAULT_TRAIL,
       races,
       // A profile saved before racesPlayedTotal existed has no lifetime count on record —
       // races.length is the best available floor for it (never an overcount, since the total
@@ -155,6 +162,14 @@ export function useProfile() {
     })
   }, [])
 
+  const setTrail = useCallback((trail: TrailVariant) => {
+    setProfile((prev) => {
+      const next = { ...prev, trail }
+      writeProfile(next)
+      return next
+    })
+  }, [])
+
   const addRace = useCallback((race: Omit<RaceRecord, 'id' | 'date'>) => {
     setProfile((prev) => {
       const record: RaceRecord = {
@@ -178,11 +193,13 @@ export function useProfile() {
     carModel: profile.carModel,
     carColor: profile.carColor,
     underglow: profile.underglow,
+    trail: profile.trail,
     races: profile.races,
     stats: computeStats(profile.races, profile.racesPlayedTotal),
     setCarModel,
     setCarColor,
     setUnderglow,
+    setTrail,
     addRace,
   }
 }
