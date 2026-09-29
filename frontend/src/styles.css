@@ -1344,7 +1344,9 @@ body::before {
 }
 
 .spark-bolt {
-  filter: drop-shadow(0 0 5px rgb(56 189 248 / 95%));
+  /* A small blur radius on purpose — stacked this close, anything bigger merges the three bolts'
+     glow into one solid haze that reads as a background panel behind them, not three bolts. */
+  filter: drop-shadow(0 0 1.5px rgb(56 189 248 / 90%));
   animation: bolt-crackle 260ms steps(1) infinite;
 }
 
