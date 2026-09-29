@@ -6,22 +6,9 @@ import type { CSSProperties } from 'react'
 // need to change.
 export type CarModel = string
 
-export type VehicleCategory =
-  | 'Cars'
-  | 'Fleet'
-  | 'Pixel'
-  | 'Aircraft'
-  | 'Heavy'
-  | 'Street'
+export type VehicleCategory = 'Cars' | 'Fleet' | 'Pixel'
 
-export const VEHICLE_CATEGORIES: Array<VehicleCategory> = [
-  'Cars',
-  'Fleet',
-  'Pixel',
-  'Aircraft',
-  'Heavy',
-  'Street',
-]
+export const VEHICLE_CATEGORIES: Array<VehicleCategory> = ['Cars', 'Fleet', 'Pixel']
 
 interface Vehicle {
   id: CarModel
@@ -92,6 +79,13 @@ export const VEHICLES: Array<Vehicle> = [
     category: 'Cars',
     aspect: 99 / 54,
     requiresAchievement: 'Century club',
+  },
+  {
+    id: 'lambo',
+    label: 'Lambo',
+    category: 'Cars',
+    aspect: 260 / 130,
+    requiresAchievement: 'Daily driver',
   },
   // Fleet — service/utility vehicles, same pack. Taxi is this category's free starter.
   { id: 'taxi', label: 'Taxi', category: 'Fleet', aspect: 99 / 51 },
@@ -184,45 +178,6 @@ export const VEHICLES: Array<Vehicle> = [
     category: 'Pixel',
     aspect: 239 / 132,
   },
-  // Aircraft — a genuine change of medium (you're racing a helicopter down the track). From
-  // Turbo Developement Team's "2D Top-Down Vehicles Assets" (free for personal/commercial use,
-  // credit appreciated) — see the Heavy/Street categories below for the rest of that pack.
-  { id: 'helicopter', label: 'Helicopter', category: 'Aircraft', aspect: 260 / 151 },
-  // Heavy — big, slow, deliberate machines. Same pack as Aircraft/Street, flat-vector style
-  // rather than these packs' painterly/pixel look, so it gets its own categories instead of
-  // blending in (same reasoning as Pixel getting its own category next to Cars/Fleet).
-  { id: 'tank', label: 'Tank', category: 'Heavy', aspect: 260 / 196 },
-  {
-    id: 'excavator',
-    label: 'Excavator',
-    category: 'Heavy',
-    aspect: 260 / 114,
-    requiresAchievement: 'Marathoner',
-  },
-  {
-    id: 'dump-truck',
-    label: 'Dump Truck',
-    category: 'Heavy',
-    aspect: 260 / 200,
-    requiresAchievement: 'Road warrior',
-  },
-  // Street — fast personal vehicles, same pack/style as Heavy.
-  { id: 'street-racer', label: 'Street Racer', category: 'Street', aspect: 260 / 169 },
-  {
-    id: 'lambo',
-    label: 'Lambo',
-    category: 'Street',
-    aspect: 260 / 130,
-    requiresAchievement: 'Daily driver',
-  },
-  {
-    id: 'bike-touring',
-    label: 'Touring Bike',
-    category: 'Street',
-    aspect: 260 / 138,
-    requiresAchievement: 'Long hauler',
-  },
-  { id: 'bike-sport', label: 'Sport Bike', category: 'Street', aspect: 260 / 189 },
 ]
 
 // The achievement (see #/lib/achievements) that unlocks underglow — matches its "neon glow"
@@ -264,8 +219,12 @@ export default function CarIcon({
   underglowColor?: string
   style?: CSSProperties
 }) {
-  const src = spriteSrc(model)
-  const rawAspect = (VEHICLE_BY_ID[model] ?? VEHICLES[0]).aspect
+  // Falls back to the roster's first vehicle when `model` doesn't match a current entry — e.g.
+  // a profile still pointing at a model that's since been removed from the catalog — so this
+  // renders a valid sprite instead of a broken image.
+  const vehicle = VEHICLE_BY_ID[model] ?? VEHICLES[0]
+  const src = spriteSrc(vehicle.id)
+  const rawAspect = vehicle.aspect
   // Clamped, not used as-is: a caller sizing this by a fixed width (every picker card, the
   // garage/dashboard preview) derives height from this aspect ratio, so an unusually
   // portrait-or-narrow sprite — the gunship's wingspan becomes its vertical dimension once
