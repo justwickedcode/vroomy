@@ -1,78 +1,109 @@
-import { UPGRADES } from '#/lib/upgrades'
-import type { LiveryId } from '#/lib/liveries'
-import type { UpgradeSlot } from '#/lib/upgrades'
 import type { CSSProperties } from 'react'
 
-export type CarModel =
-  | 'sport'
-  | 'muscle'
-  | 'classic'
-  | 'super'
-  | 'offroad'
-  | 'drift'
-  | 'rally'
+// Was a fixed 7-entry union back when there were only 7 hand-picked models; now the roster is a
+// data-driven catalog (see VEHICLES below) so this is just `string`. Kept as a distinct type name
+// (rather than switching every consumer to `string` directly) purely so call sites/imports don't
+// need to change.
+export type CarModel = string
 
-export const CAR_MODELS: Array<{ id: CarModel; label: string }> = [
-  { id: 'sport', label: 'Sport' },
-  { id: 'muscle', label: 'Muscle' },
-  { id: 'classic', label: 'Classic' },
-  { id: 'super', label: 'Super' },
-  { id: 'offroad', label: 'Offroad' },
-  { id: 'drift', label: 'Drift' },
-  { id: 'rally', label: 'Rally' },
-]
+interface Vehicle {
+  id: CarModel
+  label: string
+  // Sprite's own native pixel aspect ratio (width:height) — used so the <img> never gets
+  // stretched off-model inside a consumer's aspect-[8/5] wrapper, which was tuned for the old
+  // hand-drawn SVG's fixed 240x150 viewBox, not these varying real sprite dimensions.
+  aspect: number
+  // Name of the achievement (see #/lib/achievements) that unlocks this model — undefined means
+  // it's available from the start. Checked by the Garage page against the player's own stats.
+  requiresAchievement?: string
+}
 
 // Real top-down car sprites (tokka's "Top Down Cars Sprite Pack 1.0" on itch.io — free for free
 // and commercial projects) rather than hand-drawn SVG bodies: the hand-drawn attempt (see git
 // history) never got past looking like a soft rounded blob at this icon size no matter how the
-// path math was tuned, where these read as actual cars immediately. Cropped to one sprite per
-// model (public/cars/<model>.png), rotated so the nose points right — cars still drive
-// left-to-right along the track, same convention the old side-view art used, so nothing that
-// positions/animates CarIcon (RaceTrack's Lane, the garage preview track, the dashboard hero)
-// needed to change.
-const SPRITES: Record<CarModel, string> = {
-  sport: '/cars/sport.png',
-  muscle: '/cars/muscle.png',
-  classic: '/cars/classic.png',
-  super: '/cars/super.png',
-  offroad: '/cars/offroad.png',
-  drift: '/cars/drift.png',
-  rally: '/cars/rally.png',
-}
+// path math was tuned, where these read as actual cars immediately.
+//
+// A wider "tanks/trucks, way more variety" roster was tried and reverted (see git history) —
+// mixing this pack's realistic painterly shading with a flat-shaded cartoon pack (Kenney's
+// Racing/Tanks packs) read as visibly inconsistent side by side, so the roster stays a single
+// consistent art style rather than max quantity.
+export const VEHICLES: Array<Vehicle> = [
+  // No requiresAchievement — the starter car, always available.
+  { id: 'sport', label: 'Sport', aspect: 95 / 55 },
+  {
+    id: 'muscle',
+    label: 'Muscle',
+    aspect: 89 / 48,
+    requiresAchievement: 'First lap',
+  },
+  {
+    id: 'classic',
+    label: 'Classic',
+    aspect: 102 / 54,
+    requiresAchievement: 'Getting warmed up',
+  },
+  {
+    id: 'offroad',
+    label: 'Offroad',
+    aspect: 94 / 50,
+    requiresAchievement: 'On the podium',
+  },
+  {
+    id: 'drift',
+    label: 'Drift',
+    aspect: 106 / 58,
+    requiresAchievement: 'Speed demon',
+  },
+  {
+    id: 'rally',
+    label: 'Rally',
+    aspect: 96 / 51,
+    requiresAchievement: 'Checkered flag',
+  },
+  {
+    id: 'super',
+    label: 'Super',
+    aspect: 99 / 54,
+    requiresAchievement: 'Century club',
+  },
+]
 
-// Each sprite's own native pixel aspect ratio (width:height) — used so the <img> never gets
-// stretched off-model inside a consumer's aspect-[8/5] wrapper, which was tuned for the old
-// hand-drawn SVG's fixed 240x150 viewBox, not these varying real sprite dimensions.
-const ASPECT: Record<CarModel, number> = {
-  sport: 95 / 55,
-  muscle: 89 / 48,
-  classic: 102 / 54,
-  super: 99 / 54,
-  offroad: 94 / 50,
-  drift: 106 / 58,
-  rally: 96 / 51,
+// The achievement (see #/lib/achievements) that unlocks underglow — matches its "neon glow"
+// theming rather than a milestone tied to a specific model.
+export const UNDERGLOW_ACHIEVEMENT = 'Nitro boost'
+
+const VEHICLE_BY_ID: Record<string, Vehicle | undefined> = Object.fromEntries(
+  VEHICLES.map((v) => [v.id, v]),
+)
+
+// Back-compat alias: every consumer that just wants {id, label} pairs (bot/opponent model
+// cycling, the old flat picker) keeps working against this unchanged.
+export const CAR_MODELS: Array<{ id: CarModel; label: string }> = VEHICLES.map(
+  ({ id, label }) => ({ id, label }),
+)
+
+function spriteSrc(model: CarModel): string {
+  return `/cars/${model}.png`
 }
 
 export default function CarIcon({
   className,
   color,
   model = 'sport',
-  livery = 'solid',
-  upgrades,
+  underglow = false,
   style,
 }: {
   className?: string
   color: string
   model?: CarModel
-  livery?: LiveryId
-  upgrades?: Partial<Record<UpgradeSlot, string>>
+  // On/off only — when equipped, the glow always matches the car's own paint color rather than
+  // a separate palette, so every one of the 8 paint colors gets a matching glow for free instead
+  // of picking from a handful of preset glow colors.
+  underglow?: boolean
   style?: CSSProperties
 }) {
-  const src = SPRITES[model]
-  const aspect = ASPECT[model]
-  const underglowColor = upgrades?.underglow
-    ? UPGRADES.find((u) => u.id === upgrades.underglow)?.color
-    : undefined
+  const src = spriteSrc(model)
+  const aspect = (VEHICLE_BY_ID[model] ?? VEHICLES[0]).aspect
 
   const maskStyle: CSSProperties = {
     position: 'absolute',
@@ -99,14 +130,14 @@ export default function CarIcon({
         ...style,
       }}
     >
-      {underglowColor && (
+      {underglow && (
         <div
           aria-hidden="true"
           style={{
             position: 'absolute',
             inset: '-18%',
             borderRadius: '9999px',
-            background: `radial-gradient(ellipse at center, ${underglowColor}88 0%, transparent 70%)`,
+            background: `radial-gradient(ellipse at center, ${color}88 0%, transparent 70%)`,
           }}
         />
       )}
@@ -136,82 +167,6 @@ export default function CarIcon({
           mixBlendMode: 'hue',
         }}
       />
-      {livery !== 'solid' && (
-        <div aria-hidden="true" style={maskStyle}>
-          <LiveryPattern livery={livery} />
-        </div>
-      )}
     </div>
   )
-}
-
-// Rendered inside a div masked to the sprite's own alpha shape (see above), so a livery pattern
-// always stays confined to whichever car is currently selected without needing per-model outline
-// data the way the old SVG clip-path approach did.
-function LiveryPattern({ livery }: { livery: LiveryId }) {
-  switch (livery) {
-    case 'stripes':
-      return (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background:
-              'repeating-linear-gradient(90deg, transparent 0 40%, #f5f5f5e0 40% 48%, transparent 48% 52%, #f5f5f5e0 52% 60%, transparent 60% 100%)',
-          }}
-        />
-      )
-    case 'checkered':
-      return (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            opacity: 0.55,
-            backgroundImage:
-              'linear-gradient(45deg, #111 25%, transparent 25%, transparent 75%, #111 75%, #111), linear-gradient(45deg, #111 25%, transparent 25%, transparent 75%, #111 75%, #111)',
-            backgroundSize: '10px 10px',
-            backgroundPosition: '0 0, 5px 5px',
-            backgroundColor: '#f5f5f5',
-          }}
-        />
-      )
-    case 'camo':
-      return (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            opacity: 0.8,
-            background:
-              'radial-gradient(circle at 20% 30%, #3f4a2b 0 18%, transparent 19%), radial-gradient(circle at 70% 20%, #57652f 0 22%, transparent 23%), radial-gradient(circle at 30% 75%, #2e3a22 0 20%, transparent 21%), radial-gradient(circle at 80% 70%, #4a5730 0 18%, transparent 19%)',
-          }}
-        />
-      )
-    case 'carbon':
-      return (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            opacity: 0.85,
-            backgroundImage:
-              'repeating-linear-gradient(45deg, #15171c 0 4px, #22242b 4px 8px)',
-          }}
-        />
-      )
-    case 'fade':
-      return (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background:
-              'linear-gradient(90deg, #050608 0%, #050608dd 45%, transparent 70%)',
-          }}
-        />
-      )
-    default:
-      return null
-  }
 }

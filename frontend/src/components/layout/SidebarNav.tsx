@@ -4,23 +4,22 @@ import {
   Car,
   Keyboard,
   LineChart,
-  Palette,
   PlayCircle,
   Trophy,
   UserPlus,
-  Wrench,
 } from 'lucide-react'
 import { Badge } from '#/components/ui/badge'
 import { cn } from '#/lib/utils'
 
-// Grouped like lichess's sidebar rather than one flat list of 12 links —
-// Guide/Stats/Achievements sit together as "about your progress", the
-// Garage group covers every car-cosmetic destination (including the two
-// still-stub ones), Compete is the social/comparison cluster. No "Play" or
-// "Dashboard" row: the wordmark itself is the "/" link, and every mode
-// (Solo/Multiplayer/Friends/Daily challenge) is a tile on that same
-// dashboard rather than its own sidebar entry — a separate "Play" row here
-// would just be a second link to the exact same place as the wordmark.
+// Grouped like lichess's sidebar rather than one flat list of links —
+// Guide/Stats/Achievements sit together as "about your progress", Garage is
+// the one car-cosmetic destination (model, paint, and upgrades all live on
+// that single page — no need for separate tabs per section), Compete
+// is the social/comparison cluster. No "Play" or "Dashboard" row: the
+// wordmark itself is the "/" link, and every mode (Solo/Multiplayer/Friends/
+// Daily challenge) is a tile on that same dashboard rather than its own
+// sidebar entry — a separate "Play" row here would just be a second link to
+// the exact same place as the wordmark.
 export const NAV_GROUPS = [
   {
     label: 'Improve',
@@ -32,16 +31,7 @@ export const NAV_GROUPS = [
   },
   {
     label: 'Garage',
-    items: [
-      { to: '/garage', label: 'Garage', icon: Car, soon: false },
-      {
-        to: '/garage-upgrades',
-        label: 'Upgrades',
-        icon: Wrench,
-        soon: true,
-      },
-      { to: '/themes', label: 'Themes', icon: Palette, soon: true },
-    ],
+    items: [{ to: '/garage', label: 'Garage', icon: Car, soon: false }],
   },
   {
     label: 'Compete',

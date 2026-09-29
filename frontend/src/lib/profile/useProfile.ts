@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { UPGRADES, creditsForRace } from '#/lib/upgrades'
 import type { CarModel } from '#/components/typing/CarIcon'
-import type { LiveryId } from '#/lib/liveries'
-import type { UpgradeSlot } from '#/lib/upgrades'
 
 const STORAGE_KEY = 'vroomy:profile:v1'
 const MAX_RACE_HISTORY = 50
@@ -20,7 +17,6 @@ export const CAR_COLORS = [
 
 const DEFAULT_COLOR: string = CAR_COLORS[0].value
 const DEFAULT_MODEL: CarModel = 'sport'
-const DEFAULT_LIVERY: LiveryId = 'solid'
 
 export interface RaceRecord {
   id: string
@@ -34,9 +30,9 @@ export interface RaceRecord {
 interface Profile {
   carModel: CarModel
   carColor: string
-  // 'solid' (the default) is exactly today's plain-paint look — a profile saved before liveries
-  // existed needs no migration, it just reads as 'solid'.
-  carLivery: LiveryId
+  // Underglow is free to toggle, but only once unlocked (see #/components/typing/CarIcon's
+  // UNDERGLOW_ACHIEVEMENT) — its color always matches carColor rather than a separate palette.
+  underglow: boolean
   races: Array<RaceRecord>
   // Lifetime race count, tracked separately from races.length: races itself is capped to
   // MAX_RACE_HISTORY so storage doesn't grow forever, which means races.length alone
@@ -44,24 +40,14 @@ interface Profile {
   // pass that cap — and any achievement milestone past MAX_RACE_HISTORY would be silently
   // unreachable if racesPlayed were derived from it.
   racesPlayedTotal: number
-  // Cosmetic-upgrade economy (see #/lib/upgrades): credits earned per race, which of them have
-  // been bought, and which owned option is currently equipped in each slot. A slot absent from
-  // equippedUpgrades (or an old profile with no upgrade data at all) just means the stock look
-  // for that slot — no migration needed there either.
-  credits: number
-  ownedUpgrades: Array<string>
-  equippedUpgrades: Partial<Record<UpgradeSlot, string>>
 }
 
 const DEFAULT_PROFILE: Profile = {
   carModel: DEFAULT_MODEL,
   carColor: DEFAULT_COLOR,
-  carLivery: DEFAULT_LIVERY,
+  underglow: false,
   races: [],
   racesPlayedTotal: 0,
-  credits: 0,
-  ownedUpgrades: [],
-  equippedUpgrades: {},
 }
 
 function readProfile(): Profile {
@@ -74,20 +60,12 @@ function readProfile(): Profile {
     return {
       carModel: parsed.carModel ?? DEFAULT_MODEL,
       carColor: parsed.carColor ?? DEFAULT_COLOR,
-      carLivery: parsed.carLivery ?? DEFAULT_LIVERY,
+      underglow: parsed.underglow ?? false,
       races,
       // A profile saved before racesPlayedTotal existed has no lifetime count on record —
       // races.length is the best available floor for it (never an overcount, since the total
       // can only be >= how many are currently retained).
       racesPlayedTotal: parsed.racesPlayedTotal ?? races.length,
-      credits: parsed.credits ?? 0,
-      ownedUpgrades: Array.isArray(parsed.ownedUpgrades)
-        ? parsed.ownedUpgrades
-        : [],
-      equippedUpgrades:
-        parsed.equippedUpgrades && typeof parsed.equippedUpgrades === 'object'
-          ? parsed.equippedUpgrades
-          : {},
     }
   } catch {
     return DEFAULT_PROFILE
@@ -169,9 +147,9 @@ export function useProfile() {
     })
   }, [])
 
-  const setCarLivery = useCallback((carLivery: LiveryId) => {
+  const setUnderglow = useCallback((underglow: boolean) => {
     setProfile((prev) => {
-      const next = { ...prev, carLivery }
+      const next = { ...prev, underglow }
       writeProfile(next)
       return next
     })
@@ -189,71 +167,22 @@ export function useProfile() {
         ...prev,
         races,
         racesPlayedTotal: prev.racesPlayedTotal + 1,
-        credits: prev.credits + creditsForRace(race.wpm, race.placement),
       }
       writeProfile(next)
       return next
     })
   }, [])
-
-  // Buys and immediately equips an upgrade — refuses silently (no state change) if it's already
-  // owned or the player can't afford it, so callers don't need their own affordability check
-  // before calling this; the shop UI just disables the button using the same stats it already
-  // has (credits, ownedUpgrades).
-  const buyUpgrade = useCallback((upgradeId: string) => {
-    setProfile((prev) => {
-      const option = UPGRADES.find((u) => u.id === upgradeId)
-      if (!option) return prev
-      if (prev.ownedUpgrades.includes(upgradeId)) return prev
-      if (prev.credits < option.cost) return prev
-      const next = {
-        ...prev,
-        credits: prev.credits - option.cost,
-        ownedUpgrades: [...prev.ownedUpgrades, upgradeId],
-        equippedUpgrades: {
-          ...prev.equippedUpgrades,
-          [option.slot]: upgradeId,
-        },
-      }
-      writeProfile(next)
-      return next
-    })
-  }, [])
-
-  // Swaps which already-owned option (if any) is active in a slot — pass null to unequip
-  // (back to that slot's stock look) rather than trading it in for a different owned tier.
-  const equipUpgrade = useCallback(
-    (slot: UpgradeSlot, upgradeId: string | null) => {
-      setProfile((prev) => {
-        if (upgradeId !== null && !prev.ownedUpgrades.includes(upgradeId)) {
-          return prev
-        }
-        const equippedUpgrades = { ...prev.equippedUpgrades }
-        if (upgradeId === null) delete equippedUpgrades[slot]
-        else equippedUpgrades[slot] = upgradeId
-        const next = { ...prev, equippedUpgrades }
-        writeProfile(next)
-        return next
-      })
-    },
-    [],
-  )
 
   return {
     hydrated,
     carModel: profile.carModel,
     carColor: profile.carColor,
-    carLivery: profile.carLivery,
+    underglow: profile.underglow,
     races: profile.races,
     stats: computeStats(profile.races, profile.racesPlayedTotal),
-    credits: profile.credits,
-    ownedUpgrades: profile.ownedUpgrades,
-    equippedUpgrades: profile.equippedUpgrades,
     setCarModel,
     setCarColor,
-    setCarLivery,
+    setUnderglow,
     addRace,
-    buyUpgrade,
-    equipUpgrade,
   }
 }
