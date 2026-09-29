@@ -3,6 +3,8 @@ import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
+import type { LiveryId } from '#/lib/liveries'
+import type { UpgradeSlot } from '#/lib/upgrades'
 
 export interface Racer {
   id: string
@@ -13,6 +15,9 @@ export interface Racer {
   finished?: boolean
   color?: string
   model?: CarModel
+  // Only ever set for the player's own racer entry — bots/opponents stay in their stock look.
+  livery?: LiveryId
+  upgrades?: Partial<Record<UpgradeSlot, string>>
 }
 
 // Cars start at 12% and stop at 92% (finish band position)
@@ -306,8 +311,10 @@ function Lane({
         <CarIcon
           color={color}
           model={racer.model ?? 'sport'}
+          livery={racer.livery}
+          upgrades={racer.upgrades}
           className={cn(
-            'race-car-svg aspect-[8/5] w-20 drop-shadow-[0_4px_8px_rgb(0_0_0/0.55)]',
+            'race-car-svg w-20 drop-shadow-[0_4px_8px_rgb(0_0_0/0.55)]',
             racing && 'race-car-bob',
           )}
         />

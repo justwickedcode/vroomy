@@ -9,7 +9,14 @@ import type { CarModel } from '#/components/typing/CarIcon'
 export const Route = createFileRoute('/garage')({ component: GaragePage })
 
 function GaragePage() {
-  const { carModel, carColor, setCarModel, setCarColor } = useProfile()
+  const {
+    carModel,
+    carColor,
+    carLivery,
+    equippedUpgrades,
+    setCarModel,
+    setCarColor,
+  } = useProfile()
 
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
@@ -38,7 +45,9 @@ function GaragePage() {
                 <CarIcon
                   color={carColor}
                   model={carModel}
-                  className="race-car-svg race-car-bob aspect-[8/5] w-36 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]"
+                  livery={carLivery}
+                  upgrades={equippedUpgrades}
+                  className="race-car-svg race-car-bob w-36 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]"
                 />
               </div>
               <span className="race-flag-checkered" aria-hidden="true" />
@@ -119,7 +128,7 @@ function ModelOption({
         selected && 'border-primary bg-primary/12',
       )}
     >
-      <CarIcon color={color} model={id} className="aspect-[8/5] w-24" />
+      <CarIcon color={color} model={id} className="w-24" />
       <span className="text-sm font-bold">{label}</span>
     </button>
   )
