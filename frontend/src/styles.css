@@ -1337,8 +1337,8 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 7.6rem;
-  height: 2.8rem;
+  width: 3.4rem;
+  height: 3.8rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
