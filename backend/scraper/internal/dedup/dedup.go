@@ -192,12 +192,14 @@ var unwritableCharAllowlist = map[rune]bool{
 	'†': true, '‡': true, // dagger/double-dagger — historical footnote convention, not a citation leak itself
 	'§': true, '¶': true, // section/pilcrow — legal and literary text sometimes quotes these directly
 
-	// '\n' is Unicode category Cc (control) — genuinely unwritable in general, but a very
-	// specific, deliberate exception here: the parser (see preserveLineBreaks/normalizeWhitespace
-	// in internal/parser) now intentionally preserves a real line break for poem-shaped quotes
-	// instead of destroying it, exactly so it can eventually be typed (Enter) in a race — without
-	// this exception every multi-line quote that fix produces would immediately be flagged
-	// unsuitable by the check the fix exists to make usable in the first place.
+	// '\n' is Unicode category Cc (control) — genuinely unwritable in general, but allowed here
+	// for a different reason than the others in this list: the parser (see
+	// preserveLineBreaks/normalizeWhitespace in internal/parser) intentionally preserves a real
+	// line break for poem-shaped quotes so the stored text stays correctly formatted, not
+	// destroyed. GameSuitability still flags any quote containing one — see the dedicated
+	// poem_formatting check below — just under its own specific reason rather than the generic
+	// unwritable_characters one, since a line break isn't leaked/broken data the way the other
+	// runes in this category are.
 	'\n': true,
 }
 
@@ -212,8 +214,9 @@ func isUnwritableRune(r rune) bool {
 }
 
 // GameSuitability reports whether text is real, correctly-sourced content that isn't a good fit
-// for a typing-race game specifically — too short, or containing markup/characters that leaked
-// through extraction rather than being part of the actual quote. Every rule here is calibrated
+// for a typing-race game specifically — too short, poem-shaped (a real line break, correctly
+// stored but not something the inline-only typing race presents), or containing markup/characters
+// that leaked through extraction rather than being part of the actual quote. Every rule here is calibrated
 // against the live corpus (see PRODUCTION.md / the commit introducing this function for the full
 // evidence), not guessed: deliberately does NOT flag brackets in general, ALL-CAPS text, or
 // repeated ellipsis dots — all checked live and found to be dominated by genuine, legitimate
@@ -225,6 +228,13 @@ func GameSuitability(text string) (unsuitable bool, reasons []string) {
 
 	if len(strings.Fields(text)) < MinGameWordCount {
 		reasons = append(reasons, "too_short")
+	}
+
+	// Stored correctly (a real line break, not flattened/fused text — see preserveLineBreaks),
+	// but the typing race only ever presents inline single-line text, so any poem-shaped quote
+	// is excluded from what the game serves rather than adapting the game to it.
+	if strings.Contains(text, "\n") {
+		reasons = append(reasons, "poem_formatting")
 	}
 
 	leakedMarkup := strings.ContainsAny(text, "{~") ||
