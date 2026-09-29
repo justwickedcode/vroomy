@@ -275,13 +275,14 @@ export function Trail({ variant }: { variant: TrailVariant }) {
   }
   if (variant === 'spark') {
     return (
-      <svg className="race-trail-spark" viewBox="0 0 40 26" aria-hidden="true">
-        <polygon
-          points="38,2 18,11 25,12 3,24 16,13 7,13"
-          fill="#7dd3fc"
-          stroke="#e0f2fe"
-          strokeWidth="1"
+      <svg className="race-trail-spark" viewBox="0 0 44 14" aria-hidden="true">
+        <polyline
+          points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
+          fill="none"
+          stroke="#7dd3fc"
+          strokeWidth="3"
           strokeLinejoin="round"
+          strokeLinecap="round"
         />
       </svg>
     )

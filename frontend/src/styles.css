@@ -1294,13 +1294,9 @@ body::before {
   position: absolute;
   top: 50%;
   border-radius: 999px;
-  background: radial-gradient(
-    circle,
-    rgb(226 226 232 / 85%) 0%,
-    rgb(180 180 190 / 55%) 55%,
-    transparent 75%
-  );
-  filter: blur(3px);
+  background: rgb(235 235 240 / 92%);
+  box-shadow: 0 0 14px 4px rgb(235 235 240 / 55%);
+  filter: blur(1.5px);
   animation: smoke-puff-big 900ms ease-out infinite;
 }
 
@@ -1340,8 +1336,8 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.8rem;
-  height: 1.7rem;
+  width: 3.2rem;
+  height: 1rem;
   transform: translateY(-50%);
   pointer-events: none;
   filter: drop-shadow(0 0 6px rgb(56 189 248 / 95%))
@@ -1365,47 +1361,59 @@ body::before {
   }
 }
 
+/* Three horizontal chevrons blasting backward off the bumper, like speed lines — a static
+   bullseye-style ring (the first cut here) read as a plain circle icon, not a trail in motion. */
 .race-trail-bubbles {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 3.8rem;
-  height: 2.4rem;
+  width: 3.6rem;
+  height: 1.8rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .race-trail-bubbles span {
   position: absolute;
-  top: 50%;
-  left: 0;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 999px;
-  border: 2px solid rgb(125 211 252 / 90%);
-  box-shadow: 0 0 10px 1px rgb(125 211 252 / 55%);
-  transform: translate(0, -50%) scale(0.2);
-  animation: shockwave-ring 750ms ease-out infinite;
+  right: 0;
+  width: 1.3rem;
+  height: 0.6rem;
+  background: linear-gradient(90deg, transparent, rgb(125 211 252 / 95%));
+  clip-path: polygon(100% 0%, 0% 50%, 100% 100%, 62% 50%);
+  filter: drop-shadow(0 0 6px rgb(125 211 252 / 75%));
+  animation: shock-streak 500ms ease-out infinite;
+}
+
+.race-trail-bubbles span:nth-child(1) {
+  top: 6%;
+  animation-delay: 0ms;
 }
 
 .race-trail-bubbles span:nth-child(2) {
-  animation-delay: 250ms;
-  border-color: rgb(224 242 254 / 90%);
+  top: 45%;
+  animation-delay: 140ms;
+  background: linear-gradient(90deg, transparent, rgb(224 242 254 / 95%));
+  filter: drop-shadow(0 0 6px rgb(224 242 254 / 75%));
 }
 
 .race-trail-bubbles span:nth-child(3) {
-  animation-delay: 500ms;
-  border-color: rgb(56 189 248 / 90%);
+  top: 80%;
+  animation-delay: 280ms;
+  background: linear-gradient(90deg, transparent, rgb(56 189 248 / 95%));
+  filter: drop-shadow(0 0 6px rgb(56 189 248 / 75%));
 }
 
-@keyframes shockwave-ring {
+@keyframes shock-streak {
   0% {
+    opacity: 0;
+    transform: translateX(8px) scaleX(0.6);
+  }
+  30% {
     opacity: 1;
-    transform: translate(0, -50%) scale(0.2);
   }
   100% {
     opacity: 0;
-    transform: translate(0, -50%) scale(2.6);
+    transform: translateX(-32px) scaleX(1.4);
   }
 }
 
