@@ -1169,14 +1169,15 @@ body::before {
   width: 100%;
   height: 100%;
   transform: translateY(-50%);
-  filter: blur(3px);
+  filter: blur(1.5px);
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in oklab, #ff4d1f 88%, transparent) 30%,
-    color-mix(in oklab, #ffb020 90%, transparent) 65%,
+    #ff4d1f 25%,
+    #ffb020 62%,
     #fff6c8
   );
+  box-shadow: 0 0 12px 2px rgb(255 138 20 / 70%);
   animation: nitro-flicker-big 170ms ease-in-out infinite alternate;
 }
 
@@ -1376,44 +1377,47 @@ body::before {
 .race-trail-bubbles span {
   position: absolute;
   right: 0;
-  width: 1.3rem;
-  height: 0.6rem;
-  background: linear-gradient(90deg, transparent, rgb(125 211 252 / 95%));
-  clip-path: polygon(100% 0%, 0% 50%, 100% 100%, 62% 50%);
-  filter: drop-shadow(0 0 6px rgb(125 211 252 / 75%));
-  animation: shock-streak 500ms ease-out infinite;
+  width: 1.5rem;
+  height: 0.85rem;
+  background: #7dd3fc;
+  clip-path: polygon(100% 0%, 12% 50%, 100% 100%, 52% 50%);
+  filter: drop-shadow(0 0 7px rgb(125 211 252 / 95%))
+    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
+  animation: shock-streak 480ms ease-out infinite;
 }
 
 .race-trail-bubbles span:nth-child(1) {
-  top: 6%;
+  top: 4%;
   animation-delay: 0ms;
 }
 
 .race-trail-bubbles span:nth-child(2) {
-  top: 45%;
+  top: 44%;
   animation-delay: 140ms;
-  background: linear-gradient(90deg, transparent, rgb(224 242 254 / 95%));
-  filter: drop-shadow(0 0 6px rgb(224 242 254 / 75%));
+  background: #f0f9ff;
+  filter: drop-shadow(0 0 7px rgb(240 249 255 / 95%))
+    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
 }
 
 .race-trail-bubbles span:nth-child(3) {
-  top: 80%;
+  top: 82%;
   animation-delay: 280ms;
-  background: linear-gradient(90deg, transparent, rgb(56 189 248 / 95%));
-  filter: drop-shadow(0 0 6px rgb(56 189 248 / 75%));
+  background: #38bdf8;
+  filter: drop-shadow(0 0 7px rgb(56 189 248 / 95%))
+    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
 }
 
 @keyframes shock-streak {
   0% {
-    opacity: 0;
-    transform: translateX(8px) scaleX(0.6);
+    opacity: 1;
+    transform: translateX(8px) scaleX(0.7);
   }
-  30% {
+  70% {
     opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translateX(-32px) scaleX(1.4);
+    transform: translateX(-34px) scaleX(1.7);
   }
 }
 
