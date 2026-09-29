@@ -26,10 +26,13 @@ type TypingQuote struct {
 // RandomTypingQuote returns one random quote matching language and a word-count range
 // [minWords, maxWords], excluding exclude (typically the sentence the client was just shown,
 // so consecutive races don't repeat the same passage back to back) if it's non-empty.
-// word_count is a precomputed, indexed column the scraper (backend/scraper) sets at write
-// time — filtering on it directly is far cheaper than re-splitting every candidate row's text
-// on every request. This API only ever reads the quotes table; it never writes to it and
-// never runs migrations — that's the scraper's job as the schema's owner (see README).
+// word_count and game_unsuitable are precomputed, indexed columns the scraper (backend/scraper)
+// sets at write time — filtering on them directly is far cheaper than re-deriving them from text
+// on every request. game_unsuitable flags real, correctly-sourced quotes that just aren't a good
+// fit for a typing race (too short, unwritable characters, leaked citation/markup — see
+// dedup.GameSuitability) — excluded here, not deleted from the corpus, since some other future
+// consumer might still want them. This API only ever reads the quotes table; it never writes to
+// it and never runs migrations — that's the scraper's job as the schema's owner (see README).
 //
 // Deliberately not "ORDER BY random() LIMIT 1": that forces Postgres to evaluate random() for
 // every row in the filtered candidate set and sort all of them just to keep the top 1 — an
@@ -62,6 +65,7 @@ func RandomTypingQuote(ctx context.Context, pool *pgxpool.Pool, language string,
 	const selectQuery = `SELECT text, author, source, language
          FROM quotes
          WHERE id >= $1 AND language = $2 AND word_count BETWEEN $3 AND $4 AND text != $5
+               AND game_unsuitable = false
          ORDER BY id
          LIMIT 1`
 

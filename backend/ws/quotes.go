@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"math/rand"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,21 +25,49 @@ type TypingQuote struct {
 
 // RandomTypingQuote returns one random quote matching language and a word-count range
 // [minWords, maxWords], excluding exclude (typically the previous race's passage, so
-// consecutive races don't repeat it back to back) if it's non-empty. word_count is a
-// precomputed, indexed column backend/scraper's db.SaveQuote sets at write time — filtering on
-// it directly is far cheaper than re-splitting every candidate row's text on every request.
-// This service, like backend/api, only ever reads the quotes table; it never writes to it and
-// never runs migrations — that's the scraper's job as the schema's owner (see README).
+// consecutive races don't repeat it back to back) if it's non-empty. word_count and
+// game_unsuitable are precomputed, indexed columns backend/scraper's db.SaveQuote sets at write
+// time — filtering on them directly is far cheaper than re-deriving them from text on every
+// request. game_unsuitable flags real, correctly-sourced quotes that just aren't a good fit for
+// a typing race (too short, unwritable characters, leaked citation/markup — see
+// dedup.GameSuitability) — excluded here, not deleted from the corpus. This service, like
+// backend/api, only ever reads the quotes table; it never writes to it and never runs
+// migrations — that's the scraper's job as the schema's owner (see README).
+//
+// Kept in sync with backend/api/quotes.go's own RandomTypingQuote by hand — a separate Go
+// module, can't share this code directly without a larger restructuring. Same id-range-scan
+// approach as that copy, not "ORDER BY random() LIMIT 1": that forces Postgres to evaluate
+// random() for every row in the filtered candidate set and sort all of them just to keep the top
+// 1 — see backend/api/quotes.go's own doc comment for the full reasoning and live measurements
+// (1.5s per call at 752K rows with ORDER BY random(), ~1.25ms with this approach).
 func RandomTypingQuote(ctx context.Context, pool *pgxpool.Pool, language string, minWords, maxWords int, exclude string) (TypingQuote, error) {
-	var q TypingQuote
-	err := pool.QueryRow(ctx,
-		`SELECT text, author, source, language
+	var minID, maxID int64
+	if err := pool.QueryRow(ctx, `SELECT COALESCE(MIN(id), 0), COALESCE(MAX(id), 0) FROM quotes`).Scan(&minID, &maxID); err != nil {
+		return TypingQuote{}, err
+	}
+	if maxID == 0 {
+		return TypingQuote{}, ErrNoEligibleQuote
+	}
+	randomID := minID + rand.Int63n(maxID-minID+1)
+
+	const selectQuery = `SELECT text, author, source, language
          FROM quotes
-         WHERE language = $1 AND word_count BETWEEN $2 AND $3 AND text != $4
-         ORDER BY random()
-         LIMIT 1`,
-		language, minWords, maxWords, exclude,
-	).Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+         WHERE id >= $1 AND language = $2 AND word_count BETWEEN $3 AND $4 AND text != $5
+               AND game_unsuitable = false
+         ORDER BY id
+         LIMIT 1`
+
+	var q TypingQuote
+	err := pool.QueryRow(ctx, selectQuery, randomID, language, minWords, maxWords, exclude).
+		Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Nothing at or after randomID matched — wrap around to the start of the id range
+		// instead of giving up.
+		err = pool.QueryRow(ctx, selectQuery, minID, language, minWords, maxWords, exclude).
+			Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+	}
+
 	if errors.Is(err, pgx.ErrNoRows) {
 		return TypingQuote{}, ErrNoEligibleQuote
 	}
