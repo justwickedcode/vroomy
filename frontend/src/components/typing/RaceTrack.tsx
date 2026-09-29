@@ -269,19 +269,19 @@ export function Trail({ variant }: { variant: TrailVariant }) {
       <span className="race-trail-smoke" aria-hidden="true">
         <span />
         <span />
+        <span />
       </span>
     )
   }
   if (variant === 'spark') {
     return (
-      <svg className="race-trail-spark" viewBox="0 0 32 18" aria-hidden="true">
-        <polyline
-          points="32,4 18,8 24,9 8,14 14,10 0,9"
-          fill="none"
-          stroke="#38bdf8"
-          strokeWidth="2"
+      <svg className="race-trail-spark" viewBox="0 0 40 26" aria-hidden="true">
+        <polygon
+          points="38,2 18,11 25,12 3,24 16,13 7,13"
+          fill="#7dd3fc"
+          stroke="#e0f2fe"
+          strokeWidth="1"
           strokeLinejoin="round"
-          strokeLinecap="round"
         />
       </svg>
     )
@@ -314,7 +314,13 @@ export function Trail({ variant }: { variant: TrailVariant }) {
       </span>
     )
   }
-  return <span className="race-nitro" aria-hidden="true" />
+  return (
+    <span className="race-nitro" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  )
 }
 
 // ─── Finish celebration ─────────────────────────────────────────────

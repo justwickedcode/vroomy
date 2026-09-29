@@ -18,15 +18,15 @@ export interface TrailDef {
 }
 
 export const TRAILS: Array<TrailDef> = [
-  { id: 'nitro', label: 'Nitro flame' },
-  { id: 'orbs', label: 'Twinkle orbs', requiresAchievement: 'Marathoner' },
-  { id: 'smoke', label: 'Smoke puff', requiresAchievement: 'Road warrior' },
+  { id: 'nitro', label: 'Nitro blast' },
+  { id: 'orbs', label: 'Ember trail', requiresAchievement: 'Marathoner' },
+  { id: 'smoke', label: 'Smoke blast', requiresAchievement: 'Road warrior' },
   {
     id: 'spark',
-    label: 'Lightning spark',
+    label: 'Thunderbolt',
     requiresAchievement: 'Daily driver',
   },
-  { id: 'bubbles', label: 'Bubbles', requiresAchievement: 'Odometer' },
-  { id: 'stars', label: 'Stardust', requiresAchievement: 'Steady hands' },
-  { id: 'rainbow', label: 'Rainbow', requiresAchievement: 'Hat trick' },
+  { id: 'bubbles', label: 'Shockwave', requiresAchievement: 'Odometer' },
+  { id: 'stars', label: 'Meteor shower', requiresAchievement: 'Steady hands' },
+  { id: 'rainbow', label: 'Plasma bolt', requiresAchievement: 'Hat trick' },
 ]
