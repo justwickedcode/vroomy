@@ -1,9 +1,7 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
   Award,
-  CalendarDays,
   Car,
-  Flag,
   Keyboard,
   LineChart,
   Palette,
@@ -15,26 +13,15 @@ import {
 import { Badge } from '#/components/ui/badge'
 import { cn } from '#/lib/utils'
 
-// Grouped like lichess's sidebar rather than one flat list of 13 links —
+// Grouped like lichess's sidebar rather than one flat list of 12 links —
 // Guide/Stats/Achievements sit together as "about your progress", the
 // Garage group covers every car-cosmetic destination (including the two
-// still-stub ones), Compete is the social/comparison cluster. "Play" points
-// at "/" (the dashboard) rather than a separate page — the mode picker that
-// used to live on its own /play route is now part of the dashboard itself,
-// same place the wordmark links to, so there's no separate "Dashboard" row.
+// still-stub ones), Compete is the social/comparison cluster. No "Play" or
+// "Dashboard" row: the wordmark itself is the "/" link, and every mode
+// (Solo/Multiplayer/Friends/Daily challenge) is a tile on that same
+// dashboard rather than its own sidebar entry — a separate "Play" row here
+// would just be a second link to the exact same place as the wordmark.
 export const NAV_GROUPS = [
-  {
-    label: 'Play',
-    items: [
-      { to: '/', label: 'Play', icon: Flag, soon: false },
-      {
-        to: '/daily-challenge',
-        label: 'Daily challenge',
-        icon: CalendarDays,
-        soon: false,
-      },
-    ],
-  },
   {
     label: 'Improve',
     items: [

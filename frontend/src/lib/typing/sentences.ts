@@ -23,14 +23,20 @@ export function getRandomSentence(exclude?: string): string {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
+// Local calendar date as "YYYY-MM-DD" — shared by todayKey() below and by the daily challenge's
+// own streak calculation (see useDailyChallenge), which needs the same key format for days
+// other than today.
+export function dateKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
 // Deterministic, not random — the same passage for everyone on the same
 // calendar day, hashed from the local date so it's stable across a page
 // reload (and identical on the server and client, unlike Math.random()).
 export function todayKey(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}-${month}-${day}`
+  return dateKey(new Date())
 }
 
 export function getDailySentence(): string {
