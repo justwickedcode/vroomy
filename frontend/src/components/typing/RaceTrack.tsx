@@ -12,7 +12,6 @@ export interface Racer {
   wpm: number
   isYou?: boolean
   finished?: boolean
-  color?: string
   model?: CarModel
   // Only ever set for the player's own racer entry — bots/opponents stay in their stock look
   // (see BOT_TRAILS below for theirs).
@@ -335,8 +334,6 @@ function Lane({
   racer: Racer
   trailVariant: TrailVariant
 }) {
-  const color =
-    racer.color ?? (racer.isYou ? 'var(--color-primary)' : '#94a3b8')
   const racing = racer.progress > 0 && !racer.finished
 
   return (
@@ -350,7 +347,6 @@ function Lane({
         {racing && <Trail variant={trailVariant} />}
         {racer.isYou && racer.finished && <FinishBurst />}
         <CarIcon
-          color={color}
           model={racer.model ?? 'sport'}
           underglow={racer.underglow}
           underglowColor={racer.underglowColor}

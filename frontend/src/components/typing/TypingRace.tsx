@@ -218,7 +218,6 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       wpm,
       finished,
       isYou: true,
-      color: profile.carColor,
       model: profile.carModel,
       underglow: profile.underglow,
       underglowColor: profile.underglowColor,
@@ -230,7 +229,6 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       progress: bot.progress,
       wpm: bot.wpm,
       finished: bot.finished,
-      color: bot.color,
       model: bot.model,
     })),
   ]

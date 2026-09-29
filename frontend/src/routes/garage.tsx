@@ -3,6 +3,7 @@ import { Check, Crosshair, Lock, Zap } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import CarIcon, {
   UNDERGLOW_ACHIEVEMENT,
+  VEHICLE_CATEGORIES,
   VEHICLES,
 } from '#/components/typing/CarIcon'
 import { Trail } from '#/components/typing/RaceTrack'
@@ -11,8 +12,9 @@ import { isAchievementUnlocked } from '#/lib/achievements'
 import { TRAILS } from '#/lib/trails'
 import { POWERUPS } from '#/lib/powerups'
 import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
-import type { CarModel } from '#/components/typing/CarIcon'
+import type { CarModel, VehicleCategory } from '#/components/typing/CarIcon'
 import type { PowerupKind } from '#/lib/powerups'
+import type { ProfileStats, RaceRecord } from '#/lib/profile/useProfile'
 
 export const Route = createFileRoute('/garage')({ component: GaragePage })
 
@@ -27,13 +29,11 @@ function GaragePage() {
     stats,
     races,
     carModel,
-    carColor,
     underglow,
     underglowColor,
     trail,
     equippedPowerup,
     setCarModel,
-    setCarColor,
     setUnderglow,
     setUnderglowColor,
     setTrail,
@@ -55,8 +55,8 @@ function GaragePage() {
             Garage.
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Model, paint, and upgrades — saved automatically. Locked stuff
-            unlocks through achievements, not purchases.
+            Model and upgrades — saved automatically. Locked stuff unlocks
+            through achievements, not purchases.
           </p>
         </div>
 
@@ -69,7 +69,6 @@ function GaragePage() {
               </div>
               <div className="race-car-wrap" style={{ left: '38%' }}>
                 <CarIcon
-                  color={carColor}
                   model={carModel}
                   underglow={underglow}
                   underglowColor={underglowColor}
@@ -80,62 +79,17 @@ function GaragePage() {
             </div>
           </CardContent>
 
-          <div className="glass-divider" />
-
-          <CardHeader className="py-5">
-            <p className="kicker">Model</p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 pt-0 sm:grid-cols-3 lg:grid-cols-4">
-            {VEHICLES.map((vehicle) => {
-              const unlocked =
-                !vehicle.requiresAchievement ||
-                (hydrated &&
-                  isAchievementUnlocked(
-                    vehicle.requiresAchievement,
-                    stats,
-                    races,
-                  ))
-              return (
-                <ModelOption
-                  key={vehicle.id}
-                  id={vehicle.id}
-                  label={vehicle.label}
-                  color={carColor}
-                  selected={vehicle.id === carModel}
-                  unlocked={unlocked}
-                  requirement={vehicle.requiresAchievement}
-                  onSelect={() => setCarModel(vehicle.id)}
-                />
-              )
-            })}
-          </CardContent>
-
-          <div className="glass-divider" />
-
-          <CardHeader className="py-5">
-            <p className="kicker">Paint</p>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-3 pt-0 pb-8">
-            {CAR_COLORS.map((swatch) => (
-              <button
-                key={swatch.id}
-                type="button"
-                aria-label={swatch.id}
-                onClick={() => setCarColor(swatch.value)}
-                className={cn(
-                  'flex size-10 items-center justify-center rounded-full border-2 transition-transform hover:scale-110',
-                  swatch.value === carColor
-                    ? 'border-foreground'
-                    : 'border-transparent',
-                )}
-                style={{ backgroundColor: swatch.value }}
-              >
-                {swatch.value === carColor && (
-                  <Check className="size-4 text-white drop-shadow" />
-                )}
-              </button>
-            ))}
-          </CardContent>
+          {VEHICLE_CATEGORIES.map((category) => (
+            <CategorySection
+              key={category}
+              category={category}
+              carModel={carModel}
+              hydrated={hydrated}
+              stats={stats}
+              races={races}
+              onSelect={setCarModel}
+            />
+          ))}
 
           <div className="glass-divider" />
 
@@ -163,7 +117,7 @@ function GaragePage() {
                 <p className="text-sm font-bold">Neon underglow</p>
                 <p className="text-xs text-muted-foreground">
                   {underglowUnlocked
-                    ? 'Pick any color below — independent of your paint.'
+                    ? 'Pick any color below.'
                     : `Unlock by earning "${UNDERGLOW_ACHIEVEMENT}".`}
                 </p>
               </span>
@@ -308,10 +262,54 @@ function GaragePage() {
   )
 }
 
+function CategorySection({
+  category,
+  carModel,
+  hydrated,
+  stats,
+  races,
+  onSelect,
+}: {
+  category: VehicleCategory
+  carModel: CarModel
+  hydrated: boolean
+  stats: ProfileStats
+  races: Array<RaceRecord>
+  onSelect: (id: CarModel) => void
+}) {
+  const models = VEHICLES.filter((v) => v.category === category)
+  return (
+    <>
+      <div className="glass-divider" />
+      <CardHeader className="py-5">
+        <p className="kicker">{category}</p>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-3 pt-0 sm:grid-cols-3 lg:grid-cols-4">
+        {models.map((vehicle) => {
+          const unlocked =
+            !vehicle.requiresAchievement ||
+            (hydrated &&
+              isAchievementUnlocked(vehicle.requiresAchievement, stats, races))
+          return (
+            <ModelOption
+              key={vehicle.id}
+              id={vehicle.id}
+              label={vehicle.label}
+              selected={vehicle.id === carModel}
+              unlocked={unlocked}
+              requirement={vehicle.requiresAchievement}
+              onSelect={() => onSelect(vehicle.id)}
+            />
+          )
+        })}
+      </CardContent>
+    </>
+  )
+}
+
 function ModelOption({
   id,
   label,
-  color,
   selected,
   unlocked,
   requirement,
@@ -319,7 +317,6 @@ function ModelOption({
 }: {
   id: CarModel
   label: string
-  color: string
   selected: boolean
   unlocked: boolean
   requirement?: string
@@ -342,7 +339,6 @@ function ModelOption({
         <Lock className="absolute top-2 right-2 size-3.5 text-muted-foreground" />
       )}
       <CarIcon
-        color={unlocked ? color : '#64748b'}
         model={id}
         className="w-24"
         style={unlocked ? undefined : { filter: 'grayscale(1)' }}
