@@ -13,7 +13,6 @@ const BOT_NAMES = [
   'Echo',
   'Storm',
 ]
-const BOT_COLORS = ['#f59e0b', '#22c55e', '#ec4899', '#a855f7']
 const TICK_MS = 120
 const WOBBLE_AMPLITUDE = 0.12
 const WOBBLE_PERIOD_MS = 1300
@@ -37,7 +36,6 @@ export const SPEED_RANGES: Array<SpeedRange> = [
 interface BotConfig {
   id: string
   name: string
-  color: string
   model: CarModel
   baseWpm: number
   seed: number
@@ -46,7 +44,6 @@ interface BotConfig {
 export interface BotRacer {
   id: string
   name: string
-  color: string
   model: CarModel
   progress: number
   wpm: number
@@ -62,7 +59,6 @@ function generateBots(
   return Array.from({ length: count }, (_, i) => ({
     id: `bot-${i}`,
     name: names[i],
-    color: BOT_COLORS[i % BOT_COLORS.length],
     model: CAR_MODELS[i % CAR_MODELS.length].id,
     baseWpm: Math.round(min + Math.random() * (max - min)),
     seed: Math.random() * 1000,
@@ -139,7 +135,6 @@ export function useBotRacers({
       return {
         id: bot.id,
         name: bot.name,
-        color: bot.color,
         model: bot.model,
         progress: 1,
         wpm: frozenWpm,
@@ -151,7 +146,6 @@ export function useBotRacers({
       return {
         id: bot.id,
         name: bot.name,
-        color: bot.color,
         model: bot.model,
         progress: 0,
         wpm: 0,
@@ -187,7 +181,6 @@ export function useBotRacers({
     return {
       id: bot.id,
       name: bot.name,
-      color: bot.color,
       model: bot.model,
       progress,
       wpm,

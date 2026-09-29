@@ -6,9 +6,14 @@ import type { CSSProperties } from 'react'
 // need to change.
 export type CarModel = string
 
+export type VehicleCategory = 'Cars' | 'Fleet'
+
+export const VEHICLE_CATEGORIES: Array<VehicleCategory> = ['Cars', 'Fleet']
+
 interface Vehicle {
   id: CarModel
   label: string
+  category: VehicleCategory
   // Sprite's own native pixel aspect ratio (width:height) — used so the <img> never gets
   // stretched off-model inside a consumer's aspect-[8/5] wrapper, which was tuned for the old
   // hand-drawn SVG's fixed 240x150 viewBox, not these varying real sprite dimensions.
@@ -18,54 +23,106 @@ interface Vehicle {
   requiresAchievement?: string
 }
 
-// Real top-down car sprites (tokka's "Top Down Cars Sprite Pack 1.0" on itch.io — free for free
-// and commercial projects) rather than hand-drawn SVG bodies: the hand-drawn attempt (see git
-// history) never got past looking like a soft rounded blob at this icon size no matter how the
-// path math was tuned, where these read as actual cars immediately.
+// Real top-down car sprites — all 14 from tokka's "Top Down Cars Sprite Pack 1.0" on itch.io
+// (free for free and commercial projects), rather than hand-drawn SVG bodies: the hand-drawn
+// attempt (see git history) never got past looking like a soft rounded blob at this icon size no
+// matter how the path math was tuned, where these read as actual cars immediately.
 //
-// A wider roster (tanks/trucks/spaceships from Kenney's CC0 packs) was tried twice and reverted
-// both times (see git history) — direct feedback was that the flat-shaded/low-poly look reads as
-// noticeably lower effort next to this pack's own painterly shading ("way too simple... slop").
-// Sourcing more vehicles in a *matching* style is still an open TODO; until then the roster stays
-// these 7 rather than adding variety at the cost of visibly inconsistent quality.
+// A wider roster from other CC0 packs (Kenney's tanks/trucks/spaceships, twice) was tried and
+// reverted both times — direct feedback was that a flat-shaded/low-poly look reads as noticeably
+// lower effort next to this pack's own painterly shading ("way too simple... slop"). The Fleet
+// vehicles below solve "more variety" a different way: same sheet, same artist, same rendering
+// technique as the original 7 — zero style-consistency risk, since it's the same pack, just more
+// of it (extracted straight from the pack's own full sheet, not its rotated marketing screenshot).
 export const VEHICLES: Array<Vehicle> = [
+  // Cars — the original realistic-car lineup.
   // No requiresAchievement — the starter car, always available.
-  { id: 'sport', label: 'Sport', aspect: 95 / 55 },
+  { id: 'sport', label: 'Sport', category: 'Cars', aspect: 95 / 55 },
   {
     id: 'muscle',
     label: 'Muscle',
+    category: 'Cars',
     aspect: 89 / 48,
     requiresAchievement: 'First lap',
   },
   {
     id: 'classic',
     label: 'Classic',
+    category: 'Cars',
     aspect: 102 / 54,
     requiresAchievement: 'Getting warmed up',
   },
   {
     id: 'offroad',
     label: 'Offroad',
+    category: 'Cars',
     aspect: 94 / 50,
     requiresAchievement: 'On the podium',
   },
   {
     id: 'drift',
     label: 'Drift',
+    category: 'Cars',
     aspect: 106 / 58,
     requiresAchievement: 'Speed demon',
   },
   {
     id: 'rally',
     label: 'Rally',
+    category: 'Cars',
     aspect: 96 / 51,
     requiresAchievement: 'Checkered flag',
   },
   {
     id: 'super',
     label: 'Super',
+    category: 'Cars',
     aspect: 99 / 54,
     requiresAchievement: 'Century club',
+  },
+  // Fleet — service/utility vehicles, same pack. Taxi is this category's free starter.
+  { id: 'taxi', label: 'Taxi', category: 'Fleet', aspect: 99 / 51 },
+  {
+    id: 'van',
+    label: 'Van',
+    category: 'Fleet',
+    aspect: 103 / 55,
+    requiresAchievement: 'Highway cruiser',
+  },
+  {
+    id: 'suv',
+    label: 'SUV',
+    category: 'Fleet',
+    aspect: 103 / 55,
+    requiresAchievement: 'Turbocharged',
+  },
+  {
+    id: 'limo',
+    label: 'Limo',
+    category: 'Fleet',
+    aspect: 135 / 52,
+    requiresAchievement: 'Sharpshooter',
+  },
+  {
+    id: 'police',
+    label: 'Police Cruiser',
+    category: 'Fleet',
+    aspect: 93 / 48,
+    requiresAchievement: 'Giant slayer',
+  },
+  {
+    id: 'ambulance',
+    label: 'Ambulance',
+    category: 'Fleet',
+    aspect: 97 / 48,
+    requiresAchievement: 'Flawless streak',
+  },
+  {
+    id: 'firetruck',
+    label: 'Fire Truck',
+    category: 'Fleet',
+    aspect: 137 / 60,
+    requiresAchievement: 'Win streak',
   },
 ]
 
@@ -87,39 +144,29 @@ function spriteSrc(model: CarModel): string {
   return `/cars/${model}.png`
 }
 
+// Cars render in their own sprite's native paint job — no dynamic recolor. An earlier version
+// tinted every sprite to the player's chosen paint color via a mix-blend-mode overlay, but that
+// meant a sprite's own look was only ever a starting point, and results varied a lot depending on
+// how light/dark/saturated that particular sprite's base pixels happened to be (a near-black
+// sprite like the SUV stayed muddy-dark no matter the chosen color, a near-white one like the
+// ambulance stayed pale) — inconsistent enough across the roster that it read as broken rather
+// than customized. Color is reserved for underglow now, which is a color the player is adding
+// (a glow layered behind the car), not one it's trying to reproduce faithfully.
 export default function CarIcon({
   className,
-  color,
   model = 'sport',
   underglow = false,
-  underglowColor,
+  underglowColor = '#7cf6ff',
   style,
 }: {
   className?: string
-  color: string
   model?: CarModel
   underglow?: boolean
-  // Independently selectable (see Garage's Underglow section) — falls back to the paint color
-  // only if a caller doesn't pass one at all.
   underglowColor?: string
   style?: CSSProperties
 }) {
   const src = spriteSrc(model)
   const aspect = (VEHICLE_BY_ID[model] ?? VEHICLES[0]).aspect
-  const glowColor = underglowColor ?? color
-
-  const maskStyle: CSSProperties = {
-    position: 'absolute',
-    inset: 0,
-    WebkitMaskImage: `url(${src})`,
-    maskImage: `url(${src})`,
-    WebkitMaskSize: 'contain',
-    maskSize: 'contain',
-    WebkitMaskRepeat: 'no-repeat',
-    maskRepeat: 'no-repeat',
-    WebkitMaskPosition: 'center',
-    maskPosition: 'center',
-  }
 
   return (
     <div
@@ -140,7 +187,7 @@ export default function CarIcon({
             position: 'absolute',
             inset: '-18%',
             borderRadius: '9999px',
-            background: `radial-gradient(ellipse at center, ${glowColor}88 0%, transparent 70%)`,
+            background: `radial-gradient(ellipse at center, ${underglowColor}88 0%, transparent 70%)`,
           }}
         />
       )}
@@ -154,22 +201,6 @@ export default function CarIcon({
           height: '100%',
           objectFit: 'contain',
           imageRendering: 'pixelated',
-        }}
-      />
-      {/* Recolors the sprite while keeping its own per-pixel shading (highlights/shadows) intact:
-          mix-blend-mode "color" takes this layer's hue+saturation but the *image's own*
-          lightness at each pixel. Went through "hue" blend first (see git history) — it takes
-          the backdrop's own saturation too, which looks great on painterly sprites that already
-          have color variation, but does nothing at all on a flat white/gray sprite (0 backdrop
-          saturation stays 0 no matter what hue you apply) — exactly the sci-fi/space sprites
-          added for the Military/Aircraft categories. "color" recolors those too, since it
-          supplies the saturation itself rather than reading it from the backdrop. */}
-      <div
-        aria-hidden="true"
-        style={{
-          ...maskStyle,
-          backgroundColor: color,
-          mixBlendMode: 'color',
         }}
       />
     </div>

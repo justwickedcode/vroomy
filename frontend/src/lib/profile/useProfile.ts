@@ -17,7 +17,6 @@ export const CAR_COLORS = [
   { id: 'graphite', value: '#3b4252' },
 ] as const
 
-const DEFAULT_COLOR: string = CAR_COLORS[0].value
 const DEFAULT_MODEL: CarModel = 'sport'
 const DEFAULT_TRAIL: TrailVariant = 'nitro'
 const DEFAULT_UNDERGLOW_COLOR: string = CAR_COLORS[4].value
@@ -34,10 +33,9 @@ export interface RaceRecord {
 
 interface Profile {
   carModel: CarModel
-  carColor: string
   // Underglow is free to toggle, but only once unlocked (see #/components/typing/CarIcon's
-  // UNDERGLOW_ACHIEVEMENT). underglowColor is independent of carColor — its own freely-chosen
-  // swatch, not forced to match the paint.
+  // UNDERGLOW_ACHIEVEMENT). Cars otherwise render in their own sprite's native paint — color is
+  // reserved for underglow, not a body recolor.
   underglow: boolean
   underglowColor: string
   // Which trail effect (see #/lib/trails) renders behind the player's own car in a race —
@@ -58,7 +56,6 @@ interface Profile {
 
 const DEFAULT_PROFILE: Profile = {
   carModel: DEFAULT_MODEL,
-  carColor: DEFAULT_COLOR,
   underglow: false,
   underglowColor: DEFAULT_UNDERGLOW_COLOR,
   trail: DEFAULT_TRAIL,
@@ -76,7 +73,6 @@ function readProfile(): Profile {
     const races = Array.isArray(parsed.races) ? parsed.races : []
     return {
       carModel: parsed.carModel ?? DEFAULT_MODEL,
-      carColor: parsed.carColor ?? DEFAULT_COLOR,
       underglow: parsed.underglow ?? false,
       underglowColor: parsed.underglowColor ?? DEFAULT_UNDERGLOW_COLOR,
       trail: parsed.trail ?? DEFAULT_TRAIL,
@@ -159,14 +155,6 @@ export function useProfile() {
     })
   }, [])
 
-  const setCarColor = useCallback((carColor: string) => {
-    setProfile((prev) => {
-      const next = { ...prev, carColor }
-      writeProfile(next)
-      return next
-    })
-  }, [])
-
   const setUnderglow = useCallback((underglow: boolean) => {
     setProfile((prev) => {
       const next = { ...prev, underglow }
@@ -220,7 +208,6 @@ export function useProfile() {
   return {
     hydrated,
     carModel: profile.carModel,
-    carColor: profile.carColor,
     underglow: profile.underglow,
     underglowColor: profile.underglowColor,
     trail: profile.trail,
@@ -228,7 +215,6 @@ export function useProfile() {
     races: profile.races,
     stats: computeStats(profile.races, profile.racesPlayedTotal),
     setCarModel,
-    setCarColor,
     setUnderglow,
     setUnderglowColor,
     setTrail,

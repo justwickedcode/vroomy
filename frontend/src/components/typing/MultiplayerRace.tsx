@@ -14,7 +14,6 @@ import type { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
 import type { Racer } from '#/components/typing/RaceTrack'
 
 const WPM_GAUGE_MAX = 130
-const OPPONENT_COLORS = ['#f59e0b', '#22c55e', '#ec4899', '#a855f7', '#38bdf8']
 
 function formatTime(ms: number) {
   const totalSeconds = ms / 1000
@@ -197,8 +196,7 @@ function ErrorView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
 }
 
 function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
-  const { carColor, carModel, underglow, underglowColor, trail } =
-    useProfile()
+  const { carModel, underglow, underglowColor, trail } = useProfile()
   const [countdown, setCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -224,7 +222,6 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       wpm: mp.wpm,
       finished: mp.finished,
       isYou: true,
-      color: carColor,
       model: carModel,
       underglow,
       underglowColor,
@@ -240,7 +237,6 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
           : 0,
       wpm: opponent.wpm ?? 0,
       finished: opponent.finished,
-      color: OPPONENT_COLORS[index % OPPONENT_COLORS.length],
       model: CAR_MODELS[(index + 1) % CAR_MODELS.length].id,
     })),
   ]
