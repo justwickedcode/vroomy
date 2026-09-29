@@ -274,12 +274,13 @@ export function Trail({ variant }: { variant: TrailVariant }) {
     )
   }
   if (variant === 'spark') {
-    // Three bolts stacked as a column — all the same distance behind the car, one above another
-    // — rather than strung out in a line at different distances/scales (the previous cut here).
-    const bolt = (
+    // Three bolts grouped as a column, all anchored at the same tip (near the car) but running
+    // different lengths — short/long/medium, like uneven flame tongues — rather than three
+    // identical-length copies, which read as one bolt repeated instead of a cluster.
+    const makeBolt = (points: string) => (
       <>
         <polyline
-          points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
+          points={points}
           fill="none"
           stroke="#0c4a6e"
           strokeWidth="9"
@@ -287,7 +288,7 @@ export function Trail({ variant }: { variant: TrailVariant }) {
           strokeLinecap="round"
         />
         <polyline
-          points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
+          points={points}
           fill="none"
           stroke="#38bdf8"
           strokeWidth="6"
@@ -295,7 +296,7 @@ export function Trail({ variant }: { variant: TrailVariant }) {
           strokeLinecap="round"
         />
         <polyline
-          points="44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6"
+          points={points}
           fill="none"
           stroke="#f0f9ff"
           strokeWidth="2.6"
@@ -309,23 +310,23 @@ export function Trail({ variant }: { variant: TrailVariant }) {
         <g
           className="spark-bolt"
           style={{ animationDelay: '0ms' }}
-          transform="translate(6,1) rotate(-4) scale(0.95)"
+          transform="translate(6,1) rotate(-3) scale(0.95)"
         >
-          {bolt}
+          {makeBolt('44,7 34,3 37,9 24,4 27,10 16,5')}
         </g>
         <g
           className="spark-bolt"
           style={{ animationDelay: '80ms' }}
           transform="translate(6,20) rotate(3) scale(0.95)"
         >
-          {bolt}
+          {makeBolt('44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6')}
         </g>
         <g
           className="spark-bolt"
           style={{ animationDelay: '160ms' }}
-          transform="translate(6,39) rotate(-3) scale(0.95)"
+          transform="translate(6,39) rotate(-4) scale(0.95)"
         >
-          {bolt}
+          {makeBolt('44,7 36,3 39,8 30,4')}
         </g>
       </svg>
     )
