@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ChevronRight, Flag, Link2, Users } from 'lucide-react'
+import { CalendarDays, ChevronRight, Flag, Link2, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import Gauge from '#/components/typing/Gauge'
@@ -34,6 +34,12 @@ const MODES = [
     icon: Link2,
     title: 'With friends',
     detail: 'Create a room and send the link.',
+  },
+  {
+    to: '/daily-challenge',
+    icon: CalendarDays,
+    title: 'Daily challenge',
+    detail: 'One passage, same for everyone today.',
   },
 ] as const
 
@@ -111,14 +117,19 @@ function Dashboard() {
 
         <div>
           <p className="kicker mb-3">Play</p>
-          <div className="grid grid-cols-1 divide-y divide-border overflow-hidden rounded-xl border border-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+          {/* gap-px + bg-border, not divide-x/y: with 4 tiles wrapping from 1 to 2 to 4
+              columns across breakpoints, Tailwind's divide utilities can't express "a line
+              between every adjacent cell" once the grid wraps to more than one row — this
+              collapsed-border trick (border-colored gap behind solid tiles) gives the same
+              thin dividing lines regardless of how many rows the grid wraps to. */}
+          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
             {MODES.map(({ to, icon: Icon, title, detail }, i) => (
               <Link
                 key={to}
                 to={to}
                 onMouseMove={handleTiltMove}
                 onMouseLeave={handleTiltLeave}
-                className="ignition group relative flex min-h-56 flex-col overflow-hidden p-6 transition-colors hover:bg-accent/40"
+                className="ignition group relative flex min-h-56 flex-col overflow-hidden bg-background p-6 transition-colors hover:bg-accent/40"
               >
                 <span className="font-mono text-[0.65rem] font-medium tracking-[0.2em] text-muted-foreground uppercase">
                   Bay 0{i + 1}
@@ -128,7 +139,7 @@ function Dashboard() {
                   strokeWidth={1}
                 />
                 <div className="relative mt-auto">
-                  <p className="font-display text-3xl font-extrabold tracking-tight uppercase sm:text-4xl">
+                  <p className="font-display text-2xl font-extrabold tracking-tight uppercase sm:text-3xl">
                     {title}
                   </p>
                   <p className="mt-2 max-w-64 text-sm text-muted-foreground">
