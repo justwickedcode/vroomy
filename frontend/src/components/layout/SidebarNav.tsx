@@ -54,13 +54,8 @@ export function SidebarNavList({
 
   return (
     <nav className="flex flex-1 flex-col gap-5 overflow-y-auto">
-      {NAV_GROUPS.map((group, groupIndex) => (
-        <div
-          key={group.label}
-          className={cn(
-            collapsed && groupIndex > 0 && 'border-t border-border pt-4',
-          )}
-        >
+      {NAV_GROUPS.map((group) => (
+        <div key={group.label}>
           {!collapsed && (
             <p className="mb-1.5 px-2.5 text-[0.65rem] font-extrabold tracking-[0.14em] text-muted-foreground uppercase">
               {group.label}
