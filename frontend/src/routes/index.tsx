@@ -37,12 +37,27 @@ const MODES = [
   },
 ] as const
 
+// How many achievement chips the dashboard teaser shows — the full list lives on /achievements
+// (grouped by category); this is just a taste, capped so it can't grow the dashboard card
+// unbounded as more achievements are added over time.
+const TEASER_COUNT = 6
+
 function Dashboard() {
   const { hydrated, stats, races, carModel, carColor } = useProfile()
   const hasRaced = hydrated && stats.racesPlayed > 0
   const unlockedCount = hydrated
     ? ACHIEVEMENTS.filter((a) => a.unlocked(stats, races)).length
     : 0
+  // Earned badges first (so a returning player sees what they've already got), then whatever's
+  // still locked, each group in its original declaration order — Array#sort is stable, so this
+  // reorder doesn't scramble either group's own ordering.
+  const teaserAchievements = [...ACHIEVEMENTS]
+    .sort((a, b) => {
+      const aDone = hydrated && a.unlocked(stats, races)
+      const bDone = hydrated && b.unlocked(stats, races)
+      return aDone === bDone ? 0 : aDone ? -1 : 1
+    })
+    .slice(0, TEASER_COUNT)
 
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
@@ -58,9 +73,23 @@ function Dashboard() {
                 Race real quotes against AI bots and watch your car cross the
                 line first.
               </p>
-              <Button size="lg" className="mt-5" asChild>
-                <Link to="/race/solo">Start racing</Link>
-              </Button>
+              {hasRaced ? (
+                <p className="mt-5 text-sm text-muted-foreground">
+                  Best run:{' '}
+                  <span className="font-bold text-foreground">
+                    {stats.bestWpm} wpm
+                  </span>{' '}
+                  across{' '}
+                  <span className="font-bold text-foreground">
+                    {stats.racesPlayed}
+                  </span>{' '}
+                  races. Pick a mode below to beat it.
+                </p>
+              ) : (
+                <Button size="lg" className="mt-5" asChild>
+                  <Link to="/race/solo">Start racing</Link>
+                </Button>
+              )}
             </div>
 
             <div className="race-track w-full sm:w-72">
@@ -111,78 +140,51 @@ function Dashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="flex flex-col gap-6 lg:col-span-2">
-            <Card className="rise-in overflow-hidden">
-              <CardHeader className="flex-row items-center justify-between py-5">
-                <p className="kicker">Your stats</p>
-                <Link
-                  to="/stats"
-                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  View all
-                </Link>
-              </CardHeader>
-              <CardContent className="flex flex-wrap justify-around gap-4 pt-0">
-                {!hydrated ? (
-                  [0, 1, 2, 3].map((i) => (
-                    <div
-                      key={i}
-                      className="h-20 w-[6.5rem] animate-pulse rounded-2xl bg-secondary/40"
-                    />
-                  ))
-                ) : (
-                  <>
-                    <Gauge
-                      label="best wpm"
-                      value={hasRaced ? stats.bestWpm : 0}
-                      max={WPM_GAUGE_MAX}
-                    />
-                    <Gauge
-                      label="avg wpm"
-                      value={hasRaced ? stats.avgWpm : 0}
-                      max={WPM_GAUGE_MAX}
-                    />
-                    <Gauge
-                      label="avg accuracy"
-                      value={hasRaced ? stats.avgAccuracy : 0}
-                      max={100}
-                      suffix="%"
-                    />
-                    <DigitalReadout
-                      label="races run"
-                      value={hasRaced ? String(stats.racesPlayed) : '0'}
-                    />
-                  </>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="rise-in overflow-hidden">
-              <CardHeader className="py-5">
-                <p className="kicker">Recent races</p>
-              </CardHeader>
-              <CardContent className="pt-0 pb-5">
-                {!hydrated ? (
-                  <div className="h-24 w-full animate-pulse rounded-lg bg-secondary/40" />
-                ) : hasRaced ? (
-                  <div className="flex flex-col gap-1">
-                    {races.slice(0, 5).map((race, i) => (
-                      <RaceHistoryRow
-                        key={race.id}
-                        race={race}
-                        lapNumber={stats.racesPlayed - i}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    No races yet — your first run shows up here.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <Card className="rise-in overflow-hidden">
+            <CardHeader className="flex-row items-center justify-between py-5">
+              <p className="kicker">Your stats</p>
+              <Link
+                to="/stats"
+                className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+              >
+                View all
+              </Link>
+            </CardHeader>
+            <CardContent className="flex flex-wrap justify-around gap-4 pt-0 pb-6">
+              {!hydrated ? (
+                [0, 1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-20 w-[6.5rem] animate-pulse rounded-2xl bg-secondary/40"
+                  />
+                ))
+              ) : (
+                <>
+                  <Gauge
+                    label="best wpm"
+                    value={hasRaced ? stats.bestWpm : 0}
+                    max={WPM_GAUGE_MAX}
+                  />
+                  <Gauge
+                    label="avg wpm"
+                    value={hasRaced ? stats.avgWpm : 0}
+                    max={WPM_GAUGE_MAX}
+                  />
+                  <Gauge
+                    label="avg accuracy"
+                    value={hasRaced ? stats.avgAccuracy : 0}
+                    max={100}
+                    suffix="%"
+                  />
+                  <DigitalReadout
+                    label="races run"
+                    value={hasRaced ? String(stats.racesPlayed) : '0'}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
 
           <Card className="rise-in overflow-hidden">
             <CardHeader className="flex-row items-center justify-between py-5">
@@ -192,7 +194,7 @@ function Dashboard() {
               </span>
             </CardHeader>
             <CardContent className="flex flex-col gap-1 pt-0 pb-5">
-              {ACHIEVEMENTS.map(({ icon: Icon, title, unlocked }) => {
+              {teaserAchievements.map(({ icon: Icon, title, unlocked }) => {
                 const done = hydrated && unlocked(stats, races)
                 return (
                   <div
@@ -219,12 +221,37 @@ function Dashboard() {
                 to="/achievements"
                 className="mt-1 flex items-center gap-1 px-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
               >
-                View all
+                View all {ACHIEVEMENTS.length}
                 <ChevronRight className="size-3.5" />
               </Link>
             </CardContent>
           </Card>
         </div>
+
+        <Card className="rise-in overflow-hidden">
+          <CardHeader className="py-5">
+            <p className="kicker">Recent races</p>
+          </CardHeader>
+          <CardContent className="pt-0 pb-5">
+            {!hydrated ? (
+              <div className="h-24 w-full animate-pulse rounded-lg bg-secondary/40" />
+            ) : hasRaced ? (
+              <div className="flex flex-col gap-1">
+                {races.slice(0, 5).map((race, i) => (
+                  <RaceHistoryRow
+                    key={race.id}
+                    race={race}
+                    lapNumber={stats.racesPlayed - i}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No races yet — your first run shows up here.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </main>
   )
