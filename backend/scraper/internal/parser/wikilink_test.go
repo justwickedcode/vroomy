@@ -27,6 +27,12 @@ func TestResolveWikiquoteLink(t *testing.T) {
 		{"bare /wiki/ with nothing after it", "/wiki/", "", false},
 		{"not a wiki link at all", "https://example.com/other", "", false},
 		{"empty href", "", "", false},
+		// Real bug found live: a citation naming someone with no Wikiquote article of their own
+		// renders as a "red link" pointing at an edit-this-page form, not a real article —
+		// queueing it anyway meant fetching a guaranteed 404 and paying the stall/backoff penalty
+		// for a URL that already announced it wasn't going to resolve to content.
+		{"red link (nonexistent page) is rejected, relative form", "/wiki/Jacob_A._Riis?action=edit&redlink=1", "", false},
+		{"red link (nonexistent page) is rejected, absolute form", "https://de.wikiquote.org/wiki/Jacob_A._Riis?action=edit&redlink=1", "", false},
 	}
 
 	for _, c := range cases {

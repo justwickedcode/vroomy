@@ -73,11 +73,22 @@ var wikiquoteExcludedNamespaces = []string{
 //     class="extiw") is a full absolute URL to a *different* host, so it matches neither prefix
 //     without needing to inspect the link's CSS class at all.
 //   - any of wikiquoteExcludedNamespaces.
+//   - a "red link" — MediaWiki's own signal, in the URL itself ("?action=edit&redlink=1"), that
+//     the cited page doesn't exist yet: a citation can link a real person's name even when that
+//     person has no Wikiquote article of their own, and MediaWiki renders that link pointing at
+//     an edit-this-page form instead of a real article. Found live: queueing these anyway meant
+//     fetching a guaranteed-404 (e.g. "/wiki/Jacob_A._Riis?action=edit&redlink=1") and paying the
+//     same stall/backoff penalty as a real failure, for a URL that already told us it was never
+//     going to resolve to content.
 //   - a URL fragment (e.g. "/wiki/Aristotle#Politics") is stripped down to the page itself
 //     ("/wiki/Aristotle") rather than rejected — the fragment just means "cites a
 //     within-page section," but the same page is still exactly what we want to queue, and
 //     leaving the fragment in would create a second, spurious URL for a page already known.
 func resolveWikiquoteLink(wikiBase string, href string) (string, bool) {
+	if strings.Contains(href, "redlink=1") {
+		return "", false
+	}
+
 	var relative string
 	switch {
 	case strings.HasPrefix(href, wikiBase+"/wiki/"):
