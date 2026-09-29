@@ -48,6 +48,17 @@ function lastThree(races: Array<RaceRecord>) {
   return races.length >= 3 ? races.slice(0, 3) : null
 }
 
+// Shared by every cosmetic/gameplay catalog that gates an item behind an achievement (vehicles,
+// underglow, trails, powerups — see their requiresAchievement fields) so they all check
+// unlock state the same way rather than each re-deriving it.
+export function isAchievementUnlocked(
+  title: string,
+  stats: ProfileStats,
+  races: Array<RaceRecord>,
+): boolean {
+  return ACHIEVEMENTS.some((a) => a.title === title && a.unlocked(stats, races))
+}
+
 // Single source of truth — the achievements page and the dashboard teaser both evaluate this
 // same list against live profile data rather than each keeping their own copy of the badge
 // definitions.

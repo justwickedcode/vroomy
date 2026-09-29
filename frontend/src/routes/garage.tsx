@@ -1,24 +1,23 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Check, Lock } from 'lucide-react'
+import { Check, Crosshair, Lock, Zap } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import CarIcon, {
   UNDERGLOW_ACHIEVEMENT,
   VEHICLES,
 } from '#/components/typing/CarIcon'
 import { CAR_COLORS, useProfile } from '#/lib/profile/useProfile'
-import { ACHIEVEMENTS } from '#/lib/achievements'
+import { isAchievementUnlocked } from '#/lib/achievements'
+import { TRAILS } from '#/lib/trails'
+import { POWERUPS } from '#/lib/powerups'
 import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
 import type { CarModel } from '#/components/typing/CarIcon'
-import type { ProfileStats, RaceRecord } from '#/lib/profile/useProfile'
+import type { PowerupKind } from '#/lib/powerups'
 
 export const Route = createFileRoute('/garage')({ component: GaragePage })
 
-function isAchievementUnlocked(
-  title: string,
-  stats: ProfileStats,
-  races: Array<RaceRecord>,
-): boolean {
-  return ACHIEVEMENTS.some((a) => a.title === title && a.unlocked(stats, races))
+const POWERUP_ICONS: Record<PowerupKind, typeof Zap> = {
+  boost: Zap,
+  shell: Crosshair,
 }
 
 function GaragePage() {
@@ -29,9 +28,11 @@ function GaragePage() {
     carModel,
     carColor,
     underglow,
+    trail,
     setCarModel,
     setCarColor,
     setUnderglow,
+    setTrail,
   } = useProfile()
 
   const underglowUnlocked =
@@ -171,6 +172,87 @@ function GaragePage() {
                 <Lock className="size-4 shrink-0 text-muted-foreground" />
               )}
             </button>
+          </CardContent>
+
+          <div className="glass-divider" />
+
+          <CardHeader className="py-5">
+            <p className="kicker">Trail</p>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8 sm:grid-cols-4">
+            {TRAILS.map((option) => {
+              const unlocked =
+                !option.requiresAchievement ||
+                (hydrated &&
+                  isAchievementUnlocked(
+                    option.requiresAchievement,
+                    stats,
+                    races,
+                  ))
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={!unlocked}
+                  onClick={() => setTrail(option.id)}
+                  className={cn(
+                    'glass-chip relative flex flex-col items-center gap-2 rounded-xl p-4 text-center transition-colors disabled:opacity-50',
+                    option.id === trail && unlocked && 'border-primary bg-primary/12',
+                  )}
+                >
+                  {!unlocked && (
+                    <Lock className="absolute top-2 right-2 size-3.5 text-muted-foreground" />
+                  )}
+                  <p className="text-sm font-bold">{option.label}</p>
+                  {!unlocked && option.requiresAchievement && (
+                    <span className="text-[0.65rem] leading-tight text-muted-foreground">
+                      {option.requiresAchievement}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </CardContent>
+
+          <div className="glass-divider" />
+
+          <CardHeader className="py-5">
+            <p className="kicker">Powerups</p>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8">
+            {POWERUPS.map((option) => {
+              const unlocked =
+                !option.requiresAchievement ||
+                (hydrated &&
+                  isAchievementUnlocked(
+                    option.requiresAchievement,
+                    stats,
+                    races,
+                  ))
+              const Icon = POWERUP_ICONS[option.id]
+              return (
+                <div
+                  key={option.id}
+                  className={cn(
+                    'glass-chip flex items-center gap-3 rounded-xl p-4',
+                    !unlocked && 'opacity-60',
+                  )}
+                >
+                  <Icon className="size-5 shrink-0 text-primary" />
+                  <span className="flex-1">
+                    <p className="text-sm font-bold">{option.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {unlocked
+                        ? option.detail
+                        : `Unlock by earning "${option.requiresAchievement}".`}
+                    </p>
+                  </span>
+                  {!unlocked && (
+                    <Lock className="size-4 shrink-0 text-muted-foreground" />
+                  )}
+                </div>
+              )
+            })}
           </CardContent>
         </Card>
       </div>
