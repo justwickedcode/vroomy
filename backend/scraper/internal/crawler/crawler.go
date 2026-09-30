@@ -625,6 +625,22 @@ func (c *Crawler) failOrRetry(ctx context.Context, source string, row models.URL
 // (specifically a 429, as opposed to any other failure — see fetcher.IsRateLimited — which
 // tells a worker running at wikiquoteExperimentalDelay to permanently abandon that pace).
 func (c *Crawler) processURL(ctx context.Context, source string, url string) (gotQuotes bool, stalled bool, rateLimited bool) {
+	// Defense-in-depth against MediaWiki red links (see parser.resolveWikiquoteLink, which
+	// already stops new ones from ever being queued): this still catches any row that was
+	// queued *before* that fix shipped and is only now being popped off the frontier. Without
+	// this, every one of those stale rows would burn a real network round-trip, a guaranteed
+	// 404, the full stall backoff, and all maxURLRetries attempts — for a URL whose own query
+	// string already says it can never resolve to content. Short-circuiting straight to
+	// MarkURLFailed (no fetch, no retry, no backoff) flushes that backlog for free the moment
+	// each row is next popped, instead of paying the same wasted cost repeatedly.
+	if strings.Contains(url, "redlink=1") {
+		if err := c.store.MarkURLFailed(ctx, url); err != nil {
+			log.Printf("[%s] Could not mark red-link URL %s failed: %s\n", source, url, err)
+		}
+		log.Printf("[%s] Skipping known-dead red link (queued before the discovery fix): %s", source, url)
+		return false, false, false
+	}
+
 	row, err := c.store.GetURLByURL(ctx, url)
 	if err != nil {
 		log.Printf("[%s] Could not look up URL %s: %s\n", source, url, err)
