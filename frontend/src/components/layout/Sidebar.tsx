@@ -21,7 +21,7 @@ export default function Sidebar({
       <Link
         to="/"
         className={cn(
-          'mb-8 flex shrink-0 items-center gap-2.5 px-1',
+          'mb-6 flex shrink-0 items-center gap-2 px-1',
           collapsed && 'justify-center px-0',
         )}
       >
@@ -33,7 +33,7 @@ export default function Sidebar({
 
       <SidebarNavList collapsed={collapsed} />
 
-      <div className="mt-4 shrink-0 border-t border-border pt-4">
+      <div className="mt-4 shrink-0">
         <button
           type="button"
           onClick={onToggleCollapse}

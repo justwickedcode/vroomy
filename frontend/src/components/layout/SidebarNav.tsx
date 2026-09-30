@@ -53,15 +53,15 @@ export function SidebarNavList({
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   return (
-    <nav className="flex flex-1 flex-col gap-7 overflow-y-auto">
+    <nav className="flex flex-col gap-5 overflow-y-auto">
       {NAV_GROUPS.map((group) => (
         <div key={group.label}>
           {!collapsed && (
-            <p className="mb-2 px-2.5 text-[0.65rem] font-extrabold tracking-[0.14em] text-muted-foreground uppercase">
+            <p className="mb-1.5 px-2.5 text-[0.65rem] font-extrabold tracking-[0.14em] text-muted-foreground uppercase">
               {group.label}
             </p>
           )}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-0.5">
             {group.items.map((item) => {
               const active =
                 pathname === item.to || pathname.startsWith(`${item.to}/`)

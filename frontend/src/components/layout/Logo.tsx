@@ -8,7 +8,7 @@ export default function Logo() {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="size-6 text-signal drop-shadow-[0_0_6px_color-mix(in_oklab,var(--color-signal)_55%,transparent)]"
+      className="brand-logo size-6 text-signal"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
