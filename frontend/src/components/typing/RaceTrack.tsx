@@ -322,21 +322,21 @@ export function Trail({ variant }: { variant: TrailVariant }) {
         <g
           className="spark-bolt"
           style={{ animationDelay: '0ms' }}
-          transform="translate(6,1) rotate(-3) scale(0.95)"
+          transform="translate(22,1) rotate(-3) scale(0.95)"
         >
           {makeBolt('44,7 34,3 37,9 24,4 27,10 16,5')}
         </g>
         <g
           className="spark-bolt"
           style={{ animationDelay: '80ms' }}
-          transform="translate(6,20) rotate(3) scale(0.95)"
+          transform="translate(22,20) rotate(3) scale(0.95)"
         >
           {makeBolt('44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6')}
         </g>
         <g
           className="spark-bolt"
           style={{ animationDelay: '160ms' }}
-          transform="translate(6,39) rotate(-4) scale(0.95)"
+          transform="translate(22,39) rotate(-4) scale(0.95)"
         >
           {makeBolt('44,7 36,3 39,8 30,4')}
         </g>

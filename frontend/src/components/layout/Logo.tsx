@@ -8,7 +8,7 @@ export default function Logo() {
   return (
     <svg
       viewBox="0 0 24 24"
-      className="brand-logo size-6 text-signal"
+      className="brand-logo size-8 text-signal"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
