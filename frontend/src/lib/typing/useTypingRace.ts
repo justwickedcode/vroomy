@@ -179,22 +179,32 @@ export function useTypingRace(
   }
 
   // Powerup effect (see useBotRacers' hitBot for the other half) — force-commits the active
-  // word exactly as if it had just been typed correctly and space-committed, so it feeds the
-  // same `typed`/`wordIndex`/finishedAt machinery a real keystroke would rather than needing its
-  // own parallel "skipped words" bookkeeping. Doesn't touch totalTyped/totalMistakes, so a skip
-  // can't inflate or deflate accuracy — no keystrokes actually happened.
-  const skipWord = useCallback(() => {
-    if (finished || !startedAt || text.length === 0) return
-    const word = spans[activeWordIndex]
-    const isLast = activeWordIndex >= spans.length - 1
-    const committed = text.slice(0, word.end) + (isLast ? '' : ' ')
-    setTyped(committed)
-    if (isLast) {
-      setFinishedAt(Date.now())
-    } else {
-      setWordIndex(activeWordIndex + 1)
-    }
-  }, [finished, startedAt, spans, activeWordIndex, text])
+  // word (or, for Nitro's `count`, several words at once) exactly as if each had just been typed
+  // correctly and space-committed, so it feeds the same `typed`/`wordIndex`/finishedAt machinery
+  // a real keystroke would rather than needing its own parallel "skipped words" bookkeeping.
+  // Doesn't touch totalTyped/totalMistakes, so a skip can't inflate or deflate accuracy — no
+  // keystrokes actually happened. `count` commits in one state update rather than calling this
+  // twice — calling it twice in the same tick would both read the same stale `activeWordIndex`
+  // closure and only actually advance by one.
+  const skipWord = useCallback(
+    (count = 1) => {
+      if (finished || !startedAt || text.length === 0) return
+      const targetIndex = Math.min(
+        activeWordIndex + count - 1,
+        spans.length - 1,
+      )
+      const word = spans[targetIndex]
+      const isLast = targetIndex >= spans.length - 1
+      const committed = text.slice(0, word.end) + (isLast ? '' : ' ')
+      setTyped(committed)
+      if (isLast) {
+        setFinishedAt(Date.now())
+      } else {
+        setWordIndex(targetIndex + 1)
+      }
+    },
+    [finished, startedAt, spans, activeWordIndex, text],
+  )
 
   // Lets a countdown-driven UI (the solo race screen) kick the clock off at
   // "GO" instead of on the player's first keystroke — bots and the timer

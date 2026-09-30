@@ -1144,6 +1144,282 @@ body::before {
   }
 }
 
+/* ── Powerup activation effects (RaceTrack's PowerupBurst/PowerupImpact) ──
+   One-shot, mounted fresh per use (see the `key` on RaceEffect) so back-to-back uses of the same
+   kind replay instead of no-op'ing on unchanged props. The shake below animates the standalone
+   `translate` property, not `transform` — `.race-car-wrap` already uses `transform` for its own
+   centering offset, and an animation on that property would replace it outright (the car would
+   jump), where `translate` composes with it instead. */
+.race-powerup-burst {
+  position: absolute;
+  inset: -45% -70%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.race-powerup-burst span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 999px;
+}
+
+.race-powerup-burst span:nth-child(1) {
+  width: 2.8rem;
+  height: 2.8rem;
+  margin: -1.4rem 0 0 -1.4rem;
+  background: radial-gradient(circle, var(--pu-c) 0%, transparent 70%);
+  animation: pu-burst-flash 480ms ease-out forwards;
+}
+
+.race-powerup-burst span:nth-child(2),
+.race-powerup-burst span:nth-child(3) {
+  width: 1.8rem;
+  height: 3px;
+  background: var(--pu-c);
+  box-shadow: 0 0 6px 1px var(--pu-c);
+  animation: pu-burst-streak 420ms ease-out forwards;
+}
+
+.race-powerup-burst span:nth-child(2) {
+  margin: -9px 0 0 -1.8rem;
+  animation-delay: 20ms;
+}
+
+.race-powerup-burst span:nth-child(3) {
+  margin: 6px 0 0 -1.8rem;
+  animation-delay: 80ms;
+}
+
+.race-powerup-burst--boost {
+  --pu-c: #fbbf24;
+}
+
+.race-powerup-burst--nitro {
+  --pu-c: #fb5607;
+}
+
+@keyframes pu-burst-flash {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@keyframes pu-burst-streak {
+  0% {
+    opacity: 1;
+    transform: scaleX(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1) translateX(-16px);
+  }
+}
+
+.race-powerup-impact {
+  position: absolute;
+  inset: -50%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.race-powerup-impact span:nth-child(1) {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 3px solid var(--pu-c);
+  animation: pu-impact-ring 480ms ease-out forwards;
+}
+
+.race-powerup-impact span:nth-child(2) {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: radial-gradient(circle, var(--pu-c) 0%, transparent 65%);
+  animation: pu-impact-flash 320ms ease-out forwards;
+}
+
+.race-powerup-impact--shell {
+  --pu-c: #ef4444;
+}
+
+.race-powerup-impact--magnet {
+  --pu-c: #a855f7;
+}
+
+@keyframes pu-impact-ring {
+  0% {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes pu-impact-flash {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.race-car-wrap--hit {
+  animation: pu-car-shake 400ms ease-in-out;
+}
+
+@keyframes pu-car-shake {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  15% {
+    translate: -4px 0;
+  }
+  30% {
+    translate: 4px 0;
+  }
+  45% {
+    translate: -3px 0;
+  }
+  60% {
+    translate: 3px 0;
+  }
+  75% {
+    translate: -1.5px 0;
+  }
+}
+
+.race-emp-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgb(125 211 252 / 55%) 0%,
+    rgb(56 189 248 / 25%) 45%,
+    transparent 75%
+  );
+  animation: pu-emp-flash 550ms ease-out forwards;
+}
+
+@keyframes pu-emp-flash {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Powerup-ready banner (TypingRace.tsx) — docked over the track's own bottom edge rather than a
+   small corner pill, which direct feedback said was easy to miss mid-race since it sat away from
+   where the player's eyes actually are. Colored per powerup via --pu-c (set inline, matching the
+   activation effects above) and kept pulsing/glowing so it reads as "act now", not ambient UI. */
+.race-powerup-banner {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--pu-c);
+  background: color-mix(in oklab, var(--pu-c) 22%, rgb(10 10 14 / 92%));
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--pu-c) 40%, transparent),
+    0 0 24px 2px color-mix(in oklab, var(--pu-c) 55%, transparent),
+    0 12px 28px -8px rgb(0 0 0 / 70%);
+  cursor: pointer;
+  text-align: left;
+  animation:
+    pu-banner-in 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    pu-banner-pulse 1100ms ease-in-out 220ms infinite;
+}
+
+.race-powerup-banner-icon {
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--pu-c);
+  filter: drop-shadow(0 0 6px var(--pu-c));
+}
+
+.race-powerup-banner-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.race-powerup-banner-text strong {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-foreground);
+}
+
+.race-powerup-banner-text span {
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--color-muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-powerup-banner-kbd {
+  flex-shrink: 0;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--pu-c);
+  border-radius: 0.3rem;
+  background: color-mix(in oklab, var(--pu-c) 30%, black 40%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: white;
+}
+
+@keyframes pu-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pu-banner-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--pu-c) 40%, transparent),
+      0 0 24px 2px color-mix(in oklab, var(--pu-c) 55%, transparent),
+      0 12px 28px -8px rgb(0 0 0 / 70%);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1.5px color-mix(in oklab, var(--pu-c) 70%, transparent),
+      0 0 34px 6px color-mix(in oklab, var(--pu-c) 75%, transparent),
+      0 12px 28px -8px rgb(0 0 0 / 70%);
+  }
+}
+
 /* Trails off the rear of the car (nose faces right, so effects sit at the wrapper's left edge)
    — only rendered while a racer is actively moving, see the `racing` guard in RaceTrack.tsx.
    Sized and colored to read as aggressive propulsion at a glance — direct feedback was that the

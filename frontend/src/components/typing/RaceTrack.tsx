@@ -4,6 +4,7 @@ import CarIcon from '#/components/typing/CarIcon'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
 import type { TrailVariant } from '#/lib/trails'
+import type { PowerupKind } from '#/lib/powerups'
 
 export interface Racer {
   id: string
@@ -18,6 +19,17 @@ export interface Racer {
   underglow?: boolean
   underglowColor?: string
   trail?: TrailVariant
+}
+
+// One-shot powerup activation effect (see TypingRace.tsx's usePowerup) — `key` changes on every
+// use, even reusing the same kind back-to-back, so consumers can remount the animated element
+// instead of it no-op'ing because its own props didn't change. `targetId` names which bot a
+// shell/magnet hit landed on; boost/nitro (no target — the effect plays on the player's own car)
+// and emp (plays on every lane at once) leave it unset.
+export interface RaceEffect {
+  kind: PowerupKind
+  targetId?: string
+  key: number
 }
 
 // Cars start at 12% and stop at 92% (finish band position)
@@ -404,20 +416,71 @@ function FinishBurst() {
   )
 }
 
+// ─── Powerup activation effects ─────────────────────────────────────
+// One-shot visuals for actually *using* a powerup (see the always-visible Trail above for the
+// ambient cosmetic one) — mounted fresh per `key` so using the same kind twice in a row still
+// replays instead of no-op'ing on unchanged props.
+
+function PowerupBurst({ kind }: { kind: 'boost' | 'nitro' }) {
+  return (
+    <span
+      className={cn('race-powerup-burst', `race-powerup-burst--${kind}`)}
+      aria-hidden="true"
+    >
+      <span />
+      <span />
+      <span />
+    </span>
+  )
+}
+
+function PowerupImpact({ kind }: { kind: 'shell' | 'magnet' }) {
+  return (
+    <span
+      className={cn('race-powerup-impact', `race-powerup-impact--${kind}`)}
+      aria-hidden="true"
+    >
+      <span />
+      <span />
+    </span>
+  )
+}
+
 // ─── Lane ───────────────────────────────────────────────────────────
 
 function Lane({
   racer,
   trailVariant,
+  effect,
 }: {
   racer: Racer
   trailVariant: TrailVariant
+  effect?: RaceEffect | null
 }) {
   const racing = racer.progress > 0 && !racer.finished
 
+  // Boost/nitro play on the player's own car (there's no bot equivalent); shell/magnet play on
+  // whichever bot the hit actually landed on. Narrowed into a {kind, key} pair up front so the
+  // JSX below doesn't need to re-check `effect` is non-null just to read its fields.
+  const burst =
+    effect &&
+    racer.isYou &&
+    (effect.kind === 'boost' || effect.kind === 'nitro')
+      ? { kind: effect.kind, key: effect.key }
+      : null
+  const impact =
+    effect &&
+    effect.targetId === racer.id &&
+    (effect.kind === 'shell' || effect.kind === 'magnet')
+      ? { kind: effect.kind, key: effect.key }
+      : null
+
   return (
     <div className="race-lane">
-      <div className="race-car-wrap" style={{ left: `${carLeft(racer)}%` }}>
+      <div
+        className={cn('race-car-wrap', impact && 'race-car-wrap--hit')}
+        style={{ left: `${carLeft(racer)}%` }}
+      >
         <span
           className={cn('race-name-tag', racer.isYou && 'race-name-tag--you')}
         >
@@ -425,6 +488,8 @@ function Lane({
         </span>
         {racing && <Trail variant={trailVariant} />}
         {racer.isYou && racer.finished && <FinishBurst />}
+        {burst && <PowerupBurst key={burst.key} kind={burst.kind} />}
+        {impact && <PowerupImpact key={impact.key} kind={impact.kind} />}
         <CarIcon
           model={racer.model ?? 'sport'}
           underglow={racer.underglow}
@@ -446,11 +511,13 @@ export default function RaceTrack({
   racers,
   countdown,
   phase,
+  effect,
   className,
 }: {
   racers: Array<Racer>
   countdown?: number
   phase?: 'waiting' | 'counting' | 'ready'
+  effect?: RaceEffect | null
   className?: string
 }) {
   const player = racers.find((r) => r.isYou) ?? racers[0]
@@ -526,7 +593,12 @@ export default function RaceTrack({
             ? (racer.trail ?? 'nitro')
             : BOT_TRAILS[index % BOT_TRAILS.length]
           return (
-            <Lane key={racer.id} racer={racer} trailVariant={trailVariant} />
+            <Lane
+              key={racer.id}
+              racer={racer}
+              trailVariant={trailVariant}
+              effect={effect}
+            />
           )
         })}
         <div className="race-curb" aria-hidden="true" />
@@ -535,6 +607,13 @@ export default function RaceTrack({
           style={{ left: `${FINISH_X}%` }}
           aria-hidden="true"
         />
+        {effect?.kind === 'emp' && (
+          <span
+            key={effect.key}
+            className="race-emp-flash"
+            aria-hidden="true"
+          />
+        )}
       </div>
 
       {phase === 'counting' && countdown !== undefined && (
