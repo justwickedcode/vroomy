@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Check, Crosshair, Zap } from 'lucide-react'
+import { Check, Crosshair, Flame, Magnet, Radar, Zap } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import CarIcon, { VEHICLE_CATEGORIES, VEHICLES } from '#/components/typing/CarIcon'
 import { Trail } from '#/components/typing/RaceTrack'
@@ -14,7 +14,10 @@ export const Route = createFileRoute('/garage')({ component: GaragePage })
 
 const POWERUP_ICONS: Record<PowerupKind, typeof Zap> = {
   boost: Zap,
+  nitro: Flame,
   shell: Crosshair,
+  emp: Radar,
+  magnet: Magnet,
 }
 
 function GaragePage() {
