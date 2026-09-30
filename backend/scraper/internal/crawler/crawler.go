@@ -91,6 +91,25 @@ const (
 	// nothing), not consecutive *discovery* calls finding nothing new to queue in the first place.
 	wikiquoteEmptyStreakBeforeRandom = 2
 
+	// goodreadsEmptyStreakBeforeRandom is Goodreads' equivalent of wikiquoteEmptyStreakBeforeRandom:
+	// after this many consecutive tag-cycling attempts in a row add nothing new (every tag in
+	// goodreadsTags already seeded at least once — see topUpGoodreadsIfEmpty), fall back to
+	// topUpGoodreadsRandomPages once. Goodreads' curated tag list is much shorter than any
+	// Wikiquote edition's category list (19 tags vs. tens of categories), so once it's dry it
+	// stays dry every single call from then on, not just occasionally — there's no need to wait
+	// out a long streak to be confident that's really what's happening.
+	goodreadsEmptyStreakBeforeRandom = 3
+
+	// goodreadsRandomPageMax bounds which page of Goodreads' own /quotes "popular quotes" listing
+	// topUpGoodreadsRandomPages picks from — confirmed live the listing paginates to page 100
+	// (its own next_page chain stops there), and that the exact same div.quote/quoteText/
+	// authorOrTitle/tags-footer markup GoodreadsParser already handles for tag and author pages
+	// renders here too, unchanged. This is Goodreads' answer to "what happens once even the
+	// organically-growing tag graph and the curated fallback list are both fully known": a
+	// broad, non-curated batch of ~30 quotes and ~90 tag/author links per page, cutting across
+	// whatever's currently popular site-wide rather than the ever-shrinking curated list.
+	goodreadsRandomPageMax = 100
+
 	// maxURLRetries bounds how many total attempts a URL gets on a fetch failure before it's
 	// marked permanently failed. Previously a single failed fetch (a transient network blip, a
 	// momentary 5xx) meant that URL was gone from the crawl forever — no second chance, ever.
@@ -621,6 +640,86 @@ func (c *Crawler) topUpGoodreadsIfEmpty(ctx context.Context) topUpResult {
 	return topUpResult{added: true}
 }
 
+// topUpGoodreadsRandomPages is Goodreads' equivalent of topUpWikiquoteRandomPages: the dead-end
+// fallback once even topUpGoodreadsIfEmpty's tag cycling stops finding anything new (every tag
+// in goodreadsTags already seeded — see goodreadsEmptyStreakBeforeRandom). Rather than a
+// MediaWiki list=random call (Goodreads has no equivalent API), this seeds a random page of
+// https://www.goodreads.com/quotes — the site's own "popular quotes" listing, which paginates to
+// goodreadsRandomPageMax and renders each quote with the exact same markup GoodreadsParser
+// already parses for tag/author pages (confirmed live), so no parser changes are needed: the
+// normal fetch loop picks this URL up like any other Goodreads URL, and its own NextURLs (tags
+// and author links, same as any other page) feed straight back into the organic discovery this
+// is backing up. Like topUpGoodreadsIfEmpty, this never touches goodreads.com itself (only
+// Postgres/Redis via SaveURL/PushURL), so topUpResult.calledNetwork stays false here too.
+func (c *Crawler) topUpGoodreadsRandomPages(ctx context.Context) topUpResult {
+	page := rand.Intn(goodreadsRandomPageMax) + 1
+	pageURL := "https://www.goodreads.com/quotes"
+	if page > 1 {
+		pageURL = fmt.Sprintf("https://www.goodreads.com/quotes?page=%d", page)
+	}
+
+	priority := scoring.CalculatePriority(scoring.SourceGoodreads, 0, 0)
+	frontier := models.URLFrontier{URL: pageURL, Source: scoring.SourceGoodreads, Priority: priority}
+	inserted, err := c.store.SaveURL(ctx, frontier)
+	if err != nil {
+		log.Printf("Could not save Goodreads random-page seed: %s\n", err)
+		return topUpResult{}
+	}
+	if !inserted {
+		logInfo("Goodreads random page %d already known; will try another on the next dead end", page)
+		return topUpResult{}
+	}
+	if err := c.store.PushURL(ctx, scoring.SourceGoodreads, pageURL, priority); err != nil {
+		log.Printf("Could not push Goodreads random-page seed to frontier: %s\n", err)
+		return topUpResult{}
+	}
+	logInfo("Discovered URL [goodreads]: %s (random popular-quotes page — tag cycling had run dry)", pageURL)
+	return topUpResult{added: true}
+}
+
+// goodreadsTopUpFunc returns a topUp closure for Goodreads: the normal tag-cycling fallback
+// (topUpGoodreadsIfEmpty), falling back to a random popular-quotes page
+// (topUpGoodreadsRandomPages) once goodreadsEmptyStreakBeforeRandom consecutive calls in a row
+// find nothing new — the same shape as wikiquoteTopUpFunc. emptyStreak is local to this closure,
+// one per Crawler.Run call, matching how Goodreads only ever runs one worker.
+//
+// Unlike Wikiquote's topUpResult.calledNetwork (which distinguishes "didn't even try" from "tried
+// and found nothing" for free, since a real API call either happens or doesn't),
+// topUpGoodreadsIfEmpty never sets calledNetwork — by design, it only ever touches Postgres/Redis
+// (see its own doc comment on why that shouldn't consume Goodreads' fetch cooldown). So this
+// closure checks Goodreads' own pending count directly before deferring to topUpGoodreadsIfEmpty:
+// a nonzero pending count means there's genuinely nothing to top up right now, not evidence the
+// tag list is exhausted, and must not count toward the streak — otherwise, since Goodreads
+// realistically never holds anywhere near minFrontierBuffer (20) pending URLs at once (a single
+// pagination chain plus occasional tag seeds), runWorker would call this on nearly every idle
+// tick regardless of whether Goodreads is anywhere close to actually running dry.
+func (c *Crawler) goodreadsTopUpFunc() func(ctx context.Context) topUpResult {
+	var emptyStreak int
+	return func(ctx context.Context) topUpResult {
+		pending, err := c.store.CountPendingBySource(ctx, scoring.SourceGoodreads)
+		if err != nil {
+			log.Printf("Could not check Goodreads pending count: %s\n", err)
+			return topUpResult{}
+		}
+		if pending > 0 {
+			return topUpResult{}
+		}
+
+		result := c.topUpGoodreadsIfEmpty(ctx)
+		if result.added {
+			emptyStreak = 0
+			return result
+		}
+		emptyStreak++
+		if emptyStreak >= goodreadsEmptyStreakBeforeRandom {
+			emptyStreak = 0
+			logWarn("goodreads: %d consecutive tag-cycling attempts found nothing new — falling back to a random popular-quotes page", goodreadsEmptyStreakBeforeRandom)
+			return c.topUpGoodreadsRandomPages(ctx)
+		}
+		return result
+	}
+}
+
 // failOrRetry handles a fetch failure for row: if it hasn't yet used up maxURLRetries attempts,
 // it's requeued to pending with an incremented error_count and a correspondingly lower priority
 // (scoring.CalculatePriority's existing errorCount term means a retried URL sinks below fresh
@@ -1058,7 +1157,7 @@ func (c *Crawler) Run(ctx context.Context) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		c.runWorker(ctx, scoring.SourceGoodreads, minSourceDelayFor(scoring.SourceGoodreads), c.topUpGoodreadsIfEmpty, nil)
+		c.runWorker(ctx, scoring.SourceGoodreads, minSourceDelayFor(scoring.SourceGoodreads), c.goodreadsTopUpFunc(), nil)
 	}()
 
 	// Both Wikiquote editions start at wikiquoteExperimentalDelay rather than their
