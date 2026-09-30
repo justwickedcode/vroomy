@@ -646,3 +646,13 @@ func (s *Store) GetPendingURLs(ctx context.Context) ([]models.URLFrontier, error
 	}
 	return urls, rows.Err()
 }
+
+// CountQuotes returns the total number of rows in quotes — the source of truth for the running
+// total the crawler logs milestones against (see crawler.go's recordQuotesSaved), not an
+// in-memory guess: queried once at startup to seed that counter, so a milestone logged mid-run
+// always reflects what's actually in the database, restarts included.
+func (s *Store) CountQuotes(ctx context.Context) (int64, error) {
+	var count int64
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM quotes`).Scan(&count)
+	return count, err
+}
