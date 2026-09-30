@@ -253,8 +253,8 @@ body::before {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.5rem 0.65rem;
+  gap: 0.7rem;
+  padding: 0.6rem 0.75rem;
   border-radius: var(--radius-md);
   font-size: 0.84rem;
   font-weight: 600;
