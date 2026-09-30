@@ -247,6 +247,15 @@ body::before {
   background: var(--color-primary);
 }
 
+/* Wordmark glow — kept as a real class rather than a Tailwind arbitrary-value drop-shadow:
+   commas inside a nested color-mix() there broke the bracket parsing and produced a large,
+   misplaced glow bleeding down the whole sidebar instead of a small halo behind the icon. */
+.brand-logo {
+  filter: drop-shadow(
+    0 0 6px color-mix(in oklab, var(--color-signal) 55%, transparent)
+  );
+}
+
 /* Sidebar nav row — the same underline-grow mechanic as `.nav-link`,
    rotated 90° into a left-edge bar instead of an underline. */
 .sidebar-link {
