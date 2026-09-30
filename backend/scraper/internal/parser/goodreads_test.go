@@ -75,12 +75,37 @@ func TestGoodreadsParser_Parse(t *testing.T) {
 	}
 
 	// Each quote's author avatar link is rewritten from its profile URL (/author/show/ID.Name)
-	// to the corresponding quotes-listing URL (/author/quotes/ID.Name) and queued alongside the
-	// existing pagination link — see GoodreadsParser's doc comment.
+	// to the corresponding quotes-listing URL (/author/quotes/ID.Name), and every tag link in
+	// that same quote's tags: footer is queued too (the fixture's 4 quotes carry 20 distinct
+	// tags between them, most never in crawler.go's hardcoded seed list — see GoodreadsParser's
+	// doc comment) — all alongside the existing pagination link, in document order, with
+	// cross-quote duplicates (the repeated "inspirational"/"love" tags, and Gandhi appearing as
+	// the author of two separate quote cards) collapsed by dedupeStrings to their first
+	// occurrence.
 	wantNext := []string{
+		"https://www.goodreads.com/quotes/tag/dance",
+		"https://www.goodreads.com/quotes/tag/heaven",
+		"https://www.goodreads.com/quotes/tag/hurt",
+		"https://www.goodreads.com/quotes/tag/inspirational",
+		"https://www.goodreads.com/quotes/tag/life",
+		"https://www.goodreads.com/quotes/tag/love",
+		"https://www.goodreads.com/quotes/tag/sing",
 		"https://www.goodreads.com/author/quotes/1744830.William_W_Purkey",
+		"https://www.goodreads.com/quotes/tag/action",
+		"https://www.goodreads.com/quotes/tag/change",
+		"https://www.goodreads.com/quotes/tag/misattributed-to-gandhi",
+		"https://www.goodreads.com/quotes/tag/philosophy",
+		"https://www.goodreads.com/quotes/tag/wish",
 		"https://www.goodreads.com/author/quotes/5810891.Mahatma_Gandhi",
+		"https://www.goodreads.com/quotes/tag/darkness",
+		"https://www.goodreads.com/quotes/tag/drive-out",
+		"https://www.goodreads.com/quotes/tag/hate",
+		"https://www.goodreads.com/quotes/tag/light",
+		"https://www.goodreads.com/quotes/tag/peace",
 		"https://www.goodreads.com/author/quotes/23924.Martin_Luther_King_Jr_",
+		"https://www.goodreads.com/quotes/tag/carpe-diem",
+		"https://www.goodreads.com/quotes/tag/education",
+		"https://www.goodreads.com/quotes/tag/learning",
 		"https://www.goodreads.com/quotes/tag/inspirational?page=2",
 	}
 	if len(result.NextURLs) != len(wantNext) {
