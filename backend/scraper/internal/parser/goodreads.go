@@ -24,12 +24,29 @@ var goodreadsTrailingSeparator = regexp.MustCompile(`[\s\x{2010}-\x{2015}-]+$`)
 // silently extracted zero quotes from every author page, a real gap only found once author
 // pages started actually being discovered (see NextURLs below).
 //
-// NextURLs comes from two places: the existing a.next_page[rel="next"] pagination link, and
-// (new) each quote's author avatar link (a.quoteAvatar/a.leftAlignedImage, present on both page
-// types) — a precise, high-confidence discovery signal, not "every link on the page." The
-// avatar's href is an author's *profile* page (/author/show/ID.Name); it's rewritten to that
-// author's *quotes* page (/author/quotes/ID.Name) before being queued, since that's the only
-// URL shape this parser's own selectors are built to handle — confirmed live that
+// NextURLs comes from three places: the existing a.next_page[rel="next"] pagination link, each
+// quote's author avatar link (a.quoteAvatar/a.leftAlignedImage, present on both page types), and
+// (new) every tag link in that same quote's own tags:  footer (div.greyText.smallText.left a —
+// the exact selector already walked to build Quote.Tags, just also reading each anchor's href).
+// All three are precise, high-confidence discovery signals, not "every link on the page."
+//
+// The tag links matter the most for actual discoverable breadth: the crawler's only other
+// source of Goodreads tags is a short hardcoded seed list (goodreadsTags in crawler.go, ~19
+// curated names), but nearly every real quote carries several much more specific, long-tail
+// tags a curated list would never think to include — confirmed live against this parser's own
+// fixture (internal/parser/testdata/goodreads_inspirational_tag.html): 4 quotes on a single
+// "inspirational" tag page surface 20 distinct tags between them, and only 3 of those
+// (inspirational, life, love) are anywhere in the hardcoded seed list — "dance", "heaven",
+// "misattributed-to-gandhi", "carpe-diem", and 16 others are net-new discovery, from one page.
+// Combined with author-page discovery, this turns a fixed ~19-tag universe into an organically
+// growing one: every newly discovered tag page surfaces more quotes, each with its own tags and
+// authors, the same compounding-discovery shape already proven safe for Wikiquote's
+// citation-link/subcategory-recursion discovery — bounded in practice by the real tag graph's
+// own size, not a number chosen up front.
+//
+// The avatar's href is an author's *profile* page (/author/show/ID.Name); it's rewritten to
+// that author's *quotes* page (/author/quotes/ID.Name) before being queued, since that's the
+// only URL shape this parser's own selectors are built to handle — confirmed live that
 // /author/show/ doesn't even render a matching quote card at all, and that the ID.Name suffix
 // carries over unchanged between the two paths.
 type GoodreadsParser struct{}
@@ -74,6 +91,9 @@ func (p *GoodreadsParser) Parse(html string) (Result, error) {
 		var tags []string
 		s.Find("div.greyText.smallText.left a").Each(func(i int, tag *goquery.Selection) {
 			tags = append(tags, strings.TrimSpace(tag.Text()))
+			if href, ok := tag.Attr("href"); ok && href != "" {
+				result.NextURLs = append(result.NextURLs, resolveGoodreadsURL(href))
+			}
 		})
 
 		result.Quotes = append(result.Quotes, models.Quote{
