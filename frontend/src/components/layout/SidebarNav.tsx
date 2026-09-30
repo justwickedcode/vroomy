@@ -52,8 +52,17 @@ export function SidebarNavList({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
+  // Collapsed mode drops the group labels entirely (no room for them), so the extra gap
+  // between groups that separates labeled sections in expanded mode has nothing left to
+  // separate — it just reads as uneven rhythm between icons. Collapsed uses one uniform gap
+  // for every icon instead of a two-tier group/item gap.
   return (
-    <nav className="flex flex-col gap-5 overflow-y-auto">
+    <nav
+      className={cn(
+        'flex flex-1 flex-col overflow-y-auto',
+        collapsed ? 'gap-1' : 'gap-5',
+      )}
+    >
       {NAV_GROUPS.map((group) => (
         <div key={group.label}>
           {!collapsed && (
@@ -61,7 +70,7 @@ export function SidebarNavList({
               {group.label}
             </p>
           )}
-          <div className="flex flex-col gap-0.5">
+          <div className={cn('flex flex-col', collapsed ? 'gap-1' : 'gap-0.5')}>
             {group.items.map((item) => {
               const active =
                 pathname === item.to || pathname.startsWith(`${item.to}/`)

@@ -1702,14 +1702,14 @@ body::before {
 @keyframes shock-streak {
   0% {
     opacity: 1;
-    transform: translateX(8px) scaleX(0.7);
+    transform: translateX(4px) scaleX(0.7);
   }
   70% {
     opacity: 1;
   }
   100% {
     opacity: 0;
-    transform: translateX(-34px) scaleX(1.7);
+    transform: translateX(-14px) scaleX(1.3);
   }
 }
 
