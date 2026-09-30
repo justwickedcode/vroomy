@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -253,6 +254,37 @@ func logInfo(format string, args ...interface{}) {
 		return
 	}
 	log.Printf(format, args...)
+}
+
+// quoteMilestoneInterval controls how often the running total gets logged — every 1000 net-new
+// quotes actually saved (duplicates don't count; see recordQuotesSaved).
+const quoteMilestoneInterval = 1000
+
+// totalQuoteCount is the live running total of quotes in the database, seeded once at startup
+// from Store.CountQuotes (see Run) and kept current by recordQuotesSaved after every successful
+// save from then on. A package-level atomic, not a Crawler field: every source's worker
+// goroutine calls processURL concurrently (see Run spawning one goroutine per source), and an
+// atomic add is exactly what's needed to keep a shared counter correct under that without a
+// mutex.
+var totalQuoteCount atomic.Int64
+
+// recordQuotesSaved adds n newly-saved quotes to the running total and logs every
+// quoteMilestoneInterval boundary the addition crosses — one log line per boundary, so a single
+// large batch that jumps from, say, 1997 to 2004 still logs the 2000 milestone rather than
+// silently skipping over it. Logged with a plain, unconditional log.Printf (like every other
+// message in this file meant to survive a quieted-down production log) specifically so this
+// still shows up even at LOG_LEVEL=error — a milestone isn't a warning or an error, but it's the
+// one piece of "is this thing actually working" narration worth keeping at every log level.
+func recordQuotesSaved(n int) {
+	if n <= 0 {
+		return
+	}
+	after := totalQuoteCount.Add(int64(n))
+	before := after - int64(n)
+	first := (before/quoteMilestoneInterval + 1) * quoteMilestoneInterval
+	for m := first; m <= after; m += quoteMilestoneInterval {
+		log.Printf("Milestone: %d total quotes scraped so far", m)
+	}
 }
 
 // topUpResult is what a source's top-up function reports back to runWorker. calledNetwork
@@ -751,13 +783,16 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 		if err != nil {
 			log.Printf("Could not save quotes: %s\n", err)
 		} else {
+			newlySaved := 0
 			for i, quote := range candidates {
 				if saved[i] {
+					newlySaved++
 					logInfo("Saved quote [%s]: %q — %s", quote.Source, truncate(quote.Text, 60), quote.Author)
 				} else {
 					logWarn("Skipped duplicate [%s]: %q — %s", quote.Source, truncate(quote.Text, 60), quote.Author)
 				}
 			}
+			recordQuotesSaved(newlySaved)
 		}
 	}
 
@@ -977,7 +1012,14 @@ func (c *Crawler) wikiquoteTopUpFunc(site wikiquoteSite) func(ctx context.Contex
 
 func (c *Crawler) Run(ctx context.Context) error {
 
-	err := c.store.WarmSimhashCache(ctx)
+	quoteCount, err := c.store.CountQuotes(ctx)
+	if err != nil {
+		return err
+	}
+	totalQuoteCount.Store(quoteCount)
+	log.Printf("Starting up with %d total quotes already in the database", quoteCount)
+
+	err = c.store.WarmSimhashCache(ctx)
 	if err != nil {
 		return err
 	}
