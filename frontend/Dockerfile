@@ -15,9 +15,13 @@ COPY . .
 # plain Dockerfile-type App) only ever expose *runtime* environment variables and never wire
 # them through to `docker build --build-arg`, silently leaving the dev fallback baked in with no
 # error anywhere. Baking in a fixed placeholder token instead, and swapping it for the real
-# value at container startup (see docker-entrypoint.sh), sidesteps that entirely: the values
-# only ever need to be ordinary runtime env vars, however the host exposes those.
-ENV VITE_API_URL=__VROOMY_RUNTIME_API_URL__
+# value at container startup (see docker-entrypoint.sh), sidesteps that entirely: VITE_WS_URL
+# only ever needs to be an ordinary runtime env var, however the host exposes those. (The old
+# VITE_API_URL equivalent is gone — backend/api has no public domain at all anymore, see
+# docker-compose.prod.yml, so the client bundle never needs to know its address; see
+# src/lib/typing/sentences.ts's createServerFn-based proxy, configured via the plain runtime env
+# var API_INTERNAL_URL, which needs no build-time handling since it's only ever read inside a
+# server-only handler.)
 ENV VITE_WS_URL=__VROOMY_RUNTIME_WS_URL__
 RUN bun run build
 
