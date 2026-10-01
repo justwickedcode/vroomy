@@ -1423,6 +1423,18 @@ one to already exist for what it delivers to matter.
 - [ ] §6.4: `/leaderboard` endpoint + `leaderboard` view.
 - [ ] §11.1: `/leaderboard`, `/login`, `/register` routes.
 
+### Phase 6 — CI and frontend test coverage
+
+- [ ] Add CI (e.g. GitHub Actions) running `go build`/`go test` for all
+      three backends (`api`, `ws`, `scraper`) and `bun run build`/`bun run
+    lint` for the frontend on every push/PR — currently these only run
+      locally, by hand, so nothing stops a broken commit from landing on
+      `main`.
+- [ ] Add frontend test coverage. The three Go backends have real test
+      suites (18 `_test.go` files across crawler/dedup/fetcher/parser/db/
+      api/ws); the frontend currently has none — "tested" there means
+      build+lint clean, not behavior-verified.
+
 ---
 
 ## 19. Open questions & risks
