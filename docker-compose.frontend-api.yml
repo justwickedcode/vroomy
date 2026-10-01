@@ -1,0 +1,67 @@
+# For a Dokploy deployment where postgres, redis, crawler, and ws already exist as separate,
+# already-working Dokploy resources (Database resources for postgres/redis, Applications for
+# crawler/ws) and you don't want to redo any of that — this pairs up only api and frontend into
+# one small Compose project, which is the minimum needed for frontend to reach api by plain
+# internal DNS (http://api:8080) at all. See PRODUCTION.md's "Isolating api behind the frontend"
+# for why that requires api and frontend specifically to be in the same compose project — Dokploy
+# only gives automatic service-name networking to services deployed together that way; separate
+# Applications (even in the same Dokploy Project/environment) each get an isolated network with
+# no way to resolve each other by name (https://github.com/Dokploy/dokploy/issues/3670). Database
+# resources are a separate case — already reachable project-wide regardless, which is why
+# crawler/api/ws already work against the existing postgres/redis Database resources without any
+# of this.
+#
+# docker-compose.prod.yml (the full six-service file) is for a from-scratch deployment instead —
+# use that one if nothing is deployed yet. This file is specifically for migrating an existing,
+# already-separately-deployed setup with no disruption to postgres/redis/crawler/ws and no data
+# migration needed at all.
+#
+# Required env vars on this Dokploy Compose project:
+#   DATABASE_URL          — copy the exact value from your existing standalone api App's own env
+#                           vars (the same Dokploy-internal Postgres connection string it already
+#                           uses today)
+#   CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com) —
+#                           effectively vestigial now that no browser reaches api directly, kept
+#                           only as harmless defense-in-depth
+#   VITE_WS_URL           — ws's real public wss:// domain, unchanged from what the old standalone
+#                           frontend App already used
+
+services:
+  api:
+    build: ./backend/api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      API_PORT: 8080
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
+      GOMEMLIMIT: 100MiB
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Plain service-name DNS, only reachable because frontend and api are in this same compose
+      # project. Not VITE_-prefixed on purpose — see frontend/src/lib/typing/sentences.ts.
+      API_INTERNAL_URL: http://api:8080
+      VITE_WS_URL: ${VITE_WS_URL}
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M

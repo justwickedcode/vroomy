@@ -1,0 +1,109 @@
+# For a Dokploy deployment where postgres and redis already exist as their own Database
+# resources (managed and backed up by you outside this file) and nothing else is deployed yet —
+# this bundles crawler, api, ws, and frontend into one Compose project, which is the minimum
+# needed for frontend to reach api by plain internal DNS (http://api:8080) at all. See
+# PRODUCTION.md's "Isolating api behind the frontend" for why api and frontend specifically must
+# be deployed together — Dokploy only gives automatic service-name networking to services
+# deployed together this way; separate Applications each get an isolated network with no way to
+# resolve each other by name (https://github.com/Dokploy/dokploy/issues/3670). Database
+# resources are a separate case — already reachable project-wide regardless, which is why this
+# file has no postgres/redis service blocks at all; point DATABASE_URL/REDIS_ADDR at your
+# existing ones instead.
+#
+# docker-compose.prod.yml is for a from-scratch deployment that also stands up postgres/redis
+# itself — use that one instead if you don't already have them. docker-compose.frontend-api.yml
+# is for the narrower case where crawler/ws are ALSO already separately deployed and only
+# api+frontend need to move into a shared compose project.
+#
+# Required env vars on this Dokploy Compose project:
+#   DATABASE_URL          — your existing Postgres Database resource's connection string
+#   REDIS_ADDR            — your existing Redis Database resource's connection string
+#                           (redis://... is fine directly; see PRODUCTION.md's Dokploy section)
+#   CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com)
+#   VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  crawler:
+    build: ./backend/scraper
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_ADDR: ${REDIS_ADDR}
+      REDIS_DB: 0
+      GOMEMLIMIT: 1536MiB
+      LOG_LEVEL: error
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  api:
+    build: ./backend/api
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      API_PORT: 8080
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
+      GOMEMLIMIT: 100MiB
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  ws:
+    build: ./backend/ws
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      WS_PORT: 8081
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
+      GOMEMLIMIT: 100MiB
+    ports:
+      - '127.0.0.1:8081:8081'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8081/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Plain service-name DNS, only reachable because frontend and api are in this same compose
+      # project. Not VITE_-prefixed on purpose — see frontend/src/lib/typing/sentences.ts.
+      API_INTERNAL_URL: http://api:8080
+      VITE_WS_URL: ${VITE_WS_URL}
+    ports:
+      - '127.0.0.1:3000:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
