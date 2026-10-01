@@ -338,26 +338,69 @@ func (c *Crawler) logQuoteSummary(ctx context.Context, label string) {
 		log.Printf("Could not load quote summary %s: %s\n", label, err)
 		return
 	}
-	log.Printf("Summary %s — by source: %s | by language: %s",
-		label, formatCounts(bySource), formatCounts(byLanguage))
+	log.Printf("Summary %s:\n  by source:%s\n  by language:%s",
+		label, formatCountsTable(bySource), formatCountsTable(byLanguage))
 }
 
-// formatCounts renders a label->count map as "a=1,234, b=5,678" sorted alphabetically by label
-// and with formatCount's thousands separators — a plain map's random iteration order would
-// otherwise make every summary line's column order shuffle between log lines for no reason,
-// which is needlessly hard to read/diff across milestones.
-func formatCounts(counts map[string]int64) string {
-	labels := make([]string, 0, len(counts))
-	for label := range counts {
-		labels = append(labels, label)
-	}
-	sort.Strings(labels)
+// countRow is one label/count pair, broken out as its own type purely so sortCountRows has
+// something concrete to sort — map iteration order is random in Go, and the whole point here is
+// a stable, biggest-first row order.
+type countRow struct {
+	label string
+	count int64
+}
 
-	parts := make([]string, len(labels))
-	for i, label := range labels {
-		parts[i] = fmt.Sprintf("%s=%s", label, formatCount(counts[label]))
+// sortCountRows orders rows by count descending (the biggest sources/languages first — almost
+// always what's actually worth scanning for first), falling back to the label alphabetically to
+// break ties deterministically rather than leaving equal-count rows in whatever order map
+// iteration happened to produce.
+func sortCountRows(rows []countRow) {
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].count != rows[j].count {
+			return rows[i].count > rows[j].count
+		}
+		return rows[i].label < rows[j].label
+	})
+}
+
+// formatCountsTable renders a label->count map as a simple fixed-width table, one row per
+// line, biggest count first (see sortCountRows) — e.g.:
+//
+//	goodreads      1,234,567
+//	wikiquote_en     987,654
+//	wikiquote_de     102,345
+//
+// Both columns are padded to the widest entry so every row lines up, which a flat
+// comma-joined "a=1,234, b=5,678" line (the previous format) can't do at a glance once there
+// are more than two or three sources. Each row is prefixed with its own "\n    " here, not
+// joined with "\n" afterward, so the caller's surrounding log line (which already supplies the
+// line break and section heading before the first row) doesn't end up with one format for the
+// first row and another for the rest.
+func formatCountsTable(counts map[string]int64) string {
+	rows := make([]countRow, 0, len(counts))
+	for label, count := range counts {
+		rows = append(rows, countRow{label, count})
 	}
-	return strings.Join(parts, ", ")
+	sortCountRows(rows)
+
+	labelWidth := 0
+	countStrs := make([]string, len(rows))
+	countWidth := 0
+	for i, r := range rows {
+		if len(r.label) > labelWidth {
+			labelWidth = len(r.label)
+		}
+		countStrs[i] = formatCount(r.count)
+		if len(countStrs[i]) > countWidth {
+			countWidth = len(countStrs[i])
+		}
+	}
+
+	var b strings.Builder
+	for i, r := range rows {
+		fmt.Fprintf(&b, "\n    %-*s  %*s", labelWidth, r.label, countWidth, countStrs[i])
+	}
+	return b.String()
 }
 
 // formatCount renders n with thousands separators (1234567 -> "1,234,567"). Every count this

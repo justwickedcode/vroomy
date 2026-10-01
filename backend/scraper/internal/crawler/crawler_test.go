@@ -118,3 +118,23 @@ func TestFormatCount(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatCountsTable(t *testing.T) {
+	got := formatCountsTable(map[string]int64{
+		"goodreads":    1234567,
+		"wikiquote_en": 987654,
+		"wikiquote_de": 2345,
+		"wikiquote_fr": 2345, // tied with wikiquote_de — must break the tie alphabetically, not randomly
+	})
+
+	want := "\n" + strings.Join([]string{
+		"    goodreads     1,234,567",
+		"    wikiquote_en    987,654",
+		"    wikiquote_de      2,345",
+		"    wikiquote_fr      2,345",
+	}, "\n")
+
+	if got != want {
+		t.Errorf("formatCountsTable() =\n%s\nwant:\n%s", got, want)
+	}
+}
