@@ -11,16 +11,22 @@ RUN bun install --frozen-lockfile
 COPY . .
 
 # Vite inlines import.meta.env.VITE_* into the client and server bundles at build time, not at
-# runtime — so these are build args here, not environment variables on the runtime stage below.
-# See PRODUCTION.md for what to point them at.
-ARG VITE_API_URL
-ARG VITE_WS_URL
+# runtime — a real Docker build-arg would work, but plenty of PaaS UIs (Dokploy included, for a
+# plain Dockerfile-type App) only ever expose *runtime* environment variables and never wire
+# them through to `docker build --build-arg`, silently leaving the dev fallback baked in with no
+# error anywhere. Baking in a fixed placeholder token instead, and swapping it for the real
+# value at container startup (see docker-entrypoint.sh), sidesteps that entirely: the values
+# only ever need to be ordinary runtime env vars, however the host exposes those.
+ENV VITE_API_URL=__VROOMY_RUNTIME_API_URL__
+ENV VITE_WS_URL=__VROOMY_RUNTIME_WS_URL__
 RUN bun run build
 
 FROM oven/bun:1-alpine
 WORKDIR /app
 COPY --from=build /src/.output ./
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3000
 ENV PORT=3000 HOST=0.0.0.0
-ENTRYPOINT ["bun", "server/index.mjs"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
