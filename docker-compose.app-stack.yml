@@ -107,3 +107,16 @@ services:
       resources:
         limits:
           memory: 256M
+
+# Postgres/Redis Database resources are deployed as Docker Swarm services on Dokploy's shared
+# "dokploy-network" overlay network, not on whatever network a plain Compose project would
+# create by default — a brand-new default network (e.g. the auto-created
+# "<project>_default" bridge) has no route to them at all, and DATABASE_URL/REDIS_ADDR hostname
+# lookups fail outright (not an auth/connection-refused error, a DNS resolution failure).
+# Pointing this project's implicit "default" network at that same external network instead of
+# letting Compose create its own fixes it, while still giving api/crawler/ws/frontend
+# service-name DNS between each other (they're still all on one shared network together).
+networks:
+  default:
+    name: dokploy-network
+    external: true
