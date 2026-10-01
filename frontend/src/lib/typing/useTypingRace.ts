@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getRandomSentence } from './sentences'
+import { getRandomQuoteText } from './sentences'
 
 const TICK_MS = 100
 // Below this, elapsed time is too noisy to extrapolate into a per-minute
@@ -23,13 +23,15 @@ export function computeWordSpans(text: string): Array<WordSpan> {
 }
 
 export function useTypingRace(
-  getText: (exclude?: string) => string = getRandomSentence,
+  getText: (exclude?: string) => string | Promise<string> = getRandomQuoteText,
 ) {
   // Starts empty rather than calling getText() directly in useState's
   // initializer — that would run once during SSR and again on client
   // hydration, and a Math.random()-backed generator gives two different
   // strings each time, which is a hydration mismatch. Real text is
-  // generated client-side only, right after mount.
+  // generated client-side only, right after mount. Also the only option
+  // now that the default getText is a real network fetch — there's no
+  // synchronous value to initialize state with in the first place.
   const getTextRef = useRef(getText)
   getTextRef.current = getText
   const [text, setText] = useState('')
@@ -52,7 +54,16 @@ export function useTypingRace(
   const finished = finishedAt !== null
 
   useEffect(() => {
-    setText(getTextRef.current())
+    let cancelled = false
+    Promise.resolve(getTextRef.current()).then((next) => {
+      if (!cancelled) setText(next)
+    })
+    // Guards against setting state from a stale request that resolves after this effect's
+    // own cleanup — can't happen from a plain remount today, but getText is caller-supplied,
+    // so nothing guarantees every implementation resolves quickly or in order.
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -216,7 +227,11 @@ export function useTypingRace(
   }, [])
 
   function reset() {
-    setText((current) => getTextRef.current(current))
+    // Captured before clearing below — exclude is the sentence just finished, not whatever
+    // getText eventually resolves to next (text, unlike the other reset fields, isn't cleared
+    // via its own setState updater callback anymore: that form has to return a value
+    // synchronously, which a Promise-returning getText can't).
+    const exclude = text
     setTyped('')
     setWordIndex(0)
     setTotalTyped(0)
@@ -225,6 +240,11 @@ export function useTypingRace(
     setStartedAt(null)
     setFinishedAt(null)
     setNow(null)
+    // Cleared immediately, same as the initial mount, rather than left showing the just-
+    // finished text until the next one resolves — reuses the exact same "waiting" handling
+    // (see the text-keyed effect in TypingRace) instead of needing a second loading state.
+    setText('')
+    Promise.resolve(getTextRef.current(exclude)).then(setText)
   }
 
   return {
