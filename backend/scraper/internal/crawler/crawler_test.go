@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -49,6 +50,9 @@ func TestSetLogLevel(t *testing.T) {
 	}
 }
 
+// TestRecordQuotesSaved uses a zero-value Crawler (nil store) — safe because every case here
+// starts and ends well below summaryMilestoneInterval (10000), the only path that would ever
+// touch c.store. A case crossing that boundary belongs in an integration test, not here.
 func TestRecordQuotesSaved(t *testing.T) {
 	origOutput := log.Writer()
 	t.Cleanup(func() {
@@ -76,7 +80,7 @@ func TestRecordQuotesSaved(t *testing.T) {
 			var buf bytes.Buffer
 			log.SetOutput(&buf)
 
-			recordQuotesSaved(tt.add)
+			(&Crawler{}).recordQuotesSaved(context.Background(), tt.add)
 
 			output := buf.String()
 			for _, want := range tt.wantMilestone {
