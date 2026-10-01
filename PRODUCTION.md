@@ -90,8 +90,10 @@ where you're actually deploying, not something worth guessing at.
 ## 6. Deploying via Dokploy instead of raw Compose
 
 Dokploy can run this stack as separate managed services (its own Postgres/Redis database
-services plus a Dockerfile-based Application for each of the crawler, api, and ws) rather than
-the single `docker-compose.prod.yml` stack above. A few things are specific to that path:
+services plus a Dockerfile-based Application for each of the crawler, api, ws, and the frontend)
+rather than the single `docker-compose.prod.yml` stack above — which only covers the backend, so
+the frontend App below is in addition to it, not part of it. A few things are specific to that
+path:
 
 - **Build config for each App** (it's a monorepo — none of the Dockerfiles are at the repo
   root): set **Docker Context Path** and **Docker File** per App, both relative to the repo
@@ -110,6 +112,18 @@ the single `docker-compose.prod.yml` stack above. A few things are specific to t
   `ConnectRedis` (see finding #1 below) switches to URL parsing for anything containing `://`,
   so `REDIS_PASSWORD`/`REDIS_DB` env vars are unused in that case; only set `REDIS_ADDR`. Only
   the crawler uses Redis at all — api and ws only ever need `DATABASE_URL`.
+- **The frontend deploys as its own Dokploy App, from `frontend/Dockerfile`.** Set **Docker
+  Context Path** to `frontend` and **Docker File** to `frontend/Dockerfile` (same monorepo
+  caveat as above). Give it a domain, container **Port 3000**, and health-check path `/` (it has
+  no dedicated `/health` route — the root route responding is the signal). Set **Build
+  Arguments** (not environment variables — Dokploy exposes a separate Build Args field for
+  Dockerfile-type Apps) to `VITE_API_URL=https://<api's domain>` and
+  `VITE_WS_URL=wss://<ws's domain>`: Vite inlines `import.meta.env.VITE_*` into the bundle at
+  build time, so these only take effect as build args, and changing either means triggering a
+  rebuild, not just a restart. No runtime env vars are needed — the Dockerfile already bakes in
+  `PORT=3000`/`HOST=0.0.0.0`. Once the frontend's domain is live, go back and set
+  `CORS_ALLOWED_ORIGIN` on the api and ws Apps to that exact origin (step 4 above) — they won't
+  accept its requests until that's set.
 - **Memory limits** (crawler sized for its real measured ~1.25GB working set — see finding #2
   below — on top of Postgres/Redis running as separate containers instead of bundled with the
   crawler on one unconstrained host; api/ws are far lighter, no language models loaded, same
@@ -122,8 +136,13 @@ the single `docker-compose.prod.yml` stack above. A few things are specific to t
   | crawler  | 2048 MB            | ~2560 MB     | `GOMEMLIMIT=1536MiB`                               |
   | api      | 96 MB              | ~160 MB      | `GOMEMLIMIT=100MiB`                                |
   | ws       | 96 MB              | ~160 MB      | `GOMEMLIMIT=100MiB`                                |
+  | frontend | 128 MB             | ~256 MB      | —                                                  |
   | postgres | 512 MB             | ~768 MB      | —                                                  |
   | redis    | 256 MB             | ~384 MB      | `--maxmemory 200mb --maxmemory-policy allkeys-lru` |
+
+  The frontend's figure is an unmeasured starting point (a Bun SSR server, no language models,
+  same category as api/ws) — worth checking with `docker stats` under real traffic rather than
+  assumed, same caveat as api/ws's own numbers above.
 
   Use Dokploy's Reservation field (a soft target, doesn't kill on overage) where available, and
   Limit as the hard ceiling with some slack above it — a bare single hard limit with no slack
