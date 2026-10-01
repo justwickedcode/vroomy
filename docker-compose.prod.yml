@@ -151,7 +151,7 @@ services:
     ports:
       - '127.0.0.1:8081:8081'
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8081/health']
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:8081/health']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -185,7 +185,7 @@ services:
     ports:
       - '127.0.0.1:3000:3000'
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/']
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/']
       interval: 10s
       timeout: 5s
       retries: 5

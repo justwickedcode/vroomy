@@ -57,7 +57,7 @@ services:
       API_INTERNAL_URL: http://api:8080
       VITE_WS_URL: ${VITE_WS_URL}
     healthcheck:
-      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/']
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/']
       interval: 10s
       timeout: 5s
       retries: 5
