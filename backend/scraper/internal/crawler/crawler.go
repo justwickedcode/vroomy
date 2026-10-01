@@ -11,6 +11,7 @@ import (
 	"quotes-crawler/internal/models"
 	"quotes-crawler/internal/parser"
 	"quotes-crawler/internal/scoring"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -279,6 +280,12 @@ func logInfo(format string, args ...interface{}) {
 // quotes actually saved (duplicates don't count; see recordQuotesSaved).
 const quoteMilestoneInterval = 1000
 
+// summaryMilestoneInterval controls how often the source/language breakdown gets logged —
+// every 10,000 net-new quotes, a coarser cadence than quoteMilestoneInterval since it costs two
+// real GROUP BY queries (see Store.QuoteCountsBySourceAndLanguage) rather than an in-memory
+// counter check.
+const summaryMilestoneInterval = 10000
+
 // totalQuoteCount is the live running total of quotes in the database, seeded once at startup
 // from Store.CountQuotes (see Run) and kept current by recordQuotesSaved after every successful
 // save from then on. A package-level atomic, not a Crawler field: every source's worker
@@ -294,16 +301,60 @@ var totalQuoteCount atomic.Int64
 // message in this file meant to survive a quieted-down production log) specifically so this
 // still shows up even at LOG_LEVEL=error — a milestone isn't a warning or an error, but it's the
 // one piece of "is this thing actually working" narration worth keeping at every log level.
-func recordQuotesSaved(n int) {
+//
+// Also logs a source/language breakdown every summaryMilestoneInterval boundary crossed, same
+// "every boundary, not just the last one" loop shape as the plain milestone above. A method on
+// Crawler (not the package-level function this used to be), since the breakdown needs c.store —
+// unlike the plain milestone, it can't be answered from the in-memory counter alone.
+func (c *Crawler) recordQuotesSaved(ctx context.Context, n int) {
 	if n <= 0 {
 		return
 	}
 	after := totalQuoteCount.Add(int64(n))
 	before := after - int64(n)
+
 	first := (before/quoteMilestoneInterval + 1) * quoteMilestoneInterval
 	for m := first; m <= after; m += quoteMilestoneInterval {
 		log.Printf("Milestone: %d total quotes scraped so far", m)
 	}
+
+	firstSummary := (before/summaryMilestoneInterval + 1) * summaryMilestoneInterval
+	for m := firstSummary; m <= after; m += summaryMilestoneInterval {
+		c.logQuoteSummary(ctx, m)
+	}
+}
+
+// logQuoteSummary queries and logs the full corpus's breakdown by source and by language, for
+// the summaryMilestoneInterval milestone atTotal — a point-in-time count straight from Postgres,
+// not derived from the in-memory counter, so it's correct even though multiple sources' workers
+// are saving concurrently and the real total may have already moved past atTotal by the time
+// this query runs. A query failure is logged and otherwise ignored — missing one summary isn't
+// worth treating as a reason to stop the crawl.
+func (c *Crawler) logQuoteSummary(ctx context.Context, atTotal int64) {
+	bySource, byLanguage, err := c.store.QuoteCountsBySourceAndLanguage(ctx)
+	if err != nil {
+		log.Printf("Could not load quote summary at the %d milestone: %s\n", atTotal, err)
+		return
+	}
+	log.Printf("Summary at %d quotes — by source: %s | by language: %s",
+		atTotal, formatCounts(bySource), formatCounts(byLanguage))
+}
+
+// formatCounts renders a label->count map as "a=1, b=2" sorted alphabetically by label — a plain
+// map's random iteration order would otherwise make every summary line's column order shuffle
+// between log lines for no reason, which is needlessly hard to read/diff across milestones.
+func formatCounts(counts map[string]int64) string {
+	labels := make([]string, 0, len(counts))
+	for label := range counts {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+
+	parts := make([]string, len(labels))
+	for i, label := range labels {
+		parts[i] = fmt.Sprintf("%s=%d", label, counts[label])
+	}
+	return strings.Join(parts, ", ")
 }
 
 // topUpResult is what a source's top-up function reports back to runWorker. calledNetwork
@@ -891,7 +942,7 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 					logWarn("Skipped duplicate [%s]: %q — %s", quote.Source, truncate(quote.Text, 60), quote.Author)
 				}
 			}
-			recordQuotesSaved(newlySaved)
+			c.recordQuotesSaved(ctx, newlySaved)
 		}
 	}
 

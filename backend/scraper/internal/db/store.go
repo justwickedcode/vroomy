@@ -656,3 +656,47 @@ func (s *Store) CountQuotes(ctx context.Context) (int64, error) {
 	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM quotes`).Scan(&count)
 	return count, err
 }
+
+// QuoteCountsBySourceAndLanguage returns the full corpus broken down two ways — by source and,
+// separately, by language — for the periodic breakdown crawler.go logs every
+// summaryMilestoneInterval quotes (see recordQuotesSaved). Two simple grouped counts rather than
+// one combined (source, language) grouping: this only runs once every 10k quotes, so the extra
+// query is free, and two short maps log far more readably than a combinatorial source×language
+// table would.
+func (s *Store) QuoteCountsBySourceAndLanguage(ctx context.Context) (bySource map[string]int64, byLanguage map[string]int64, err error) {
+	bySource, err = s.countQuotesGroupedBy(ctx, "source")
+	if err != nil {
+		return nil, nil, err
+	}
+	byLanguage, err = s.countQuotesGroupedBy(ctx, "language")
+	if err != nil {
+		return nil, nil, err
+	}
+	return bySource, byLanguage, nil
+}
+
+// countQuotesGroupedBy runs `SELECT <column>, count(*) FROM quotes GROUP BY <column>` and
+// collects the result into a map. column is never user input — always one of the two literal
+// column names passed by QuoteCountsBySourceAndLanguage above — so building the query string
+// directly is safe here, unlike if it ever came from a request.
+func (s *Store) countQuotesGroupedBy(ctx context.Context, column string) (map[string]int64, error) {
+	// COALESCE guards source specifically — it has no NOT NULL constraint (unlike language,
+	// which defaults to 'en') even though every write path sets it; a bare Scan into a string
+	// would error out the whole summary over one unexpected NULL row.
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(`SELECT COALESCE(%s, 'unknown'), count(*) FROM quotes GROUP BY %s`, column, column))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int64)
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			return nil, err
+		}
+		counts[key] = count
+	}
+	return counts, rows.Err()
+}
