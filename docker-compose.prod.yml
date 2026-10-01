@@ -1,7 +1,8 @@
-# Production stack for the backend: Postgres, Redis, the crawler, and the quotes API, all on
-# one internal Docker network. The frontend is not included here — TanStack Start apps are
-# typically deployed to their own host (Vercel/Netlify/a Node server), not alongside the Go
-# backend; see frontend's own deployment docs for that.
+# Production stack for the backend: Postgres, Redis, the crawler, the quotes API, and the
+# real-time multiplayer WS service, all on one internal Docker network. The frontend is not
+# included here — TanStack Start apps are typically deployed to their own host
+# (Vercel/Netlify/a Node server), not alongside the Go backend; see frontend's own deployment
+# docs for that.
 #
 # Usage:
 #   1. Copy .env.example (repo root) to .env.prod and fill in real, randomly-generated secrets
@@ -11,8 +12,8 @@
 #
 # Unlike backend/scraper/docker-compose.yml (local dev only, Postgres/Redis with host ports
 # exposed for direct psql/redis-cli access), postgres and redis here are NOT exposed to the
-# host — only reachable from other containers on this compose network. crawler and api connect
-# to them by service name (postgres/redis), not localhost.
+# host — only reachable from other containers on this compose network. crawler, api, and ws
+# connect to them by service name (postgres/redis), not localhost.
 #
 # Every service below caps its own container logs (x-logging) — Docker's json-file driver has
 # NO size limit by default, so a long-running background worker like the crawler (which logs
@@ -117,6 +118,36 @@ services:
       - '127.0.0.1:8080:8080'
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  ws:
+    build: ./backend/ws
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      WS_PORT: 8081
+      # Same frontend origin as the api service — both are read by the one deployed frontend.
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
+      # Same reasoning as api's GOMEMLIMIT (no language models loaded, far lighter than the
+      # crawler) — unlike that figure, this one isn't measured against real sustained load yet
+      # (see PRODUCTION.md), just a conservative starting point matching api's own footprint.
+      GOMEMLIMIT: 100MiB
+    # Bound to localhost only, same reasoning as api above — a reverse proxy handles public
+    # HTTPS/WSS and forwards to 127.0.0.1:8081. See backend/ws/Caddyfile.example.
+    ports:
+      - '127.0.0.1:8081:8081'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8081/health']
       interval: 10s
       timeout: 5s
       retries: 5
