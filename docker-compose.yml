@@ -1,19 +1,12 @@
-# For a Dokploy deployment where postgres and redis already exist as their own Database
-# resources (managed and backed up by you outside this file) and nothing else is deployed yet —
-# this bundles crawler, api, ws, and frontend into one Compose project, which is the minimum
-# needed for frontend to reach api by plain internal DNS (http://api:8080) at all. See
-# PRODUCTION.md's "Isolating api behind the frontend" for why api and frontend specifically must
-# be deployed together — Dokploy only gives automatic service-name networking to services
-# deployed together this way; separate Applications each get an isolated network with no way to
-# resolve each other by name (https://github.com/Dokploy/dokploy/issues/3670). Database
-# resources are a separate case — already reachable project-wide regardless, which is why this
-# file has no postgres/redis service blocks at all; point DATABASE_URL/REDIS_ADDR at your
-# existing ones instead.
-#
-# docker-compose.prod.yml is for a from-scratch deployment that also stands up postgres/redis
-# itself — use that one instead if you don't already have them. docker-compose.frontend-api.yml
-# is for the narrower case where crawler/ws are ALSO already separately deployed and only
-# api+frontend need to move into a shared compose project.
+# Production deployment: crawler, api, ws, and frontend bundled into one Compose project,
+# deployed against Postgres and Redis that already exist as their own Dokploy Database resources
+# (managed and backed up outside this file) — no postgres/redis service blocks here at all. This
+# bundling is required, not just convenient: it's the minimum needed for frontend to reach api by
+# plain internal DNS (http://api:8080). See PRODUCTION.md's "Isolating api behind the frontend"
+# for why api and frontend specifically must be deployed together — Dokploy only gives automatic
+# service-name networking to services deployed together this way; separate Applications each get
+# an isolated network with no way to resolve each other by name
+# (https://github.com/Dokploy/dokploy/issues/3670).
 #
 # Required env vars on this Dokploy Compose project:
 #   DATABASE_URL          — your existing Postgres Database resource's connection string

@@ -17,9 +17,10 @@ TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 : "${POSTGRES_USER:?POSTGRES_USER must be set}"
 : "${POSTGRES_DB:?POSTGRES_DB must be set}"
 # No default here deliberately: the dev compose (backend/scraper/docker-compose.yml) names its
-# Postgres container "quotes-crawler", while the production compose (docker-compose.prod.yml,
-# repo root) names it "quotes-postgres" — guessing wrong silently backs up nothing.
-: "${POSTGRES_CONTAINER:?POSTGRES_CONTAINER must be set (quotes-crawler for dev, quotes-postgres for prod)}"
+# Postgres container "quotes-crawler" — production Postgres isn't run by this repo's compose at
+# all (see PRODUCTION.md), so there's no single right default to guess; pass whatever your real
+# container is actually named.
+: "${POSTGRES_CONTAINER:?POSTGRES_CONTAINER must be set (quotes-crawler for dev)}"
 
 mkdir -p "$BACKUP_DIR"
 OUT_FILE="$BACKUP_DIR/quotes_${TIMESTAMP}.sql.gz"
