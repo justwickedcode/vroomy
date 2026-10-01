@@ -67,9 +67,9 @@ func TestRecordQuotesSaved(t *testing.T) {
 		wantMilestone []string // milestone numbers expected to appear, in order
 	}{
 		{"no boundary crossed", 0, 500, nil},
-		{"crosses exactly one boundary", 500, 500, []string{"1000"}},
-		{"crosses one boundary mid-batch", 1997, 7, []string{"2000"}},
-		{"crosses several boundaries in one batch", 999, 2005, []string{"1000", "2000", "3000"}},
+		{"crosses exactly one boundary", 500, 500, []string{"1,000"}},
+		{"crosses one boundary mid-batch", 1997, 7, []string{"2,000"}},
+		{"crosses several boundaries in one batch", 999, 2005, []string{"1,000", "2,000", "3,000"}},
 		{"zero saved logs nothing", 1000, 0, nil},
 		{"negative (shouldn't happen, but must not panic) logs nothing", 1000, -5, nil},
 	}
@@ -91,6 +91,29 @@ func TestRecordQuotesSaved(t *testing.T) {
 			gotLines := strings.Count(output, "Milestone:")
 			if gotLines != len(tt.wantMilestone) {
 				t.Errorf("recordQuotesSaved(%d) from start %d: logged %d milestone line(s), want %d (output: %s)", tt.add, tt.start, gotLines, len(tt.wantMilestone), output)
+			}
+		})
+	}
+}
+
+func TestFormatCount(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{0, "0"},
+		{5, "5"},
+		{999, "999"},
+		{1000, "1,000"},
+		{1234567, "1,234,567"},
+		{1200000, "1,200,000"},
+		{-1234, "-1,234"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := formatCount(tt.n); got != tt.want {
+				t.Errorf("formatCount(%d) = %q, want %q", tt.n, got, tt.want)
 			}
 		})
 	}

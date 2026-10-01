@@ -315,12 +315,12 @@ func (c *Crawler) recordQuotesSaved(ctx context.Context, n int) {
 
 	first := (before/quoteMilestoneInterval + 1) * quoteMilestoneInterval
 	for m := first; m <= after; m += quoteMilestoneInterval {
-		log.Printf("Milestone: %d total quotes scraped so far", m)
+		log.Printf("Milestone: %s total quotes scraped so far", formatCount(m))
 	}
 
 	firstSummary := (before/summaryMilestoneInterval + 1) * summaryMilestoneInterval
 	for m := firstSummary; m <= after; m += summaryMilestoneInterval {
-		c.logQuoteSummary(ctx, m)
+		c.logQuoteSummary(ctx, fmt.Sprintf("at the %s milestone", formatCount(m)))
 	}
 }
 
@@ -329,20 +329,23 @@ func (c *Crawler) recordQuotesSaved(ctx context.Context, n int) {
 // not derived from the in-memory counter, so it's correct even though multiple sources' workers
 // are saving concurrently and the real total may have already moved past atTotal by the time
 // this query runs. A query failure is logged and otherwise ignored — missing one summary isn't
-// worth treating as a reason to stop the crawl.
-func (c *Crawler) logQuoteSummary(ctx context.Context, atTotal int64) {
+// worth treating as a reason to stop the crawl. label describes where this summary is coming
+// from ("at startup", "at the 20,000 milestone", ...) since this is called both once up front
+// from Run and repeatedly from recordQuotesSaved, and the two need visibly different log lines.
+func (c *Crawler) logQuoteSummary(ctx context.Context, label string) {
 	bySource, byLanguage, err := c.store.QuoteCountsBySourceAndLanguage(ctx)
 	if err != nil {
-		log.Printf("Could not load quote summary at the %d milestone: %s\n", atTotal, err)
+		log.Printf("Could not load quote summary %s: %s\n", label, err)
 		return
 	}
-	log.Printf("Summary at %d quotes — by source: %s | by language: %s",
-		atTotal, formatCounts(bySource), formatCounts(byLanguage))
+	log.Printf("Summary %s — by source: %s | by language: %s",
+		label, formatCounts(bySource), formatCounts(byLanguage))
 }
 
-// formatCounts renders a label->count map as "a=1, b=2" sorted alphabetically by label — a plain
-// map's random iteration order would otherwise make every summary line's column order shuffle
-// between log lines for no reason, which is needlessly hard to read/diff across milestones.
+// formatCounts renders a label->count map as "a=1,234, b=5,678" sorted alphabetically by label
+// and with formatCount's thousands separators — a plain map's random iteration order would
+// otherwise make every summary line's column order shuffle between log lines for no reason,
+// which is needlessly hard to read/diff across milestones.
 func formatCounts(counts map[string]int64) string {
 	labels := make([]string, 0, len(counts))
 	for label := range counts {
@@ -352,9 +355,36 @@ func formatCounts(counts map[string]int64) string {
 
 	parts := make([]string, len(labels))
 	for i, label := range labels {
-		parts[i] = fmt.Sprintf("%s=%d", label, counts[label])
+		parts[i] = fmt.Sprintf("%s=%s", label, formatCount(counts[label]))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// formatCount renders n with thousands separators (1234567 -> "1,234,567"). Every count this
+// package logs is meant to be read by a human watching logs scroll by live, and a bare run of
+// 6-7 digits is noticeably harder to parse at a glance than the same number grouped — worth a
+// few lines of manual grouping rather than pulling in golang.org/x/text/message/number (already
+// an indirect dependency, but only transitively — promoting it to a direct one for comma
+// formatting alone would be a disproportionate addition) just for this.
+func formatCount(n int64) string {
+	neg := n < 0
+	s := strconv.FormatInt(n, 10)
+	if neg {
+		s = s[1:]
+	}
+
+	var groups []string
+	for len(s) > 3 {
+		groups = append([]string{s[len(s)-3:]}, groups...)
+		s = s[:len(s)-3]
+	}
+	groups = append([]string{s}, groups...)
+
+	out := strings.Join(groups, ",")
+	if neg {
+		out = "-" + out
+	}
+	return out
 }
 
 // topUpResult is what a source's top-up function reports back to runWorker. calledNetwork
@@ -1167,7 +1197,8 @@ func (c *Crawler) Run(ctx context.Context) error {
 		return err
 	}
 	totalQuoteCount.Store(quoteCount)
-	log.Printf("Starting up with %d total quotes already in the database", quoteCount)
+	log.Printf("Starting up with %s total quotes already in the database", formatCount(quoteCount))
+	c.logQuoteSummary(ctx, "at startup")
 
 	err = c.store.WarmSimhashCache(ctx)
 	if err != nil {
