@@ -1,3 +1,6 @@
+import { createServerFn } from '@tanstack/react-start'
+import { getRequestHeader } from '@tanstack/react-start/server'
+
 // Fallback pool for when backend/api is unreachable (see getRandomQuoteText below) and for the
 // daily challenge (see getDailySentence), which needs a small fixed set to deterministically
 // hash into rather than an ever-growing live corpus. No longer the primary solo-race source —
@@ -25,9 +28,33 @@ export function getRandomSentence(exclude?: string): string {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
-// Same origin backend/ws's useMultiplayerRace reads VITE_WS_URL from — one deployed frontend,
-// one pair of env vars, both defaulting to the local dev backend when unset.
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+// backend/api has no public domain in production (see docker-compose.prod.yml) — it's reachable
+// only from inside other containers on the same compose network, never directly from a browser.
+// So the actual request has to happen server-side, inside this handler, which is the one thing
+// createServerFn guarantees: its body is stripped from the client bundle entirely and only ever
+// runs on the frontend's own Nitro/Bun server, which IS on that network. API_INTERNAL_URL is a
+// plain runtime env var (deliberately not VITE_-prefixed — that prefix means Vite inlines it
+// into the client bundle, which would defeat the point), read fresh from process.env on every
+// request, no build-time baking needed at all.
+const fetchRandomQuote = createServerFn({ method: 'GET' })
+  .validator((data?: { exclude?: string }) => data)
+  .handler(async ({ data }) => {
+    const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:8080'
+    const url = new URL('/api/quotes/random', apiUrl)
+    if (data?.exclude) url.searchParams.set('exclude', data.exclude)
+    // Without this, every player's request would arrive at api from this one container's own
+    // address, collapsing api's per-visitor rate limit (see backend/api/ratelimit.go's
+    // clientIP, which already prefers X-Forwarded-For's first entry) into a single shared
+    // bucket for the whole site. Forwarding the header this request itself arrived with keeps
+    // the original visitor's IP as that first entry, exactly as if api were still public.
+    const forwardedFor = getRequestHeader('x-forwarded-for')
+    const res = await fetch(url, {
+      headers: forwardedFor ? { 'X-Forwarded-For': forwardedFor } : undefined,
+    })
+    if (!res.ok) throw new Error(`quotes API returned ${res.status}`)
+    const quote: { text: string } = await res.json()
+    return quote.text ? quote.text : null
+  })
 
 // getRandomQuoteText is the real solo-race quote source: backend/api's live, scraped corpus
 // (see backend/api/quotes.go's RandomTypingQuote — word-count range and game-suitability
@@ -41,12 +68,8 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 // itself applies to its own quote sources (see its README), just one layer further out.
 export async function getRandomQuoteText(exclude?: string): Promise<string> {
   try {
-    const url = new URL('/api/quotes/random', API_URL)
-    if (exclude) url.searchParams.set('exclude', exclude)
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`quotes API returned ${res.status}`)
-    const quote: { text: string } = await res.json()
-    if (quote.text) return quote.text
+    const text = await fetchRandomQuote({ data: { exclude } })
+    if (text) return text
   } catch (err) {
     console.warn(
       'getRandomQuoteText: falling back to the local sentence pool — quotes API unavailable:',

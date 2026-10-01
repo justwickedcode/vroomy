@@ -1,8 +1,8 @@
-# Production stack for the backend: Postgres, Redis, the crawler, the quotes API, and the
-# real-time multiplayer WS service, all on one internal Docker network. The frontend is not
-# included here — TanStack Start apps are typically deployed to their own host
-# (Vercel/Netlify/a Node server), not alongside the Go backend; see frontend's own deployment
-# docs for that.
+# Production stack: Postgres, Redis, the crawler, the quotes API, the real-time multiplayer WS
+# service, and the frontend, all on one internal Docker network. The frontend is included here
+# (unlike this file's earlier version) specifically so it can reach api by plain service-name
+# DNS (http://api:8080) without api needing any public domain at all — see PRODUCTION.md's
+# "Isolating api" section for why that requires all of them living in the same compose project.
 #
 # Usage:
 #   1. Copy .env.example (repo root) to .env.prod and fill in real, randomly-generated secrets
@@ -11,9 +11,10 @@
 #   3. docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f
 #
 # Unlike backend/scraper/docker-compose.yml (local dev only, Postgres/Redis with host ports
-# exposed for direct psql/redis-cli access), postgres and redis here are NOT exposed to the
-# host — only reachable from other containers on this compose network. crawler, api, and ws
-# connect to them by service name (postgres/redis), not localhost.
+# exposed for direct psql/redis-cli access), postgres, redis, and now api here are NOT exposed to
+# the host at all — only reachable from other containers on this compose network, by service
+# name (postgres/redis/api), not localhost. ws is still host-exposed for now (see its own
+# comment below) — only frontend and ws need a real public domain in front of them.
 #
 # Every service below caps its own container logs (x-logging) — Docker's json-file driver has
 # NO size limit by default, so a long-running background worker like the crawler (which logs
@@ -107,15 +108,16 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       API_PORT: 8080
+      # No browser ever talks to api directly anymore (no ports: entry below at all) — only the
+      # frontend service's own server does, over this compose network, via its own
+      # API_INTERNAL_URL (see the frontend service). CORS_ALLOWED_ORIGIN is effectively
+      # vestigial now (CORS is a browser-only mechanism, and no browser request ever reaches
+      # this service), kept set only as harmless defense-in-depth in case a domain is ever
+      # added back for debugging.
       CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
       # Same reasoning as crawler's GOMEMLIMIT — this service is far lighter (no language
       # models loaded), but there's no reason to leave Go's GC unaware of the container limit.
       GOMEMLIMIT: 100MiB
-    # Bound to localhost only — a reverse proxy (Caddy/nginx) on the host handles public HTTPS
-    # and forwards to 127.0.0.1:8080. Don't publish 0.0.0.0:8080 directly; that would expose
-    # the API over plain HTTP with no TLS. See README "Production deployment" for a Caddy example.
-    ports:
-      - '127.0.0.1:8080:8080'
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8080/health']
       interval: 10s
@@ -142,8 +144,10 @@ services:
       # crawler) — unlike that figure, this one isn't measured against real sustained load yet
       # (see PRODUCTION.md), just a conservative starting point matching api's own footprint.
       GOMEMLIMIT: 100MiB
-    # Bound to localhost only, same reasoning as api above — a reverse proxy handles public
-    # HTTPS/WSS and forwards to 127.0.0.1:8081. See backend/ws/Caddyfile.example.
+    # Still bound to localhost + fronted by a reverse proxy (Caddy/nginx), unlike api above —
+    # ws isn't proxied through the frontend's own server yet (that needs a WebSocket proxy,
+    # a separate, more involved piece of work than api's plain HTTP one; see PRODUCTION.md).
+    # Browsers still connect to this domain directly for now. See backend/ws/Caddyfile.example.
     ports:
       - '127.0.0.1:8081:8081'
     healthcheck:
@@ -155,6 +159,40 @@ services:
       resources:
         limits:
           memory: 128M
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Plain service-name DNS, only reachable because frontend and api are in this same
+      # compose project — see this file's top comment. Not VITE_-prefixed on purpose: Vite only
+      # inlines VITE_-prefixed vars into the client bundle, which would defeat the entire point
+      # of keeping api off the public internet. This one's read fresh from process.env inside a
+      # createServerFn handler (see frontend/src/lib/typing/sentences.ts), server-side only.
+      API_INTERNAL_URL: http://api:8080
+      # Still a real public wss:// URL for now, same as CORS_ALLOWED_ORIGIN above — ws isn't
+      # proxied through the frontend yet (see ws's own comment). This one IS VITE_-prefixed and
+      # DOES need the build-time-placeholder/runtime-substitution dance in
+      # frontend/Dockerfile + frontend/docker-entrypoint.sh, since the browser connects to it
+      # directly.
+      VITE_WS_URL: ${VITE_WS_URL}
+    # Bound to localhost only, fronted by a reverse proxy — same pattern as ws above. See
+    # frontend/Caddyfile.example.
+    ports:
+      - '127.0.0.1:3000:3000'
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
 volumes:
   postgres_data:

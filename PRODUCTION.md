@@ -1,27 +1,52 @@
 # Production deployment
 
-Covers the backend only — Postgres, Redis, the crawler (`backend/scraper`), the quotes API
-(`backend/api`), and the real-time multiplayer WS service (`backend/ws`). The frontend
-(TanStack Start) is deployed separately (Vercel/Netlify/a Node host, or `frontend/Dockerfile` on
-any container host); it just needs `VITE_API_URL` pointed at wherever the API ends up, and
-`VITE_WS_URL` pointed at wherever `ws` ends up (a full `ws://`/`wss://` URL, not a path under the
-API's own domain). **Both are set as ordinary runtime environment variables** — e.g.
-`docker run -e VITE_API_URL=https://api.example.com -e VITE_WS_URL=wss://ws.example.com -p 3000:3000 frontend`
-— even though Vite only ever inlines `import.meta.env.VITE_*` at build time, not at runtime.
-`frontend/Dockerfile` bridges that gap itself: the build stage bakes in a fixed placeholder
-token in place of each real value, and `frontend/docker-entrypoint.sh` substitutes the real
-runtime env var for that placeholder, across every built file, the instant the container starts
-— before the server boots. This exists specifically because plenty of PaaS UIs (Dokploy
-included, for a plain Dockerfile-type App) only ever expose _runtime_ environment variables with
-no way to pass a real Docker build-arg through to `docker build`, which would otherwise leave
-the dev fallback (`localhost`) silently baked in with no error anywhere. It's not wired into
-`docker-compose.prod.yml` alongside the backend services, since the frontend is typically
-deployed to its own host rather than this stack's internal network.
+Covers the whole stack — Postgres, Redis, the crawler (`backend/scraper`), the quotes API
+(`backend/api`), the real-time multiplayer WS service (`backend/ws`), and the frontend
+(TanStack Start, via `frontend/Dockerfile`) — deployed together as one `docker-compose.prod.yml`
+stack. The frontend is deployed alongside the backend here, not to its own separate host, for a
+specific reason: see **"Isolating api behind the frontend"** below.
+
+**`api` has no public domain at all.** The browser never talks to it directly — only the
+frontend's own server does, over this compose network, via a `createServerFn`-based proxy (see
+`frontend/src/lib/typing/sentences.ts`) configured with the plain runtime env var
+`API_INTERNAL_URL=http://api:8080`. `ws` is still reachable at its own public `wss://` domain for
+now (the browser connects to it directly) — proxying real-time WebSocket traffic through the
+frontend's server is a separate, more involved piece of work than api's plain HTTP proxy, and
+hasn't shipped yet.
+
+`frontend` itself takes one build-time-looking env var the same way `ws`'s own domain does:
+`VITE_WS_URL`, a full `wss://` URL. Vite only ever inlines `import.meta.env.VITE_*` at build
+time, not runtime, but `VITE_WS_URL` is set here as an **ordinary runtime environment
+variable** — `frontend/Dockerfile`'s build stage bakes in a fixed placeholder token instead of a
+real value, and `frontend/docker-entrypoint.sh` substitutes the real runtime env var for that
+placeholder across every built file the instant the container starts, before the server boots.
+This exists specifically because plenty of PaaS UIs (Dokploy included) only ever expose
+_runtime_ environment variables with no way to pass a real Docker build-arg through to
+`docker build`, which would otherwise leave the dev fallback (`localhost`) silently baked in with
+no error anywhere. `API_INTERNAL_URL` needs none of this — it's read fresh from `process.env`
+inside a server-only `createServerFn` handler, which never runs in the browser, so there's
+nothing to bake at build time in the first place.
 
 Everything here was built and verified against a real, isolated instance of this exact stack —
-not assumed to work from the compose file alone. Two real bugs were caught this way (see
-"Findings from live testing" below) that would otherwise have only surfaced after a real
-deployment.
+not assumed to work from the compose file alone. Two real backend bugs were caught this way (see
+"Findings from live testing" below), and the api proxy above was verified by running a real
+mock `api` service with zero host-published port, reachable only by its container name on an
+isolated Docker network, and confirming a real race actually fetched a quote through the
+frontend's proxy with no direct network path from the browser to that container at all.
+
+## Isolating api behind the frontend
+
+Why this needs the frontend _in_ this compose file, not deployed separately: there is no way to
+make a public backend service reachable "only by the frontend" while the **browser** still talks
+to it directly — whatever URL a browser can reach, anyone can reach (copy it straight out of
+devtools; no secret is involved). The only real fix is having the frontend's own server be the
+one thing that ever talks to `api`, with `api` itself given no public domain at all — same model
+as Postgres/Redis already had in this file before the frontend was added.
+
+That in turn requires `api` and `frontend` to be able to reach each other by plain internal
+DNS (`http://api:8080`), which **only works when they're deployed together as one compose
+project** — see this file's Dokploy section below for why that's a hard platform requirement,
+not just a preference.
 
 ## 1. Prerequisites
 
@@ -49,26 +74,29 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f
 ```
 
-This starts five containers on one internal Docker network — `postgres`, `redis`, `crawler`,
-`api`, `ws` — all with `restart: unless-stopped`, so a crash or host reboot brings them back
-automatically without anyone needing to notice and intervene manually. `postgres` and `redis`
-are **not** exposed to the host at all (unlike the dev compose file, which publishes both for
-direct `psql`/`redis-cli` access) — only reachable from other containers on this network.
+This starts six containers on one internal Docker network — `postgres`, `redis`, `crawler`,
+`api`, `ws`, `frontend` — all with `restart: unless-stopped`, so a crash or host reboot brings
+them back automatically without anyone needing to notice and intervene manually. `postgres`,
+`redis`, and now `api` are **not** exposed to the host at all (unlike the dev compose file, which
+publishes Postgres/Redis for direct `psql`/`redis-cli` access) — only reachable from other
+containers on this network, by service name.
 
 The crawler self-migrates the database schema on startup (same as it does in dev); neither the
 API nor `ws` ever migrates or writes, so make sure the crawler has started at least once against
 a fresh database before relying on either of them.
 
-## 4. Put real HTTPS (and WSS) in front of the API and ws
+## 4. Put real HTTPS (and WSS) in front of ws and the frontend
 
-`api` is published as `127.0.0.1:8080` and `ws` as `127.0.0.1:8081` — both bound to localhost
-only, deliberately not exposed publicly over plain HTTP. See `backend/api/Caddyfile.example` and
-`backend/ws/Caddyfile.example` for two-line Caddy configs (one site block each — they can live in
-the same Caddyfile) that get you real, auto-renewing Let's Encrypt certificates once you have
-domains pointed at this host. Point the frontend's `VITE_API_URL` at the API's HTTPS domain and
-`VITE_WS_URL` at `ws`'s (as `wss://...`, not `https://...`), and set `CORS_ALLOWED_ORIGIN` in
-`.env.prod` to the frontend's real deployed URL — both services read the same variable, since
-both are read by the one deployed frontend.
+`ws` is published as `127.0.0.1:8081` and `frontend` as `127.0.0.1:3000` — both bound to
+localhost only, deliberately not exposed publicly over plain HTTP. `api` has **no** published
+port at all anymore (see "Isolating api behind the frontend" above) — there's nothing to put
+HTTPS in front of. See `backend/ws/Caddyfile.example` and the new `frontend/Caddyfile.example`
+for two-line Caddy configs (one site block each — they can live in the same Caddyfile) that get
+you real, auto-renewing Let's Encrypt certificates once you have domains pointed at this host.
+Set `VITE_WS_URL` in `.env.prod` to `ws`'s real domain (as `wss://...`, not `https://...`), and
+`CORS_ALLOWED_ORIGIN` to the frontend's real domain — `ws` still reads it (the browser still
+connects to `ws` directly for now); `api`'s own copy is effectively vestigial since no browser
+request reaches it anymore, kept only as harmless defense-in-depth.
 
 ## 5. Set up backups
 
@@ -94,73 +122,65 @@ lost), `BACKUP_DIR` should point somewhere that's itself synced offsite, or the 
 to push each dump to object storage. Not built in here since the right destination depends on
 where you're actually deploying, not something worth guessing at.
 
-## 6. Deploying via Dokploy instead of raw Compose
+## 6. Deploying via Dokploy
 
-Dokploy can run this stack as separate managed services (its own Postgres/Redis database
-services plus a Dockerfile-based Application for each of the crawler, api, ws, and the frontend)
-rather than the single `docker-compose.prod.yml` stack above — which only covers the backend, so
-the frontend App below is in addition to it, not part of it. A few things are specific to that
-path:
+**Deploy this as a single Dokploy "Compose" project, using `docker-compose.prod.yml` as-is — not
+as separate Dockerfile-type Applications, one per service.** This is a hard requirement, not a
+style preference: Dokploy only gives automatic internal service-name DNS resolution (what lets
+`frontend` reach `http://api:8080`) to services deployed together as one Compose project.
+Separately-deployed standalone Applications each get their own isolated Docker network and
+**cannot reach each other by name at all** — a currently-open Dokploy limitation
+([Dokploy#3670](https://github.com/Dokploy/dokploy/issues/3670)). Deployed any other way, `api`'s
+isolation from "Isolating api behind the frontend" above simply doesn't work: `frontend` would
+fail to resolve `api` and every quote fetch would fall back to the local sentence pool.
 
-- **Build config for each App** (it's a monorepo — none of the Dockerfiles are at the repo
-  root): set **Docker Context Path** and **Docker File** per App, both relative to the repo
-  root — `backend/scraper` / `backend/scraper/Dockerfile` for the crawler, `backend/api` /
-  `backend/api/Dockerfile` for api, `backend/ws` / `backend/ws/Dockerfile` for ws. Leave each
-  App's own "Build Path" field at `/` — it's not what resolves the Dockerfile location for a
-  Dockerfile-type build, only Docker Context Path / Docker File are.
-- **No domain/port/health-check for the crawler App** — it's a background worker with no HTTP
-  server, so there's nothing for a reverse proxy to route to or poll. **api and ws both need a
-  domain, their own port (8080 / 8081), and `/health` configured as the health-check path** —
-  unlike the crawler, both are request-serving processes Dokploy's Traefik needs to actually
-  route to. Set `CORS_ALLOWED_ORIGIN` on both (same value — the one deployed frontend reads
-  both), and on ws specifically, double check the frontend's `VITE_WS_URL` is a `wss://` URL
-  pointed at ws's own domain, not a path under api's.
+Within that one Compose project, Dokploy still lets you configure a public **Domain** on
+individual services, independently of each other:
+
+- **`frontend` needs a Domain**, container **Port 3000**, and health-check path `/` (it has no
+  dedicated `/health` route — the root route responding is the signal).
+- **`ws` needs a Domain** too, for now — container **Port 8081**, health-check path `/health`.
+  This goes away once ws is proxied through the frontend the same way `api` already is (not yet
+  built — see this file's top section).
+- **`api`, `crawler`, `postgres`, and `redis` get no Domain at all.** `crawler` never did (it's a
+  background worker with no HTTP server — nothing for a reverse proxy to route to or poll); `api`
+  now joins it deliberately, as the whole point of this setup.
+- Set `CORS_ALLOWED_ORIGIN` and `VITE_WS_URL` as this Compose project's environment variables
+  (the same two concepts `.env.prod` holds for the raw-Compose path) — `API_INTERNAL_URL` needs
+  no separate configuration here at all, since it's already hardcoded as `http://api:8080`
+  directly in `docker-compose.prod.yml` itself, which this deployment uses as-is.
 - **`REDIS_ADDR` accepts Dokploy's internal Redis connection URL directly** (`redis://...`) —
   `ConnectRedis` (see finding #1 below) switches to URL parsing for anything containing `://`,
   so `REDIS_PASSWORD`/`REDIS_DB` env vars are unused in that case; only set `REDIS_ADDR`. Only
   the crawler uses Redis at all — api and ws only ever need `DATABASE_URL`.
-- **The frontend deploys as its own Dokploy App, from `frontend/Dockerfile`.** Set **Docker
-  Context Path** to `frontend` and **Docker File** to `frontend/Dockerfile` (same monorepo
-  caveat as above). Give it a domain, container **Port 3000**, and health-check path `/` (it has
-  no dedicated `/health` route — the root route responding is the signal). Set `VITE_API_URL`
-  and `VITE_WS_URL` as **ordinary environment variables** on the App, to `https://<api's domain>`
-  and `wss://<ws's domain>` — no separate Docker build-arg plumbing is needed; see the top of
-  this file and `frontend/docker-entrypoint.sh` for how that's made to work despite Vite only
-  inlining these at build time. Changing either still needs a **redeploy** to take effect (the
-  container has to actually restart with the new value, same as any other env var change), just
-  not a rebuild. Once the frontend's domain is live, go back and set `CORS_ALLOWED_ORIGIN` on the
-  api and ws Apps to that exact origin (step 4 above) — they won't accept its requests until
-  that's set.
-- **Memory limits** (crawler sized for its real measured ~1.25GB working set — see finding #2
-  below — on top of Postgres/Redis running as separate containers instead of bundled with the
-  crawler on one unconstrained host; api/ws are far lighter, no language models loaded, same
-  conservative starting point as `docker-compose.prod.yml`'s own limits for both — **not yet
-  measured against real sustained load**, worth revisiting with `docker stats` if either ever
-  looks memory-constrained in practice):
+- **Memory limits are already encoded in `docker-compose.prod.yml` itself** (each service's own
+  `deploy.resources.limits.memory`), and Dokploy's Compose deployment reads that file directly —
+  unlike the old separate-Applications approach, there's no need to re-enter these per service in
+  Dokploy's UI. The table below is just what's already in the file, for reference (crawler sized
+  for its real measured ~1.25GB working set — see finding #2 below — on top of Postgres/Redis
+  running as separate containers instead of bundled with the crawler on one unconstrained host;
+  api/ws/frontend are far lighter, no language models loaded — **frontend's figure specifically
+  is an unmeasured starting point**, worth checking with `docker stats` under real traffic):
 
-  | Service  | Reservation (soft) | Limit (hard) | Also set                                           |
-  | -------- | ------------------ | ------------ | -------------------------------------------------- |
-  | crawler  | 2048 MB            | ~2560 MB     | `GOMEMLIMIT=1536MiB`                               |
-  | api      | 96 MB              | ~160 MB      | `GOMEMLIMIT=100MiB`                                |
-  | ws       | 96 MB              | ~160 MB      | `GOMEMLIMIT=100MiB`                                |
-  | frontend | 128 MB             | ~256 MB      | —                                                  |
-  | postgres | 512 MB             | ~768 MB      | —                                                  |
-  | redis    | 256 MB             | ~384 MB      | `--maxmemory 200mb --maxmemory-policy allkeys-lru` |
+  | Service  | Limit  | Also set                                           |
+  | -------- | ------ | -------------------------------------------------- |
+  | crawler  | 2 GB   | `GOMEMLIMIT=1536MiB`                               |
+  | api      | 128 MB | `GOMEMLIMIT=100MiB`                                |
+  | ws       | 128 MB | `GOMEMLIMIT=100MiB`                                |
+  | frontend | 256 MB | —                                                  |
+  | postgres | 512 MB | —                                                  |
+  | redis    | 256 MB | `--maxmemory 200mb --maxmemory-policy allkeys-lru` |
 
-  The frontend's figure is an unmeasured starting point (a Bun SSR server, no language models,
-  same category as api/ws) — worth checking with `docker stats` under real traffic rather than
-  assumed, same caveat as api/ws's own numbers above.
-
-  Use Dokploy's Reservation field (a soft target, doesn't kill on overage) where available, and
-  Limit as the hard ceiling with some slack above it — a bare single hard limit with no slack
-  turns an ordinary transient spike into an unnecessary SIGKILL. **Redis specifically needs its
-  own `--maxmemory` set** (start command / args in Dokploy): unlike a limit enforced from
-  outside, Redis has no built-in awareness of a cgroup memory cap and will keep allocating past
-  it until the kernel OOM-killer SIGKILLs it ungracefully, rather than evicting keys on its own
-  terms. `allkeys-lru` is safe here specifically because Redis is only an accelerator cache in
-  this architecture (see `backend/scraper/README.md`'s "Redis simhash cache" section) — Postgres
-  is the source of truth, so an evicted key just costs one missed near-duplicate check, not data
-  loss.
+  If Dokploy's UI also exposes a separate Reservation (soft) field for Compose-deployed services,
+  a reasonable soft target is roughly half of each hard Limit above — a bare single hard limit
+  with no slack turns an ordinary transient spike into an unnecessary SIGKILL. **Redis
+  specifically needs its own `--maxmemory` set** (already in the `command:` in
+  `docker-compose.prod.yml`): unlike a limit enforced from outside, Redis has no built-in
+  awareness of a cgroup memory cap and will keep allocating past it until the kernel OOM-killer
+  SIGKILLs it ungracefully, rather than evicting keys on its own terms. `allkeys-lru` is safe here
+  specifically because Redis is only an accelerator cache in this architecture (see
+  `backend/scraper/README.md`'s "Redis simhash cache" section) — Postgres is the source of truth,
+  so an evicted key just costs one missed near-duplicate check, not data loss.
 
 - **A memory-limit kill is a blip here, not a real incident, by design**: `WarmSimhashCache` and
   `WarmFrontierCache` fully rehydrate Redis from Postgres on every restart, and
@@ -178,10 +198,13 @@ path:
   sudo swapon /swapfile
   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
   ```
-- **Day/night scheduling is handled by stopping and starting the crawler App itself** (via
-  Dokploy's Scheduled Tasks, targeting the App by its stable ID — never a raw container name,
-  which gets a new random suffix on every redeploy), not by anything inside the process. An
-  earlier in-app pause-only approach (an active-hours env var) was tried and reverted: pausing
+- **Day/night scheduling is handled by stopping and starting the crawler service itself**, not
+  by anything inside the process. Previously this targeted a standalone crawler App by its stable
+  ID via Dokploy's Scheduled Tasks; as part of one Compose project instead, check whether
+  Scheduled Tasks can target a single service within the project the same way — if it can only
+  toggle the whole project, that's coarser than before (it would also stop api/ws/frontend), and
+  a plain scheduled `docker compose stop crawler` / `start crawler` on the host is the fallback.
+  An earlier in-app pause-only approach (an active-hours env var) was tried and reverted: pausing
   the worker loops cut CPU/network but never freed the ~1.25GB RAM the crawler holds once its
   language-detection models are loaded, since that memory stays resident for the life of the
   process whether it's fetching or idle — only actually stopping the container frees it.
@@ -194,18 +217,18 @@ path:
   suppressed at any level. **`error` is the recommended production setting** for a low-noise log
   — `warn` is there for when you actually want to see _why_ the crawler's doing what it's doing
   (rate-limited? skipping bad content? just quiet right now?) without the full per-item flood.
-  `docker-compose.prod.yml` already sets `LOG_LEVEL: error` for the `crawler` service; for a
-  Dokploy App, add `LOG_LEVEL=error` alongside the other env vars from step 5 above. Leave it
-  unset in dev if you want the full picture of what the crawler's doing.
+  `docker-compose.prod.yml` already sets `LOG_LEVEL: error` for the `crawler` service — no
+  further action needed here since this deployment uses that file as-is. Leave it unset in dev
+  if you want the full picture of what the crawler's doing.
 - **Cap container log size, or the crawler's own logs can fill the disk.** Docker's default
   `json-file` log driver has no size limit — the crawler logs roughly one line per URL
   discovered/fetched (`internal/crawler/crawler.go`), so left running for weeks that adds up.
   `docker-compose.prod.yml` already caps every service at 10MB × 3 files via its `x-logging`
-  anchor, but that only takes effect on the raw-Compose path — Dokploy's individually-managed
-  Applications/Databases don't read that file, so none of the crawler/api/ws Apps' own log
-  files have a limit by default. Set a **host-wide** default instead (covers every App,
-  Postgres/Redis, and Dokploy's own Traefik/dashboard containers in one place) via
-  `/etc/docker/daemon.json`:
+  anchor, and — unlike the old separate-Applications approach, where Dokploy's
+  individually-managed Applications didn't read this file at all — **this now takes effect
+  automatically**, since Dokploy's Compose deployment runs the file directly. A host-wide default
+  is still worth setting for anything outside this project (Dokploy's own Traefik/dashboard
+  containers, any other project on the same host) via `/etc/docker/daemon.json`:
   ```json
   {
     "log-driver": "json-file",
@@ -215,20 +238,24 @@ path:
   ```bash
   sudo systemctl restart docker
   ```
-  This only applies to _new_ containers — existing ones keep their old (unlimited) log config
-  until they're recreated, so redeploy the crawler App (and anything else already running)
-  after making this change for it to actually take effect.
+  This only applies to _new_ containers — existing ones keep their old log config until
+  recreated.
 
 ## What's already handled
 
-- **Rate limiting** — the API's one public endpoint (`/api/quotes/random`) is limited to 30
-  requests/minute per IP (burst of 10), tracked via `X-Forwarded-For` when present (set this
-  correctly in your reverse proxy config) or the direct connection otherwise. `/health` is
-  exempt — an orchestrator's own healthcheck polling it shouldn't be able to trip a limit meant
-  for abuse, not routine monitoring. `ws`'s equivalent abuse control is a per-IP cap on
-  concurrently-open connections (see `backend/ws/README.md`'s "Concurrent-connection limiting")
-  rather than a request-rate limiter — a WebSocket connection is long-lived, not a discrete
-  request a token bucket makes sense against.
+- **Rate limiting** — api's one endpoint (`/api/quotes/random`) is limited to 30 requests/minute
+  per IP (burst of 10), tracked via `X-Forwarded-For`'s first entry when present or the direct
+  connection otherwise. Now that every request to api arrives from the frontend's own proxy, not
+  a browser, the frontend forwards the `X-Forwarded-For` header its own incoming request arrived
+  with (see `fetchRandomQuote` in `frontend/src/lib/typing/sentences.ts`) — without this, every
+  visitor's request would show up as coming from the frontend container's own address, collapsing
+  the per-visitor limit into one shared bucket for the whole site. `/health` is exempt — an
+  orchestrator's own healthcheck polling it shouldn't be able to trip a limit meant for abuse, not
+  routine monitoring. `ws`'s equivalent abuse control is a per-IP cap on concurrently-open
+  connections (see `backend/ws/README.md`'s "Concurrent-connection limiting") rather than a
+  request-rate limiter — a WebSocket connection is long-lived, not a discrete request a token
+  bucket makes sense against; this one's unaffected since browsers still connect to `ws`
+  directly for now.
 - **Graceful shutdown** — the crawler, the API, and `ws` all stop cleanly on `SIGTERM` (what
   `docker stop` and Compose both send), finishing in-flight work rather than dying mid-request.
 - **Health checks** — `postgres`/`redis`/`api`/`ws` all have Docker healthchecks; `crawler`
