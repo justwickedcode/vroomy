@@ -4,6 +4,7 @@ import (
 	"context"
 	"quotes-crawler/internal/models"
 	"testing"
+	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -319,6 +320,140 @@ func TestRetryURL(t *testing.T) {
 	}
 	if row.Priority != 13.0 {
 		t.Errorf("expected priority = 13.0 after RetryURL, got %v", row.Priority)
+	}
+}
+
+// TestScheduleDelayedRetryAndPromote covers the hold-then-promote pair used for a plain outright
+// failure that isn't itself evidence of a source-wide problem (see Crawler.failOrRetry's
+// hardFailureRetryDelay): ScheduleDelayedRetry must do RetryURL's usual Postgres bookkeeping
+// (pending/error_count/priority) but keep the URL out of PopURL's reach — not on the live
+// frontier at all — until PromoteDueRetries decides its hold has actually expired.
+func TestScheduleDelayedRetryAndPromote(t *testing.T) {
+	ctx := context.Background()
+
+	pgContainer, err := postgres.Run(ctx,
+		"postgres:16",
+		postgres.WithDatabase("testdb"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2)),
+	)
+	if err != nil {
+		t.Fatalf("could not start postgres container: %v", err)
+	}
+	defer func(pgContainer *postgres.PostgresContainer, ctx context.Context, opts ...testcontainers.TerminateOption) {
+		if err := pgContainer.Terminate(ctx, opts...); err != nil {
+			t.Fatalf("could not terminate postgres container: %v", err)
+		}
+	}(pgContainer, ctx)
+
+	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("could not get postgres connection string: %v", err)
+	}
+
+	pool, err := ConnectPostgres(connStr)
+	if err != nil {
+		t.Fatalf("could not connect to postgres: %v", err)
+	}
+	defer pool.Close()
+
+	if err := Migrate(pool); err != nil {
+		t.Fatalf("could not run migrations: %v", err)
+	}
+
+	redisContainer, err := redis.Run(ctx, "redis:7-alpine")
+	if err != nil {
+		t.Fatalf("could not start redis container: %v", err)
+	}
+	defer func() {
+		if err := redisContainer.Terminate(ctx); err != nil {
+			t.Fatalf("could not terminate redis container: %v", err)
+		}
+	}()
+
+	redisAddr, err := redisContainer.ConnectionString(ctx)
+	if err != nil {
+		t.Fatalf("could not get redis connection string: %v", err)
+	}
+
+	redisClient, err := ConnectRedis(redisAddr, "", 0)
+	if err != nil {
+		t.Fatalf("could not connect to redis: %v", err)
+	}
+
+	store := NewStore(pool, redisClient)
+	const source = "goodreads"
+
+	notYetDue := models.URLFrontier{
+		URL:      "https://www.goodreads.com/author/quotes/1.Not_Yet_Due",
+		Source:   source,
+		Priority: 10.0,
+	}
+	alreadyDue := models.URLFrontier{
+		URL:      "https://www.goodreads.com/author/quotes/2.Already_Due",
+		Source:   source,
+		Priority: 10.0,
+	}
+	for _, f := range []models.URLFrontier{notYetDue, alreadyDue} {
+		if _, err := store.SaveURL(ctx, f); err != nil {
+			t.Fatalf("SaveURL(%s) failed: %v", f.URL, err)
+		}
+		if err := store.MarkURLInProgress(ctx, f.URL); err != nil {
+			t.Fatalf("MarkURLInProgress(%s) failed: %v", f.URL, err)
+		}
+	}
+
+	if err := store.ScheduleDelayedRetry(ctx, source, notYetDue.URL, 1, 13.0, time.Now().Add(time.Hour)); err != nil {
+		t.Fatalf("ScheduleDelayedRetry(not yet due) failed: %v", err)
+	}
+	if err := store.ScheduleDelayedRetry(ctx, source, alreadyDue.URL, 1, 13.0, time.Now().Add(-time.Minute)); err != nil {
+		t.Fatalf("ScheduleDelayedRetry(already due) failed: %v", err)
+	}
+
+	// Postgres bookkeeping happens immediately for both, same as a plain RetryURL — the hold is
+	// purely a Redis-side concern, it never affects status/error_count/priority.
+	for _, f := range []models.URLFrontier{notYetDue, alreadyDue} {
+		row, err := store.GetURLByURL(ctx, f.URL)
+		if err != nil {
+			t.Fatalf("GetURLByURL(%s) failed: %v", f.URL, err)
+		}
+		if row.Status != "pending" || row.ErrorCount != 1 || row.Priority != 13.0 {
+			t.Errorf("%s: expected pending/errorCount=1/priority=13.0 after ScheduleDelayedRetry, got status=%q errorCount=%d priority=%v",
+				f.URL, row.Status, row.ErrorCount, row.Priority)
+		}
+	}
+
+	// Neither URL should be poppable yet — ScheduleDelayedRetry never touches the live
+	// frontier itself, only PromoteDueRetries does, and that hasn't run yet.
+	if popped, err := store.PopURL(ctx, source); err != nil {
+		t.Fatalf("PopURL() before promoting failed: %v", err)
+	} else if popped != "" {
+		t.Errorf("expected nothing poppable before PromoteDueRetries, got %q", popped)
+	}
+
+	promoted, err := store.PromoteDueRetries(ctx, source)
+	if err != nil {
+		t.Fatalf("PromoteDueRetries() failed: %v", err)
+	}
+	if promoted != 1 {
+		t.Errorf("expected PromoteDueRetries() to promote exactly 1 URL, got %d", promoted)
+	}
+
+	popped, err := store.PopURL(ctx, source)
+	if err != nil {
+		t.Fatalf("PopURL() after promoting failed: %v", err)
+	}
+	if popped != alreadyDue.URL {
+		t.Errorf("expected %q to be poppable after promotion, got %q", alreadyDue.URL, popped)
+	}
+
+	// The not-yet-due URL must still be held — not promoted, and not poppable.
+	if popped, err := store.PopURL(ctx, source); err != nil {
+		t.Fatalf("PopURL() for the not-yet-due URL failed: %v", err)
+	} else if popped != "" {
+		t.Errorf("expected the not-yet-due URL to still be held, but got %q poppable", popped)
 	}
 }
 

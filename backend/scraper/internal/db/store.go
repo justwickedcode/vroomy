@@ -8,6 +8,7 @@ import (
 	"quotes-crawler/internal/models"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -554,6 +555,65 @@ func (s *Store) RetryURL(ctx context.Context, url string, errorCount int32, prio
 		url, errorCount, priority,
 	)
 	return err
+}
+
+// delayedFrontierKey namespaces the per-source "held" retry set — a ZSET scored by the Unix
+// timestamp a URL becomes eligible again, separate from frontierKey's live queue (scored by
+// priority). Keeping these as two separate keys, rather than one queue with mixed scoring,
+// means PopURL's plain ZPopMin never has to reason about "is this one actually due yet" — a
+// held URL simply isn't in that set at all until PromoteDueRetries moves it over.
+func delayedFrontierKey(source string) string {
+	return "frontier:delayed:" + source
+}
+
+// ScheduleDelayedRetry is RetryURL plus a hold: it records the same retry bookkeeping in
+// Postgres (status back to 'pending', incremented error_count, updated priority) but, instead
+// of the caller pushing it straight onto the live Redis frontier, adds it to
+// delayedFrontierKey(source) scored by readyAt — invisible to PopURL until
+// PromoteDueRetries moves it over once that time has passed. Used for a plain outright failure
+// that isn't itself evidence of a source-wide problem (see Crawler.failOrRetry's
+// hardFailureRetryDelay), so that one bad URL doesn't come back into rotation before it's had a
+// real chance to have resolved itself, while everything else keeps flowing normally.
+func (s *Store) ScheduleDelayedRetry(ctx context.Context, source string, url string, errorCount int32, priority float64, readyAt time.Time) error {
+	if err := s.RetryURL(ctx, url, errorCount, priority); err != nil {
+		return err
+	}
+	return s.rdb.ZAdd(ctx, delayedFrontierKey(source), redis.Z{Score: float64(readyAt.Unix()), Member: url}).Err()
+}
+
+// PromoteDueRetries moves every URL in source's delayed set whose hold has expired back onto
+// the live frontier, using the priority RetryURL already recorded in Postgres (re-read here via
+// GetURLByURL rather than carried in the delayed ZSET itself, which only has room for a score
+// and a member — Redis's two queues would otherwise have no way to agree on priority without
+// a third piece of state). Returns how many were promoted; a source with nothing due is the
+// common case and costs one cheap ZRangeByScore against an empty result. Best-effort — if a
+// specific due URL fails to look up or move, it's skipped (and still sitting in the delayed set,
+// so it's retried again on the very next call) rather than aborting the rest of the batch.
+func (s *Store) PromoteDueRetries(ctx context.Context, source string) (int, error) {
+	key := delayedFrontierKey(source)
+	due, err := s.rdb.ZRangeByScore(ctx, key, &redis.ZRangeBy{
+		Min: "-inf",
+		Max: strconv.FormatInt(time.Now().Unix(), 10),
+	}).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	promoted := 0
+	for _, url := range due {
+		row, err := s.GetURLByURL(ctx, url)
+		if err != nil {
+			continue
+		}
+		if err := s.rdb.ZAdd(ctx, frontierKey(source), redis.Z{Score: row.Priority, Member: url}).Err(); err != nil {
+			continue
+		}
+		if err := s.rdb.ZRem(ctx, key, url).Err(); err != nil {
+			continue
+		}
+		promoted++
+	}
+	return promoted, nil
 }
 
 func (s *Store) MarkURLFailed(ctx context.Context, url string) error {

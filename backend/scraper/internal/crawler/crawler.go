@@ -844,13 +844,32 @@ func (c *Crawler) goodreadsTopUpFunc() func(ctx context.Context) topUpResult {
 	}
 }
 
+// hardFailureRetryDelay is how long an outright-failed URL (a plain non-200 status or network
+// error — NOT the slow-but-succeeded tarpit signature, and NOT a 429, both of which are
+// signals of a source-wide problem and still force the whole worker to back off via
+// stallPenaltyFor — see processURL) waits before it's eligible to be fetched again. Requested
+// explicitly: a one-off failure on a specific page (e.g. a transient 503) shouldn't stop the
+// worker from immediately continuing with everything else that's actually ready; it should just
+// come back to that one page later, once it's had a real chance to have resolved itself.
+const hardFailureRetryDelay = 10 * time.Minute
+
 // failOrRetry handles a fetch failure for row: if it hasn't yet used up maxURLRetries attempts,
 // it's requeued to pending with an incremented error_count and a correspondingly lower priority
 // (scoring.CalculatePriority's existing errorCount term means a retried URL sinks below fresh
-// ones in its own source's queue, rather than competing evenly with them) and pushed back onto
-// source's Redis queue so it's actually picked up again. Once retries are exhausted, it's
-// marked permanently failed via the existing MarkURLFailed, same as before this existed.
-func (c *Crawler) failOrRetry(ctx context.Context, source string, row models.URLFrontier) {
+// ones in its own source's queue, rather than competing evenly with them). Once retries are
+// exhausted, it's marked permanently failed via the existing MarkURLFailed, same as before this
+// existed.
+//
+// delay controls *when* the retry becomes eligible: zero means immediately (pushed straight
+// onto the live frontier, same as this always worked), non-zero schedules it via
+// Store.ScheduleDelayedRetry instead — held in a separate per-source "delayed" set and only
+// promoted onto the live frontier once delay has passed (see Store.PromoteDueRetries, polled
+// from runWorker). The lower-priority score alone isn't a real guarantee of a delay: if a
+// source's queue is otherwise thin (true of Goodreads much of the time — a single pagination
+// chain plus occasional tag/random-page seeds), a merely-deprioritized URL could still be the
+// only thing available and get popped again almost immediately. A real time-based hold is what
+// hardFailureRetryDelay actually needs.
+func (c *Crawler) failOrRetry(ctx context.Context, source string, row models.URLFrontier, delay time.Duration) {
 	nextErrorCount := row.ErrorCount + 1
 	if nextErrorCount >= maxURLRetries {
 		if err := c.store.MarkURLFailed(ctx, row.URL); err != nil {
@@ -861,24 +880,41 @@ func (c *Crawler) failOrRetry(ctx context.Context, source string, row models.URL
 	}
 
 	priority := scoring.CalculatePriority(source, int(row.Depth), int(nextErrorCount))
-	if err := c.store.RetryURL(ctx, row.URL, nextErrorCount, priority); err != nil {
-		log.Printf("[%s] Could not requeue %s for retry: %s\n", source, row.URL, err)
+
+	if delay <= 0 {
+		if err := c.store.RetryURL(ctx, row.URL, nextErrorCount, priority); err != nil {
+			log.Printf("[%s] Could not requeue %s for retry: %s\n", source, row.URL, err)
+			return
+		}
+		if err := c.store.PushURL(ctx, source, row.URL, priority); err != nil {
+			log.Printf("[%s] Could not push %s back to the frontier for retry: %s\n", source, row.URL, err)
+			return
+		}
+		logWarn("[%s] Will retry %s (attempt %d of %d)", source, row.URL, nextErrorCount+1, maxURLRetries)
 		return
 	}
-	if err := c.store.PushURL(ctx, source, row.URL, priority); err != nil {
-		log.Printf("[%s] Could not push %s back to the frontier for retry: %s\n", source, row.URL, err)
+
+	if err := c.store.ScheduleDelayedRetry(ctx, source, row.URL, nextErrorCount, priority, time.Now().Add(delay)); err != nil {
+		log.Printf("[%s] Could not schedule a delayed retry for %s: %s\n", source, row.URL, err)
 		return
 	}
-	logWarn("[%s] Will retry %s (attempt %d of %d)", source, row.URL, nextErrorCount+1, maxURLRetries)
+	logWarn("[%s] Will retry %s in ~%s (attempt %d of %d) — continuing with other work meanwhile", source, row.URL, delay, nextErrorCount+1, maxURLRetries)
 }
 
 // processURL fetches, parses, and saves everything for one URL — identical work regardless of
 // which source's worker goroutine calls it. Returns gotQuotes (fed into a Wikiquote worker's
 // dead-streak circuit breaker; always false for Goodreads, which ignores it), stalled (true if
-// the fetch was slow or failed outright, telling the caller to back this source's cooldown off
-// to stallPenaltyFor(source) instead of just its normal minDelay for the next iteration), and rateLimited
-// (specifically a 429, as opposed to any other failure — see fetcher.IsRateLimited — which
-// tells a worker running at wikiquoteExperimentalDelay to permanently abandon that pace).
+// the fetch was slow-but-succeeded or hit a 429 — both real evidence of a source-wide problem,
+// telling the caller to back this source's whole cooldown off to stallPenaltyFor(source) instead
+// of just its normal minDelay for the next iteration), and rateLimited (specifically a 429, as
+// opposed to any other failure — see fetcher.IsRateLimited — which tells a worker running at
+// wikiquoteExperimentalDelay to permanently abandon that pace).
+//
+// A plain outright failure that *isn't* a 429 (a 503, a timeout, a connection reset, ...) is
+// deliberately NOT treated as stalled: there's no particular reason to believe a single bad
+// page means the next, different page from the same source is about to fail too, so the worker
+// just schedules that one URL for a delayed retry (hardFailureRetryDelay) and immediately
+// continues with whatever else is ready — see failOrRetry.
 func (c *Crawler) processURL(ctx context.Context, source string, url string) (gotQuotes bool, stalled bool, rateLimited bool) {
 	// Defense-in-depth against MediaWiki red links (see parser.resolveWikiquoteLink, which
 	// already stops new ones from ever being queued): this still catches any row that was
@@ -914,10 +950,16 @@ func (c *Crawler) processURL(ctx context.Context, source string, url string) (go
 		stalled = true
 	}
 	if err != nil {
-		log.Printf("Fetch failed for %s (source=%s): %s — backing off ~%s", url, source, err, stallPenaltyDisplayFor(source))
-		stalled = true
-		c.failOrRetry(ctx, source, row)
-		return false, stalled, fetcher.IsRateLimited(err)
+		rateLimited = fetcher.IsRateLimited(err)
+		if rateLimited {
+			log.Printf("Fetch failed for %s (source=%s): %s — backing off ~%s", url, source, err, stallPenaltyDisplayFor(source))
+			stalled = true
+			c.failOrRetry(ctx, source, row, 0)
+		} else {
+			log.Printf("Fetch failed for %s (source=%s): %s — scheduling a retry in ~%s, continuing with other work meanwhile", url, source, err, hardFailureRetryDelay)
+			c.failOrRetry(ctx, source, row, hardFailureRetryDelay)
+		}
+		return false, stalled, rateLimited
 	}
 
 	var p parser.Parser
@@ -1101,6 +1143,16 @@ func (c *Crawler) runWorker(ctx context.Context, source string, minDelay time.Du
 					return
 				}
 			}
+		}
+
+		// Move any of this source's delayed retries (see failOrRetry/hardFailureRetryDelay)
+		// whose hold has expired back onto the live frontier, so PopURL below can actually pick
+		// them up again — done every iteration, not just when the queue looks empty, since a
+		// retry becoming due has nothing to do with how much other work is currently pending.
+		if promoted, err := c.store.PromoteDueRetries(ctx, source); err != nil {
+			log.Printf("[%s] Could not promote due delayed retries: %s\n", source, err)
+		} else if promoted > 0 {
+			logInfo("[%s] Promoted %d delayed retry URL(s) back onto the frontier", source, promoted)
 		}
 
 		// Aggressive-fill: below minFrontierBuffer, try topUp *before* checking whether
