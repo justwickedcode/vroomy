@@ -5,11 +5,18 @@ Covers the backend only — Postgres, Redis, the crawler (`backend/scraper`), th
 (TanStack Start) is deployed separately (Vercel/Netlify/a Node host, or `frontend/Dockerfile` on
 any container host); it just needs `VITE_API_URL` pointed at wherever the API ends up, and
 `VITE_WS_URL` pointed at wherever `ws` ends up (a full `ws://`/`wss://` URL, not a path under the
-API's own domain). `frontend/Dockerfile` takes both as build args (not runtime env vars — Vite
-inlines `import.meta.env.VITE_*` at build time), e.g.
-`docker build --build-arg VITE_API_URL=https://api.example.com --build-arg VITE_WS_URL=wss://ws.example.com -t frontend ./frontend`.
-It's not wired into `docker-compose.prod.yml` alongside the backend services, since the frontend
-is typically deployed to its own host rather than this stack's internal network.
+API's own domain). **Both are set as ordinary runtime environment variables** — e.g.
+`docker run -e VITE_API_URL=https://api.example.com -e VITE_WS_URL=wss://ws.example.com -p 3000:3000 frontend`
+— even though Vite only ever inlines `import.meta.env.VITE_*` at build time, not at runtime.
+`frontend/Dockerfile` bridges that gap itself: the build stage bakes in a fixed placeholder
+token in place of each real value, and `frontend/docker-entrypoint.sh` substitutes the real
+runtime env var for that placeholder, across every built file, the instant the container starts
+— before the server boots. This exists specifically because plenty of PaaS UIs (Dokploy
+included, for a plain Dockerfile-type App) only ever expose _runtime_ environment variables with
+no way to pass a real Docker build-arg through to `docker build`, which would otherwise leave
+the dev fallback (`localhost`) silently baked in with no error anywhere. It's not wired into
+`docker-compose.prod.yml` alongside the backend services, since the frontend is typically
+deployed to its own host rather than this stack's internal network.
 
 Everything here was built and verified against a real, isolated instance of this exact stack —
 not assumed to work from the compose file alone. Two real bugs were caught this way (see
@@ -115,15 +122,15 @@ path:
 - **The frontend deploys as its own Dokploy App, from `frontend/Dockerfile`.** Set **Docker
   Context Path** to `frontend` and **Docker File** to `frontend/Dockerfile` (same monorepo
   caveat as above). Give it a domain, container **Port 3000**, and health-check path `/` (it has
-  no dedicated `/health` route — the root route responding is the signal). Set **Build
-  Arguments** (not environment variables — Dokploy exposes a separate Build Args field for
-  Dockerfile-type Apps) to `VITE_API_URL=https://<api's domain>` and
-  `VITE_WS_URL=wss://<ws's domain>`: Vite inlines `import.meta.env.VITE_*` into the bundle at
-  build time, so these only take effect as build args, and changing either means triggering a
-  rebuild, not just a restart. No runtime env vars are needed — the Dockerfile already bakes in
-  `PORT=3000`/`HOST=0.0.0.0`. Once the frontend's domain is live, go back and set
-  `CORS_ALLOWED_ORIGIN` on the api and ws Apps to that exact origin (step 4 above) — they won't
-  accept its requests until that's set.
+  no dedicated `/health` route — the root route responding is the signal). Set `VITE_API_URL`
+  and `VITE_WS_URL` as **ordinary environment variables** on the App, to `https://<api's domain>`
+  and `wss://<ws's domain>` — no separate Docker build-arg plumbing is needed; see the top of
+  this file and `frontend/docker-entrypoint.sh` for how that's made to work despite Vite only
+  inlining these at build time. Changing either still needs a **redeploy** to take effect (the
+  container has to actually restart with the new value, same as any other env var change), just
+  not a rebuild. Once the frontend's domain is live, go back and set `CORS_ALLOWED_ORIGIN` on the
+  api and ws Apps to that exact origin (step 4 above) — they won't accept its requests until
+  that's set.
 - **Memory limits** (crawler sized for its real measured ~1.25GB working set — see finding #2
   below — on top of Postgres/Redis running as separate containers instead of bundled with the
   crawler on one unconstrained host; api/ws are far lighter, no language models loaded, same
