@@ -1,5 +1,7 @@
-// Placeholder pool. The Go scraper (backend/scraper) will eventually feed
-// real passages here over an API instead of this static list.
+// Fallback pool for when backend/api is unreachable (see getRandomQuoteText below) and for the
+// daily challenge (see getDailySentence), which needs a small fixed set to deterministically
+// hash into rather than an ever-growing live corpus. No longer the primary solo-race source —
+// that's now the real scraped corpus, served live over the API.
 //
 // Kept deliberately long (~35-45 words): a short sentence finishes in a
 // couple of seconds even for an average typist, and extrapolating a
@@ -21,6 +23,37 @@ export function getRandomSentence(exclude?: string): string {
   const pool = SENTENCE_POOL.filter((sentence) => sentence !== exclude)
   const candidates = pool.length > 0 ? pool : SENTENCE_POOL
   return candidates[Math.floor(Math.random() * candidates.length)]
+}
+
+// Same origin backend/ws's useMultiplayerRace reads VITE_WS_URL from — one deployed frontend,
+// one pair of env vars, both defaulting to the local dev backend when unset.
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+
+// getRandomQuoteText is the real solo-race quote source: backend/api's live, scraped corpus
+// (see backend/api/quotes.go's RandomTypingQuote — word-count range and game-suitability
+// filtering already match what a typing race needs, no client-side filtering required here).
+// exclude is forwarded as-is so the API can avoid repeating the sentence a player was just
+// shown, exactly like getRandomSentence's own local exclusion.
+//
+// Falls back to the local SENTENCE_POOL (via getRandomSentence) on any failure — a down API,
+// a network blip, an empty corpus on a fresh deploy — so a race never fails to start just
+// because the backend had a bad moment. Same "always have a fallback" principle backend/scraper
+// itself applies to its own quote sources (see its README), just one layer further out.
+export async function getRandomQuoteText(exclude?: string): Promise<string> {
+  try {
+    const url = new URL('/api/quotes/random', API_URL)
+    if (exclude) url.searchParams.set('exclude', exclude)
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`quotes API returned ${res.status}`)
+    const quote: { text: string } = await res.json()
+    if (quote.text) return quote.text
+  } catch (err) {
+    console.warn(
+      'getRandomQuoteText: falling back to the local sentence pool — quotes API unavailable:',
+      err,
+    )
+  }
+  return getRandomSentence(exclude)
 }
 
 // Local calendar date as "YYYY-MM-DD" — shared by todayKey() below and by the daily challenge's
