@@ -2,9 +2,14 @@
 
 Covers the backend only — Postgres, Redis, the crawler (`backend/scraper`), the quotes API
 (`backend/api`), and the real-time multiplayer WS service (`backend/ws`). The frontend
-(TanStack Start) is deployed separately (Vercel/Netlify/a Node host); it just needs
-`VITE_API_URL` pointed at wherever the API ends up, and `VITE_WS_URL` pointed at wherever `ws`
-ends up (a full `ws://`/`wss://` URL, not a path under the API's own domain).
+(TanStack Start) is deployed separately (Vercel/Netlify/a Node host, or `frontend/Dockerfile` on
+any container host); it just needs `VITE_API_URL` pointed at wherever the API ends up, and
+`VITE_WS_URL` pointed at wherever `ws` ends up (a full `ws://`/`wss://` URL, not a path under the
+API's own domain). `frontend/Dockerfile` takes both as build args (not runtime env vars — Vite
+inlines `import.meta.env.VITE_*` at build time), e.g.
+`docker build --build-arg VITE_API_URL=https://api.example.com --build-arg VITE_WS_URL=wss://ws.example.com -t frontend ./frontend`.
+It's not wired into `docker-compose.prod.yml` alongside the backend services, since the frontend
+is typically deployed to its own host rather than this stack's internal network.
 
 Everything here was built and verified against a real, isolated instance of this exact stack —
 not assumed to work from the compose file alone. Two real bugs were caught this way (see
