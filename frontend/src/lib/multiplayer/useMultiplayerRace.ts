@@ -259,7 +259,8 @@ export function useMultiplayerRace() {
       resetRoomState()
       setPhase('connecting')
 
-      const ws = new WebSocket(`${WS_URL}${path}`)
+      const url = `${WS_URL}${path}`
+      const ws = new WebSocket(url)
       socketRef.current = ws
 
       // Dev-mode mounts an effect twice (mount → cleanup → mount again) to catch missing
@@ -269,6 +270,20 @@ export function useMultiplayerRace() {
       // stale socket's belated message/close events would otherwise clobber state a newer
       // connection has already moved past. Every handler below checks this first.
       const isCurrent = () => socketRef.current === ws
+
+      // The "Lost connection to the race server" screen only tells the player a close
+      // happened, not why — these three log the actual WebSocket lifecycle (open, error, and
+      // the close code/reason, per MDN's CloseEvent) so a misconfigured VITE_WS_URL, CORS
+      // rejection, or a real server-side drop are distinguishable from the browser console.
+      ws.onopen = () => {
+        if (!isCurrent()) return
+        console.log(`[multiplayer] connected to ${url}`)
+      }
+
+      ws.onerror = (event) => {
+        if (!isCurrent()) return
+        console.error(`[multiplayer] WebSocket error on ${url}:`, event)
+      }
 
       ws.onmessage = (event) => {
         if (!isCurrent()) return
@@ -366,8 +381,11 @@ export function useMultiplayerRace() {
         }
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         if (!isCurrent()) return
+        console.log(
+          `[multiplayer] disconnected from ${url} (code=${event.code}, reason=${event.reason || '(none)'}, clean=${event.wasClean})`,
+        )
         // race_end always closes the socket ~10s later (see backend/ws's finishRace) — that's
         // an expected, successful end, not a connection failure, so only fall back to an error
         // state from a phase that wasn't already a deliberate terminal one.
