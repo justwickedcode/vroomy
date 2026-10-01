@@ -21,6 +21,12 @@
 #                           (redis://... is fine directly; see PRODUCTION.md's Dokploy section)
 #   CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com)
 #   VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
+#
+# frontend/ws deliberately have no `ports:` host-publish — Dokploy's Traefik routes to them
+# directly over dokploy-network based on each service's Domain config (set container port 3000
+# for frontend, 8081 for ws). Publishing a host port isn't needed here the way it is for the
+# plain-docker-compose+Caddy setup in PRODUCTION.md, and 3000 specifically collides with
+# Dokploy's own dashboard, which already listens on host port 3000.
 
 x-logging: &default-logging
   driver: json-file
@@ -72,8 +78,6 @@ services:
       WS_PORT: 8081
       CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
       GOMEMLIMIT: 100MiB
-    ports:
-      - '127.0.0.1:8081:8081'
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8081/health']
       interval: 10s
@@ -96,8 +100,6 @@ services:
       # project. Not VITE_-prefixed on purpose — see frontend/src/lib/typing/sentences.ts.
       API_INTERNAL_URL: http://api:8080
       VITE_WS_URL: ${VITE_WS_URL}
-    ports:
-      - '127.0.0.1:3000:3000'
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:3000/']
       interval: 10s
