@@ -16,8 +16,11 @@ import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as GarageRouteImport } from './routes/garage'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as ReplaysRouteImport } from './routes/replays'
 import { Route as StatsRouteImport } from './routes/stats'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as RaceRoomCodeRouteImport } from './routes/race.$roomCode'
 import { Route as RaceFriendsRouteImport } from './routes/race.friends'
 import { Route as RaceMultiplayerRouteImport } from './routes/race.multiplayer'
@@ -60,6 +63,16 @@ const LeaderboardsRoute = LeaderboardsRouteImport.update({
   path: '/leaderboards',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogoutRoute = LogoutRouteImport.update({
+  id: '/logout',
+  path: '/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReplaysRoute = ReplaysRouteImport.update({
   id: '/replays',
   path: '/replays',
@@ -68,6 +81,11 @@ const ReplaysRoute = ReplaysRouteImport.update({
 const StatsRoute = StatsRouteImport.update({
   id: '/stats',
   path: '/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RaceRoomCodeRoute = RaceRoomCodeRouteImport.update({
@@ -109,8 +127,11 @@ export interface FileRoutesByFullPath {
   '/garage': typeof GarageRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -126,8 +147,11 @@ export interface FileRoutesByTo {
   '/garage': typeof GarageRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -143,8 +167,11 @@ export interface FileRoutesById {
   '/garage': typeof GarageRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -162,8 +189,11 @@ export interface FileRouteTypes {
     | '/garage'
     | '/guide'
     | '/leaderboards'
+    | '/login'
+    | '/logout'
     | '/replays'
     | '/stats'
+    | '/auth/callback'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -179,8 +209,11 @@ export interface FileRouteTypes {
     | '/garage'
     | '/guide'
     | '/leaderboards'
+    | '/login'
+    | '/logout'
     | '/replays'
     | '/stats'
+    | '/auth/callback'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -195,8 +228,11 @@ export interface FileRouteTypes {
     | '/garage'
     | '/guide'
     | '/leaderboards'
+    | '/login'
+    | '/logout'
     | '/replays'
     | '/stats'
+    | '/auth/callback'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -213,8 +249,11 @@ export interface RootRouteChildren {
   GarageRoute: typeof GarageRoute
   GuideRoute: typeof GuideRoute
   LeaderboardsRoute: typeof LeaderboardsRoute
+  LoginRoute: typeof LoginRoute
+  LogoutRoute: typeof LogoutRoute
   ReplaysRoute: typeof ReplaysRoute
   StatsRoute: typeof StatsRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   RaceRoomCodeRoute: typeof RaceRoomCodeRoute
   RaceFriendsRoute: typeof RaceFriendsRoute
   RaceMultiplayerRoute: typeof RaceMultiplayerRoute
@@ -272,6 +311,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeaderboardsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logout': {
+      id: '/logout'
+      path: '/logout'
+      fullPath: '/logout'
+      preLoaderRoute: typeof LogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/replays': {
       id: '/replays'
       path: '/replays'
@@ -284,6 +337,13 @@ declare module '@tanstack/react-router' {
       path: '/stats'
       fullPath: '/stats'
       preLoaderRoute: typeof StatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/race/$roomCode': {
@@ -353,8 +413,11 @@ const rootRouteChildren: RootRouteChildren = {
   GarageRoute: GarageRoute,
   GuideRoute: GuideRoute,
   LeaderboardsRoute: LeaderboardsRoute,
+  LoginRoute: LoginRoute,
+  LogoutRoute: LogoutRoute,
   ReplaysRoute: ReplaysRoute,
   StatsRoute: StatsRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   RaceRoomCodeRoute: RaceRoomCodeRoute,
   RaceFriendsRoute: RaceFriendsRoute,
   RaceMultiplayerRoute: RaceMultiplayerRoute,
