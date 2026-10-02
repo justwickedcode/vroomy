@@ -23,17 +23,19 @@ const STATE_COOKIE = 'vroomy_oauth_state'
 // part of the sealed session — this only needs to survive the few seconds of the Casdoor round
 // trip), and sends the browser to Casdoor's hosted login page. Verified on the way back in
 // completeLogin below.
-export const startLogin = createServerFn({ method: 'GET' }).handler(() => {
-  const state = crypto.randomUUID()
-  setCookie(STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'lax',
-    maxAge: 300,
-    path: '/',
-  })
-  throw redirect({ href: buildAuthorizeUrl(state) })
-})
+export const startLogin = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const state = crypto.randomUUID()
+    setCookie(STATE_COOKIE, state, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: 300,
+      path: '/',
+    })
+    throw redirect({ href: await buildAuthorizeUrl(state) })
+  },
+)
 
 // completeLogin handles the redirect back from Casdoor (/auth/callback?code=...&state=...).
 // Reads code/state straight off the real incoming request URL rather than through TanStack
@@ -54,6 +56,9 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
 
     const idToken = await exchangeCodeForIdToken(code)
     const claims = await verifyIdToken(idToken)
+    // "displayName" is the human-readable name; "name" is Casdoor's own internal username —
+    // fall back to it only if displayName is somehow blank, never prefer it.
+    const displayName = claims.displayName || claims.name
 
     // Warm api's own users row immediately (same internal-proxy pattern as
     // frontend/src/lib/typing/sentences.ts's fetchRandomQuote) so the very first page load
@@ -62,7 +67,7 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
     const res = await fetch(new URL('/api/users/me', apiUrl), {
       headers: {
         'X-Vroomy-User-Id': claims.sub,
-        'X-Vroomy-User-Name': claims.name ?? '',
+        'X-Vroomy-User-Name': displayName ?? '',
         'X-Vroomy-User-Email': claims.email ?? '',
         'X-Vroomy-User-Avatar': claims.avatar ?? '',
       },
@@ -73,7 +78,7 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
 
     await setSessionUser({
       userId: claims.sub,
-      name: claims.name,
+      name: displayName,
       email: claims.email,
       avatarUrl: claims.avatar,
     })
