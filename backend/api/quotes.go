@@ -32,7 +32,8 @@ type TypingQuote struct {
 // fit for a typing race (too short, unwritable characters, leaked citation/markup — see
 // dedup.GameSuitability) — excluded here, not deleted from the corpus, since some other future
 // consumer might still want them. This API only ever reads the quotes table; it never writes to
-// it and never runs migrations — that's the scraper's job as the schema's owner (see README).
+// it and never migrates it — that's the scraper's job as that schema's owner (see README). api
+// does own and migrate its own separate tables (users, race_results — see internal/db).
 //
 // Deliberately not "ORDER BY random() LIMIT 1": that forces Postgres to evaluate random() for
 // every row in the filtered candidate set and sort all of them just to keep the top 1 — an

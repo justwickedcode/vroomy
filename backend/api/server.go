@@ -35,6 +35,13 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 	// would risk the healthcheck itself tripping the limit and reporting a false outage.
 	mux.Handle("GET /api/quotes/random", withRateLimit(handleRandomQuote(pool)))
 	mux.HandleFunc("GET /health", handleHealth(pool))
+	// No rate limit on these: unlike /api/quotes/random, every caller here already has to carry
+	// a verified identity (see withIdentity in users.go) — there's no anonymous-abuse surface
+	// the way there is on the one endpoint a logged-out visitor can hit freely.
+	mux.HandleFunc("GET /api/users/me", handleGetMe(pool))
+	mux.HandleFunc("PUT /api/users/me/cosmetics", handlePutCosmetics(pool))
+	mux.HandleFunc("POST /api/users/me/races", handlePostRace(pool))
+	mux.HandleFunc("POST /api/users/me/races/import", handlePostRacesImport(pool))
 	// CORS first: its OPTIONS preflight short-circuit must never consume a rate-limit token —
 	// a browser sends one before every real cross-origin request, so counting it would halve
 	// the effective limit for no reason.
@@ -44,7 +51,7 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 func withCORS(allowedOrigin string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
