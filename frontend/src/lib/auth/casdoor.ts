@@ -1,8 +1,10 @@
-// Talks to Casdoor's OIDC endpoints directly (standard authorization-code flow) — endpoint
-// paths verified against Casdoor's own router.go source, not assumed from generic OIDC
-// convention: POST /api/login/oauth/access_token for the token exchange, GET /login/oauth/
-// authorize (served by Casdoor's own SPA, not its Go API) to start login, /.well-known/jwks for
-// signature verification.
+// Talks to Casdoor's OIDC endpoints — the token/JWKS/issuer URLs are read from Casdoor's own
+// /.well-known/openid-configuration discovery document (standard OIDC pattern) rather than
+// hardcoded, specifically because Casdoor computes its actual `iss` claim from its own server
+// config (object/wellknown_oidc_discovery.go's getOriginFromHost, using app.conf's "origin" if
+// set) — a value this code has no reliable way to predict in advance. Hardcoding a guessed
+// issuer string caused a real "unexpected 'iss' claim value" failure during integration testing;
+// reading it from discovery instead means it can never drift out of sync with the real value.
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 
 function requireEnv(name: string): string {
@@ -11,7 +13,7 @@ function requireEnv(name: string): string {
   return value
 }
 
-function issuer(): string {
+function issuerBase(): string {
   return requireEnv('CASDOOR_ISSUER').replace(/\/$/, '')
 }
 
@@ -21,8 +23,34 @@ function redirectUri(): string {
   return `${requireEnv('PUBLIC_URL').replace(/\/$/, '')}/auth/callback`
 }
 
-export function buildAuthorizeUrl(state: string): string {
-  const url = new URL('/login/oauth/authorize', issuer())
+interface OidcDiscovery {
+  issuer: string
+  authorization_endpoint: string
+  token_endpoint: string
+  jwks_uri: string
+}
+
+// Fetched once per server process and cached — Casdoor's own config isn't expected to change
+// without a redeploy, and every login hitting this on every request would be wasted latency.
+let discoveryPromise: Promise<OidcDiscovery> | undefined
+
+function getDiscovery(): Promise<OidcDiscovery> {
+  discoveryPromise ??= fetch(
+    new URL('/.well-known/openid-configuration', issuerBase()),
+  ).then(async (res) => {
+    if (!res.ok) {
+      throw new Error(
+        `Casdoor OIDC discovery failed: ${res.status} ${await res.text()}`,
+      )
+    }
+    return res.json() as Promise<OidcDiscovery>
+  })
+  return discoveryPromise
+}
+
+export async function buildAuthorizeUrl(state: string): Promise<string> {
+  const discovery = await getDiscovery()
+  const url = new URL(discovery.authorization_endpoint)
   url.searchParams.set('client_id', requireEnv('CASDOOR_CLIENT_ID'))
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('redirect_uri', redirectUri())
@@ -39,7 +67,8 @@ interface CasdoorTokenResponse {
 }
 
 export async function exchangeCodeForIdToken(code: string): Promise<string> {
-  const res = await fetch(new URL('/api/login/oauth/access_token', issuer()), {
+  const discovery = await getDiscovery()
+  const res = await fetch(discovery.token_endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
@@ -75,25 +104,33 @@ export async function exchangeCodeForIdToken(code: string): Promise<string> {
   return body.id_token
 }
 
-// Casdoor's id_token claim names, as actually observed from a live token during integration
-// testing — not assumed from generic OIDC convention, since Casdoor's own naming (e.g.
-// "displayName"/"avatar" instead of the more common "name"/"picture") doesn't match the OIDC
-// spec's usual suggestions.
+// Casdoor's id_token embeds its internal User struct directly (object/token_jwt.go's Claims
+// embeds *User), which uses "displayName" for the human-readable name and "name" for Casdoor's
+// own internal username — not interchangeable, and not the generic OIDC "name"/"picture" this
+// code assumed at first. Verified against Casdoor's own Go source (object/token_jwt.go,
+// UserShort's json tags), not just observed from one token.
 export interface CasdoorClaims {
   sub: string
   name?: string
+  displayName?: string
   email?: string
   avatar?: string
 }
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | undefined
 
-function getJwks() {
-  jwks ??= createRemoteJWKSet(new URL('/.well-known/jwks', issuer()))
+async function getJwks() {
+  if (!jwks) {
+    const discovery = await getDiscovery()
+    jwks = createRemoteJWKSet(new URL(discovery.jwks_uri))
+  }
   return jwks
 }
 
 export async function verifyIdToken(idToken: string): Promise<CasdoorClaims> {
-  const { payload } = await jwtVerify(idToken, getJwks(), { issuer: issuer() })
+  const discovery = await getDiscovery()
+  const { payload } = await jwtVerify(idToken, await getJwks(), {
+    issuer: discovery.issuer,
+  })
   return payload as unknown as CasdoorClaims
 }
