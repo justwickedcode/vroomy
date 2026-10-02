@@ -11,6 +11,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
+
+	"quotes-api/internal/db"
 )
 
 func main() {
@@ -25,11 +27,11 @@ func main() {
 		log.Fatal("Error loading .env file: ", err)
 	}
 
-	// This API only ever reads the quotes table — it deliberately does not run migrations.
-	// backend/scraper owns the schema (its own migrations create and evolve the quotes/
-	// url_frontier tables); running migrations from two independent binaries against the same
-	// database is one thing too many to keep in sync for a service that never writes anyway.
-	// Run the scraper at least once against a fresh database before starting this API.
+	// This API only ever reads the quotes table — backend/scraper owns that schema (its own
+	// migrations create and evolve the quotes/url_frontier tables), and api never writes to or
+	// migrates it. api does own and migrate its own separate tables (users, race_results) —
+	// see internal/db/migrate.go for why that's safe to run from a second independent binary
+	// against the same database without colliding with the scraper's own migration history.
 	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal("Could not connect to Postgres: ", err)
@@ -39,6 +41,11 @@ func main() {
 		log.Fatal("Could not reach Postgres: ", err)
 	}
 	log.Println("Connected to Postgres!")
+
+	if err := db.Migrate(pool); err != nil {
+		log.Fatal("Could not migrate api's own tables: ", err)
+	}
+	log.Println("api's own tables (users, race_results) are up to date")
 
 	allowedOrigin := os.Getenv("CORS_ALLOWED_ORIGIN")
 	if allowedOrigin == "" {
