@@ -14,6 +14,14 @@
 #                           (redis://... is fine directly; see PRODUCTION.md's Dokploy section)
 #   CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com)
 #   VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
+#   PUBLIC_URL            — same as CORS_ALLOWED_ORIGIN, no trailing slash — used to build the
+#                           OIDC redirect_uri (must exactly match a Redirect URI registered on
+#                           the Casdoor "vroomy" Application)
+#   CASDOOR_ISSUER        — the Casdoor instance's own domain, e.g. https://auth.example.com
+#   CASDOOR_CLIENT_ID     — from the "vroomy" Application in Casdoor
+#   CASDOOR_CLIENT_SECRET — from the "vroomy" Application in Casdoor
+#   SESSION_SECRET        — random, >=32 chars (e.g. `openssl rand -base64 48`) — seals Vroomy's
+#                           own login-session cookie; never reuse across environments
 #
 # frontend/ws deliberately have no `ports:` host-publish — Dokploy's Traefik routes to them
 # directly over dokploy-network based on each service's Domain config (set container port 3000
@@ -93,6 +101,11 @@ services:
       # project. Not VITE_-prefixed on purpose — see frontend/src/lib/typing/sentences.ts.
       API_INTERNAL_URL: http://api:8080
       VITE_WS_URL: ${VITE_WS_URL}
+      PUBLIC_URL: ${PUBLIC_URL}
+      CASDOOR_ISSUER: ${CASDOOR_ISSUER}
+      CASDOOR_CLIENT_ID: ${CASDOOR_CLIENT_ID}
+      CASDOOR_CLIENT_SECRET: ${CASDOOR_CLIENT_SECRET}
+      SESSION_SECRET: ${SESSION_SECRET}
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/']
       interval: 10s
