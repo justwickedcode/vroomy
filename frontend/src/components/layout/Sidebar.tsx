@@ -45,30 +45,36 @@ export default function Sidebar({
                 collapsed && 'justify-center px-0',
               )}
             >
-              {user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt=""
-                  className="size-7 shrink-0 rounded-full"
-                />
-              ) : (
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
-                  {(user.name ?? '?').charAt(0).toUpperCase()}
-                </span>
-              )}
-              {!collapsed && (
-                <>
+              <Link
+                to="/account"
+                title="Account"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-md transition-colors hover:text-foreground"
+              >
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt=""
+                    className="size-7 shrink-0 rounded-full"
+                  />
+                ) : (
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
+                    {(user.name ?? '?').charAt(0).toUpperCase()}
+                  </span>
+                )}
+                {!collapsed && (
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold">
                     {user.name ?? 'Account'}
                   </span>
-                  <a
-                    href="/logout"
-                    title="Log out"
-                    className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  >
-                    <LogOut className="size-4" />
-                  </a>
-                </>
+                )}
+              </Link>
+              {!collapsed && (
+                <a
+                  href="/logout"
+                  title="Log out"
+                  className="shrink-0 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                >
+                  <LogOut className="size-4" />
+                </a>
               )}
             </div>
           ) : (

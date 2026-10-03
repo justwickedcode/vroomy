@@ -95,6 +95,7 @@ export const performLogout = createServerFn({ method: 'GET' }).handler(
 export interface CurrentUser {
   id: string
   name?: string
+  email?: string
   avatarUrl?: string
 }
 
@@ -108,6 +109,7 @@ export const getCurrentUser = createServerFn({ method: 'GET' }).handler(
     return {
       id: session.data.userId,
       name: session.data.name,
+      email: session.data.email,
       avatarUrl: session.data.avatarUrl,
     }
   },

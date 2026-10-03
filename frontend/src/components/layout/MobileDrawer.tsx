@@ -34,20 +34,26 @@ export default function MobileDrawer({ onClose }: { onClose: () => void }) {
           <div className="mt-4 shrink-0 border-t border-border pt-4">
             {user ? (
               <div className="flex items-center gap-2 px-1">
-                {user.avatarUrl ? (
-                  <img
-                    src={user.avatarUrl}
-                    alt=""
-                    className="size-7 shrink-0 rounded-full"
-                  />
-                ) : (
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
-                    {(user.name ?? '?').charAt(0).toUpperCase()}
+                <Link
+                  to="/account"
+                  onClick={onClose}
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md transition-colors hover:text-foreground"
+                >
+                  {user.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt=""
+                      className="size-7 shrink-0 rounded-full"
+                    />
+                  ) : (
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
+                      {(user.name ?? '?').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {user.name ?? 'Account'}
                   </span>
-                )}
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                  {user.name ?? 'Account'}
-                </span>
+                </Link>
                 <a
                   href="/logout"
                   title="Log out"
