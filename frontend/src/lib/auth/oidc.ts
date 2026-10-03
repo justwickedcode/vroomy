@@ -35,8 +35,16 @@ interface OidcDiscovery {
 let discoveryPromise: Promise<OidcDiscovery> | undefined
 
 function getDiscovery(): Promise<OidcDiscovery> {
+  // Deliberately NOT `new URL('/.well-known/...', issuerBase())` — a leading slash in the
+  // relative argument makes URL resolution replace the ENTIRE path from root, silently
+  // dropping any path the issuer itself already has. Invisible with Casdoor/Zitadel (bare-
+  // domain issuers, no path to lose) but a real bug hit live with Keycloak, whose issuer
+  // includes a realm path (.../realms/vroomy) that got dropped entirely, producing a 404 at
+  // the server's root instead of the real discovery endpoint. Plain string concatenation
+  // appends instead of replacing, which is what's actually wanted here regardless of whether
+  // the issuer has a path component or not.
   discoveryPromise ??= fetch(
-    new URL('/.well-known/openid-configuration', issuerBase()),
+    `${issuerBase()}/.well-known/openid-configuration`,
   ).then(async (res) => {
     if (!res.ok) {
       throw new Error(
