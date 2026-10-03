@@ -26,6 +26,7 @@ interface OidcDiscovery {
   authorization_endpoint: string
   token_endpoint: string
   jwks_uri: string
+  userinfo_endpoint: string
 }
 
 // Fetched once per server process and cached — the provider's own config isn't expected to
@@ -65,7 +66,14 @@ interface OidcTokenResponse {
   error_description?: string
 }
 
-export async function exchangeCodeForIdToken(code: string): Promise<string> {
+export interface TokenResult {
+  idToken: string
+  accessToken?: string
+}
+
+export async function exchangeCodeForTokens(
+  code: string,
+): Promise<TokenResult> {
   const discovery = await getDiscovery()
   const res = await fetch(discovery.token_endpoint, {
     method: 'POST',
@@ -101,7 +109,30 @@ export async function exchangeCodeForIdToken(code: string): Promise<string> {
       `OIDC token exchange failed: ${res.status} ${body.error ?? ''} ${body.error_description ?? ''}`.trim(),
     )
   }
-  return body.id_token
+  return { idToken: body.id_token, accessToken: body.access_token }
+}
+
+// Not every provider embeds profile claims (name/email/picture) directly in the id_token by
+// default — Zitadel, for one, only does this if "User info inside ID Token" is explicitly
+// enabled on the application, a setting easy to forget. Calling the standard OIDC userinfo
+// endpoint with the access_token works regardless of that setting, so profile data doesn't
+// depend on remembering to flip one specific admin toggle correctly. Returns an empty object
+// (never throws) on failure — this enriches the identity, it doesn't gate login on it; the
+// verified id_token's `sub` is already enough to know who the user is.
+export async function fetchUserInfo(
+  accessToken: string | undefined,
+): Promise<Partial<OidcClaims>> {
+  if (!accessToken) return {}
+  try {
+    const discovery = await getDiscovery()
+    const res = await fetch(discovery.userinfo_endpoint, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) return {}
+    return (await res.json()) as Partial<OidcClaims>
+  } catch {
+    return {}
+  }
 }
 
 // Standard OIDC claim names (sub/name/email/picture) — unlike Casdoor, which embedded its own

@@ -8,7 +8,8 @@ import {
 import { redirect } from '@tanstack/react-router'
 import {
   buildAuthorizeUrl,
-  exchangeCodeForIdToken,
+  exchangeCodeForTokens,
+  fetchUserInfo,
   verifyIdToken,
 } from '#/lib/auth/oidc'
 import {
@@ -55,8 +56,17 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
       )
     }
 
-    const idToken = await exchangeCodeForIdToken(code)
+    const { idToken, accessToken } = await exchangeCodeForTokens(code)
     const claims = await verifyIdToken(idToken)
+    // The id_token's own claims are the verified, trustworthy source for *identity* (sub is
+    // always there) — but not every provider embeds profile fields (name/email/picture) in the
+    // id_token itself by default (Zitadel doesn't unless "User info inside ID Token" is
+    // explicitly enabled, a setting easy to miss). The userinfo endpoint fills those in
+    // regardless of that setting; id_token's own values win only if userinfo didn't have them.
+    const profile = await fetchUserInfo(accessToken)
+    const name = profile.name ?? claims.name
+    const email = profile.email ?? claims.email
+    const picture = profile.picture ?? claims.picture
 
     // Warm api's own users row immediately (same internal-proxy pattern as
     // frontend/src/lib/typing/sentences.ts's fetchRandomQuote) so the very first page load
@@ -65,9 +75,9 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
     const res = await fetch(new URL('/api/users/me', apiUrl), {
       headers: {
         'X-Vroomy-User-Id': claims.sub,
-        'X-Vroomy-User-Name': claims.name ?? '',
-        'X-Vroomy-User-Email': claims.email ?? '',
-        'X-Vroomy-User-Avatar': claims.picture ?? '',
+        'X-Vroomy-User-Name': name ?? '',
+        'X-Vroomy-User-Email': email ?? '',
+        'X-Vroomy-User-Avatar': picture ?? '',
       },
     })
     if (!res.ok) {
@@ -76,9 +86,9 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
 
     await setSessionUser({
       userId: claims.sub,
-      name: claims.name,
-      email: claims.email,
-      avatarUrl: claims.picture,
+      name,
+      email,
+      avatarUrl: picture,
     })
 
     throw redirect({ to: '/' })
