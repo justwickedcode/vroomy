@@ -56,6 +56,14 @@ export async function buildAuthorizeUrl(state: string): Promise<string> {
   url.searchParams.set('redirect_uri', redirectUri())
   url.searchParams.set('scope', 'openid profile email')
   url.searchParams.set('state', state)
+  // Logging out of Vroomy only ends Vroomy's own session (see performLogout in actions.ts) —
+  // it deliberately doesn't touch the identity provider's SSO session, since that session may
+  // be shared with other apps later (the whole point of a shared identity provider). Without
+  // this, clicking "Log in" again after logging out silently reuses the still-alive provider
+  // session instead of showing the account/provider chooser — confirmed live: logging out and
+  // back in skipped straight past GitHub/Google selection. `prompt=select_account` forces the
+  // chooser every time, regardless of an existing provider-side session.
+  url.searchParams.set('prompt', 'select_account')
   return url.toString()
 }
 
