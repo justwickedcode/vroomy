@@ -10,7 +10,7 @@ import {
   buildAuthorizeUrl,
   exchangeCodeForIdToken,
   verifyIdToken,
-} from '#/lib/auth/casdoor'
+} from '#/lib/auth/oidc'
 import {
   destroySession,
   getCurrentSession,
@@ -20,9 +20,9 @@ import {
 const STATE_COOKIE = 'vroomy_oauth_state'
 
 // startLogin generates a fresh CSRF state value, stashes it in a short-lived plain cookie (not
-// part of the sealed session — this only needs to survive the few seconds of the Casdoor round
-// trip), and sends the browser to Casdoor's hosted login page. Verified on the way back in
-// completeLogin below.
+// part of the sealed session — this only needs to survive the few seconds of the identity
+// provider round trip), and sends the browser to its hosted login page. Verified on the way
+// back in completeLogin below.
 export const startLogin = createServerFn({ method: 'GET' }).handler(
   async () => {
     const state = crypto.randomUUID()
@@ -37,9 +37,10 @@ export const startLogin = createServerFn({ method: 'GET' }).handler(
   },
 )
 
-// completeLogin handles the redirect back from Casdoor (/auth/callback?code=...&state=...).
-// Reads code/state straight off the real incoming request URL rather than through TanStack
-// Router's search-param plumbing — simpler, and reflects exactly what Casdoor actually sent.
+// completeLogin handles the redirect back from the identity provider
+// (/auth/callback?code=...&state=...). Reads code/state straight off the real incoming request
+// URL rather than through TanStack Router's search-param plumbing — simpler, and reflects
+// exactly what the provider actually sent.
 export const completeLogin = createServerFn({ method: 'GET' }).handler(
   async () => {
     const url = getRequestUrl()
@@ -56,9 +57,6 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
 
     const idToken = await exchangeCodeForIdToken(code)
     const claims = await verifyIdToken(idToken)
-    // "displayName" is the human-readable name; "name" is Casdoor's own internal username —
-    // fall back to it only if displayName is somehow blank, never prefer it.
-    const displayName = claims.displayName || claims.name
 
     // Warm api's own users row immediately (same internal-proxy pattern as
     // frontend/src/lib/typing/sentences.ts's fetchRandomQuote) so the very first page load
@@ -67,9 +65,9 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
     const res = await fetch(new URL('/api/users/me', apiUrl), {
       headers: {
         'X-Vroomy-User-Id': claims.sub,
-        'X-Vroomy-User-Name': displayName ?? '',
+        'X-Vroomy-User-Name': claims.name ?? '',
         'X-Vroomy-User-Email': claims.email ?? '',
-        'X-Vroomy-User-Avatar': claims.avatar ?? '',
+        'X-Vroomy-User-Avatar': claims.picture ?? '',
       },
     })
     if (!res.ok) {
@@ -78,9 +76,9 @@ export const completeLogin = createServerFn({ method: 'GET' }).handler(
 
     await setSessionUser({
       userId: claims.sub,
-      name: displayName,
+      name: claims.name,
       email: claims.email,
-      avatarUrl: claims.avatar,
+      avatarUrl: claims.picture,
     })
 
     throw redirect({ to: '/' })

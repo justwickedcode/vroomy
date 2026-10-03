@@ -1,8 +1,8 @@
-// Vroomy's own login-state cookie — deliberately separate from Casdoor's id_token. The OIDC
-// exchange (see casdoor.ts) only ever runs once, in /auth/callback; after that, this encrypted,
-// sealed cookie (TanStack Start's own getSession/updateSession/clearSession, built on h3's
-// iron-session-style sealing) is the only thing any other route or server function needs to
-// check — no re-verifying a JWT or re-reaching Casdoor on every request.
+// Vroomy's own login-state cookie — deliberately separate from the identity provider's id_token.
+// The OIDC exchange (see oidc.ts) only ever runs once, in /auth/callback; after that, this
+// encrypted, sealed cookie (TanStack Start's own getSession/updateSession/clearSession, built on
+// h3's iron-session-style sealing) is the only thing any other route or server function needs to
+// check — no re-verifying a JWT or re-reaching the identity provider on every request.
 import {
   clearSession,
   getSession,

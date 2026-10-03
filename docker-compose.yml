@@ -16,10 +16,14 @@
 #   VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
 #   PUBLIC_URL            — same as CORS_ALLOWED_ORIGIN, no trailing slash — used to build the
 #                           OIDC redirect_uri (must exactly match a Redirect URI registered on
-#                           the Casdoor "vroomy" Application)
-#   CASDOOR_ISSUER        — the Casdoor instance's own domain, e.g. https://auth.example.com
-#   CASDOOR_CLIENT_ID     — from the "vroomy" Application in Casdoor
-#   CASDOOR_CLIENT_SECRET — from the "vroomy" Application in Casdoor
+#                           the identity provider's "vroomy" OIDC application)
+#   OIDC_ISSUER           — the identity provider's own domain, e.g. https://auth.example.com
+#                           (endpoints/claims are read from its real discovery document at
+#                           runtime — frontend/src/lib/auth/oidc.ts — so this code works
+#                           unchanged against any standard OIDC provider, not just one specific
+#                           product)
+#   OIDC_CLIENT_ID        — from the "vroomy" application in the identity provider
+#   OIDC_CLIENT_SECRET    — from the "vroomy" application in the identity provider
 #   SESSION_SECRET        — random, >=32 chars (e.g. `openssl rand -base64 48`) — seals Vroomy's
 #                           own login-session cookie; never reuse across environments
 #
@@ -102,9 +106,9 @@ services:
       API_INTERNAL_URL: http://api:8080
       VITE_WS_URL: ${VITE_WS_URL}
       PUBLIC_URL: ${PUBLIC_URL}
-      CASDOOR_ISSUER: ${CASDOOR_ISSUER}
-      CASDOOR_CLIENT_ID: ${CASDOOR_CLIENT_ID}
-      CASDOOR_CLIENT_SECRET: ${CASDOOR_CLIENT_SECRET}
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
       SESSION_SECRET: ${SESSION_SECRET}
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/']
