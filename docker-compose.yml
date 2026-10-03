@@ -24,6 +24,12 @@
 #                           product)
 #   OIDC_CLIENT_ID        — from the "vroomy" application in the identity provider
 #   OIDC_CLIENT_SECRET    — from the "vroomy" application in the identity provider
+#   OIDC_ORG_ID           — optional, Zitadel-specific. A bare client_id does NOT scope the login
+#                           flow to that application's own organization in Zitadel — without this,
+#                           it falls back to the instance's default org's Login Policy (branding,
+#                           allowed auth methods, enabled IDPs), not the org the app actually
+#                           belongs to. Find it on the organization's own settings page in
+#                           Zitadel's console. Harmless to leave unset for other providers.
 #   SESSION_SECRET        — random, >=32 chars (e.g. `openssl rand -base64 48`) — seals Vroomy's
 #                           own login-session cookie; never reuse across environments
 #
@@ -109,6 +115,7 @@ services:
       OIDC_ISSUER: ${OIDC_ISSUER}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_ORG_ID: ${OIDC_ORG_ID}
       SESSION_SECRET: ${SESSION_SECRET}
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/']

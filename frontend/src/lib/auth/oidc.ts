@@ -54,7 +54,17 @@ export async function buildAuthorizeUrl(state: string): Promise<string> {
   url.searchParams.set('client_id', requireEnv('OIDC_CLIENT_ID'))
   url.searchParams.set('response_type', 'code')
   url.searchParams.set('redirect_uri', redirectUri())
-  url.searchParams.set('scope', 'openid profile email')
+  // Optional, Zitadel-specific: a bare client_id does NOT automatically scope the login flow to
+  // that application's own organization — without this, Zitadel falls back to the instance's
+  // default organization's Login Policy (branding, allowed auth methods, enabled IDPs), not the
+  // org the application actually belongs to. Confirmed live: GitHub/Google and "password
+  // disabled" were configured on a dedicated org, but kept showing the default org's plain
+  // password form instead, until this scope was added. Harmless to include for other providers
+  // that don't recognize this scope — an unrecognized scope value is just ignored per spec.
+  const orgId = process.env.OIDC_ORG_ID
+  const scopes = ['openid', 'profile', 'email']
+  if (orgId) scopes.push(`urn:zitadel:iam:org:id:${orgId}`)
+  url.searchParams.set('scope', scopes.join(' '))
   url.searchParams.set('state', state)
   // Logging out of Vroomy only ends Vroomy's own session (see performLogout in actions.ts) —
   // it deliberately doesn't touch the identity provider's SSO session, since that session may
