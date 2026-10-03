@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import {
   HeadContent,
   Link,
@@ -8,6 +9,7 @@ import { Flag } from 'lucide-react'
 import AppShell from '#/components/layout/AppShell'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import { checkBackendConnectivity } from '#/lib/checkBackendConnectivity'
 
 import appCss from '../styles.css?url'
 
@@ -31,7 +33,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
       { title: 'Vroomy' },
       { name: 'description', content: DESCRIPTION },
-      { name: 'theme-color', content: '#38bdf8' },
+      { name: 'theme-color', content: '#171717' },
       { property: 'og:title', content: 'Vroomy' },
       { property: 'og:description', content: DESCRIPTION },
       { property: 'og:type', content: 'website' },
@@ -47,6 +49,13 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  // Client-side only (useEffect never runs during SSR) — logs once per page load whether this
+  // deployed frontend can reach api/ws, so a misconfigured env var shows up immediately in the
+  // browser console instead of only once someone tries (and fails) to start a race.
+  useEffect(() => {
+    checkBackendConnectivity()
+  }, [])
+
   return (
     <html lang="en">
       <head>

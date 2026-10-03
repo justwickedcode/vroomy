@@ -23,7 +23,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-svh overflow-hidden">
       <Sidebar collapsed={collapsed} onToggleCollapse={toggle} />
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
         <MobileTopBar onMenuClick={() => setMenuOpen(true)} />
         {children}
       </div>

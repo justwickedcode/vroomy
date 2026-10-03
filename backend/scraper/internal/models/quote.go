@@ -6,6 +6,8 @@ type Quote struct {
 	Author     string
 	Tags       []string
 	Source     string
+	SourceURL  string
+	Language   string
 	SHA256Hash string
 	Simhash    int64
 }

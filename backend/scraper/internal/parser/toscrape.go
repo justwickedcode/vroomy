@@ -9,15 +9,17 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+const toscrapeBaseURL = "https://quotes.toscrape.com"
+
 type ToscrapeParser struct{}
 
-func (p *ToscrapeParser) Parse(html string) ([]models.Quote, error) {
+func (p *ToscrapeParser) Parse(html string) (Result, error) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
 
-	var quotes []models.Quote
+	var result Result
 
 	doc.Find("div.quote").Each(func(i int, s *goquery.Selection) {
 		text := dedup.StripQuoteChars(s.Find("span.text").Text())
@@ -28,13 +30,25 @@ func (p *ToscrapeParser) Parse(html string) ([]models.Quote, error) {
 			tags = append(tags, tag.Text())
 		})
 
-		quotes = append(quotes, models.Quote{
-			Text:   text,
-			Author: author,
-			Tags:   tags,
-			Source: "quotes.toscrape.com",
+		result.Quotes = append(result.Quotes, models.Quote{
+			Text:     text,
+			Author:   author,
+			Tags:     tags,
+			Source:   "quotes.toscrape.com",
+			Language: "en",
 		})
 	})
 
-	return quotes, nil
+	if next, ok := doc.Find("li.next a").Attr("href"); ok && next != "" {
+		result.NextURLs = append(result.NextURLs, resolveToscrapeURL(next))
+	}
+
+	return result, nil
+}
+
+func resolveToscrapeURL(href string) string {
+	if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+		return href
+	}
+	return toscrapeBaseURL + href
 }

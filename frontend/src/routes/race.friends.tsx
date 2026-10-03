@@ -9,28 +9,16 @@ export const Route = createFileRoute('/race/friends')({
   component: FriendsPage,
 })
 
-// No backend yet (see README §11/§18 Phase 4) — a room code is just a
-// random client-side string for now. Once the `ws` service exists this is
-// the one spot that swaps to an actual "create room" API call.
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-
-function generateRoomCode() {
-  let code = ''
-  for (let i = 0; i < 6; i++) {
-    code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]
-  }
-  return code
-}
-
 function FriendsPage() {
   const navigate = useNavigate()
   const [joinCode, setJoinCode] = useState('')
 
   function handleCreate() {
-    navigate({
-      to: '/race/$roomCode',
-      params: { roomCode: generateRoomCode() },
-    })
+    // "new" is a reserved sentinel — /race/$roomCode recognizes it and asks backend/ws to mint
+    // a real room + code (see private.go), then swaps the URL to that code once it arrives.
+    // Only the server can hand out a code that actually resolves to a room, so there's nothing
+    // to generate client-side here.
+    navigate({ to: '/race/$roomCode', params: { roomCode: 'new' } })
   }
 
   function handleJoin(event: FormEvent) {
@@ -41,7 +29,7 @@ function FriendsPage() {
   }
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+    <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-xl">
         <div className="mb-8">
           <div

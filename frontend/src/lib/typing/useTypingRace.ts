@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getRandomSentence } from './sentences'
+import { getRandomQuoteText } from './sentences'
 
 const TICK_MS = 100
 // Below this, elapsed time is too noisy to extrapolate into a per-minute
@@ -23,13 +23,15 @@ export function computeWordSpans(text: string): Array<WordSpan> {
 }
 
 export function useTypingRace(
-  getText: (exclude?: string) => string = getRandomSentence,
+  getText: (exclude?: string) => string | Promise<string> = getRandomQuoteText,
 ) {
   // Starts empty rather than calling getText() directly in useState's
   // initializer — that would run once during SSR and again on client
   // hydration, and a Math.random()-backed generator gives two different
   // strings each time, which is a hydration mismatch. Real text is
-  // generated client-side only, right after mount.
+  // generated client-side only, right after mount. Also the only option
+  // now that the default getText is a real network fetch — there's no
+  // synchronous value to initialize state with in the first place.
   const getTextRef = useRef(getText)
   getTextRef.current = getText
   const [text, setText] = useState('')
@@ -52,7 +54,16 @@ export function useTypingRace(
   const finished = finishedAt !== null
 
   useEffect(() => {
-    setText(getTextRef.current())
+    let cancelled = false
+    Promise.resolve(getTextRef.current()).then((next) => {
+      if (!cancelled) setText(next)
+    })
+    // Guards against setting state from a stale request that resolves after this effect's
+    // own cleanup — can't happen from a plain remount today, but getText is caller-supplied,
+    // so nothing guarantees every implementation resolves quickly or in order.
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -178,6 +189,34 @@ export function useTypingRace(
     }
   }
 
+  // Powerup effect (see useBotRacers' hitBot for the other half) — force-commits the active
+  // word (or, for Nitro's `count`, several words at once) exactly as if each had just been typed
+  // correctly and space-committed, so it feeds the same `typed`/`wordIndex`/finishedAt machinery
+  // a real keystroke would rather than needing its own parallel "skipped words" bookkeeping.
+  // Doesn't touch totalTyped/totalMistakes, so a skip can't inflate or deflate accuracy — no
+  // keystrokes actually happened. `count` commits in one state update rather than calling this
+  // twice — calling it twice in the same tick would both read the same stale `activeWordIndex`
+  // closure and only actually advance by one.
+  const skipWord = useCallback(
+    (count = 1) => {
+      if (finished || !startedAt || text.length === 0) return
+      const targetIndex = Math.min(
+        activeWordIndex + count - 1,
+        spans.length - 1,
+      )
+      const word = spans[targetIndex]
+      const isLast = targetIndex >= spans.length - 1
+      const committed = text.slice(0, word.end) + (isLast ? '' : ' ')
+      setTyped(committed)
+      if (isLast) {
+        setFinishedAt(Date.now())
+      } else {
+        setWordIndex(targetIndex + 1)
+      }
+    },
+    [finished, startedAt, spans, activeWordIndex, text],
+  )
+
   // Lets a countdown-driven UI (the solo race screen) kick the clock off at
   // "GO" instead of on the player's first keystroke — bots and the timer
   // shouldn't wait on you to start typing. handleInputChange's own
@@ -188,7 +227,11 @@ export function useTypingRace(
   }, [])
 
   function reset() {
-    setText((current) => getTextRef.current(current))
+    // Captured before clearing below — exclude is the sentence just finished, not whatever
+    // getText eventually resolves to next (text, unlike the other reset fields, isn't cleared
+    // via its own setState updater callback anymore: that form has to return a value
+    // synchronously, which a Promise-returning getText can't).
+    const exclude = text
     setTyped('')
     setWordIndex(0)
     setTotalTyped(0)
@@ -197,6 +240,11 @@ export function useTypingRace(
     setStartedAt(null)
     setFinishedAt(null)
     setNow(null)
+    // Cleared immediately, same as the initial mount, rather than left showing the just-
+    // finished text until the next one resolves — reuses the exact same "waiting" handling
+    // (see the text-keyed effect in TypingRace) instead of needing a second loading state.
+    setText('')
+    Promise.resolve(getTextRef.current(exclude)).then(setText)
   }
 
   return {
@@ -213,6 +261,7 @@ export function useTypingRace(
     progress,
     errorSeq,
     handleInputChange,
+    skipWord,
     start,
     reset,
   }

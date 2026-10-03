@@ -1,5 +1,7 @@
 import { createFileRoute, notFound } from '@tanstack/react-router'
 import TypingRace from '#/components/typing/TypingRace'
+import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
+import { useIsDesktopViewport } from '#/lib/layout/useIsDesktopViewport'
 import { SPEED_RANGES } from '#/lib/typing/useBotRacers'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
 
@@ -30,9 +32,13 @@ export const Route = createFileRoute('/race/solo/$speed')({
 
 function SoloRace() {
   const speedRange = Route.useLoaderData()
+  const isDesktop = useIsDesktopViewport()
+
+  if (isDesktop === false) return <DesktopOnlyRace />
+  if (isDesktop === null) return null
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-6">
+    <main className="flex-1 px-4 py-6">
       <div className="page-wrap flex flex-col">
         <TypingRace speedRange={speedRange} />
       </div>

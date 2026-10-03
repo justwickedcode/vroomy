@@ -1,19 +1,22 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Gauge, Target, Trophy, Zap } from 'lucide-react'
+import { Trophy } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
-import StatTile from '#/components/stats/StatTile'
+import Gauge from '#/components/typing/Gauge'
+import DigitalReadout from '#/components/typing/DigitalReadout'
 import WpmTrend from '#/components/stats/WpmTrend'
 import RaceHistoryRow from '#/components/stats/RaceHistoryRow'
 import { useProfile } from '#/lib/profile/useProfile'
 
 export const Route = createFileRoute('/stats')({ component: StatsPage })
 
+const WPM_GAUGE_MAX = 130
+
 function StatsPage() {
   const { hydrated, stats, races } = useProfile()
 
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+    <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
         <div className="mb-8">
           <div
@@ -25,7 +28,26 @@ function StatsPage() {
           </h1>
         </div>
 
-        {!hydrated || stats.racesPlayed === 0 ? (
+        {!hydrated ? (
+          // Distinct from the "No races yet" empty state below — this is only shown for the one
+          // tick before useProfile reads localStorage. Without this separate branch, a page load
+          // with real race history reproducibly flashed "No races yet" for a frame before the
+          // real numbers popped in, since both cases used to share the same empty-state markup.
+          <Card className="rise-in overflow-hidden">
+            <CardContent className="flex flex-wrap justify-around gap-4 pt-6">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-20 w-[6.5rem] animate-pulse rounded-2xl bg-secondary/40"
+                />
+              ))}
+            </CardContent>
+            <div className="glass-divider" />
+            <CardContent className="pt-6 pb-6">
+              <div className="h-32 w-full animate-pulse rounded-lg bg-secondary/40" />
+            </CardContent>
+          </Card>
+        ) : stats.racesPlayed === 0 ? (
           <Card className="rise-in overflow-hidden text-center">
             <CardHeader className="items-center py-10">
               <Trophy className="mb-2 size-8 text-muted-foreground" />
@@ -42,27 +64,16 @@ function StatsPage() {
           </Card>
         ) : (
           <Card className="rise-in overflow-hidden">
-            <CardContent className="grid grid-cols-2 gap-3 pt-6 sm:grid-cols-4">
-              <StatTile
-                icon={Trophy}
-                label="best wpm"
-                value={String(stats.bestWpm)}
-              />
-              <StatTile
-                icon={Gauge}
-                label="avg wpm"
-                value={String(stats.avgWpm)}
-              />
-              <StatTile
-                icon={Target}
+            <CardContent className="flex flex-wrap justify-around gap-4 pt-6">
+              <Gauge label="best wpm" value={stats.bestWpm} max={WPM_GAUGE_MAX} />
+              <Gauge label="avg wpm" value={stats.avgWpm} max={WPM_GAUGE_MAX} />
+              <Gauge
                 label="avg accuracy"
-                value={`${stats.avgAccuracy}%`}
+                value={stats.avgAccuracy}
+                max={100}
+                suffix="%"
               />
-              <StatTile
-                icon={Zap}
-                label="races run"
-                value={String(stats.racesPlayed)}
-              />
+              <DigitalReadout label="races run" value={String(stats.racesPlayed)} />
             </CardContent>
 
             <div className="glass-divider" />
@@ -81,8 +92,12 @@ function StatsPage() {
             </CardHeader>
             <CardContent className="pt-0 pb-6">
               <div className="flex flex-col gap-1">
-                {races.slice(0, 10).map((race) => (
-                  <RaceHistoryRow key={race.id} race={race} />
+                {races.slice(0, 10).map((race, i) => (
+                  <RaceHistoryRow
+                    key={race.id}
+                    race={race}
+                    lapNumber={stats.racesPlayed - i}
+                  />
                 ))}
               </div>
             </CardContent>

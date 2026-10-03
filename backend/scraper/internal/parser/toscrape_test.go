@@ -76,11 +76,13 @@ func TestToscrapeParser_Parse(t *testing.T) {
 		t.Fatalf("error reading file: %v", err)
 	}
 
-	quotes, err := (&ToscrapeParser{}).Parse(string(data))
+	result, err := (&ToscrapeParser{}).Parse(string(data))
 
 	if err != nil {
 		t.Fatalf("Parse() failed: %v", err)
 	}
+
+	quotes := result.Quotes
 
 	if len(quotes) != len(expected) {
 		t.Fatalf("got %d quotes, want %d", len(quotes), len(expected))
@@ -108,5 +110,10 @@ func TestToscrapeParser_Parse(t *testing.T) {
 				t.Errorf("quote %d tag %d = %q, want %q", i, j, tag, expected[i].Tags[j])
 			}
 		}
+	}
+
+	wantNext := []string{"https://quotes.toscrape.com/page/2/"}
+	if len(result.NextURLs) != len(wantNext) || result.NextURLs[0] != wantNext[0] {
+		t.Errorf("got NextURLs %v, want %v", result.NextURLs, wantNext)
 	}
 }

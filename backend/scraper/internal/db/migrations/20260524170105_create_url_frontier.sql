@@ -4,7 +4,7 @@ CREATE TYPE crawl_status AS ENUM ('pending', 'in_progress', 'done', 'failed');
 CREATE TABLE url_frontier (
                       id            BIGSERIAL PRIMARY KEY,
                       url           TEXT        NOT NULL UNIQUE,
-                      source        TEXT        NOT NULL,         -- toscrape, brainyquote, quotable, etc.
+                      source        TEXT        NOT NULL,         -- goodreads, wikiquote, toscrape, etc.
                       priority      FLOAT       NOT NULL,         -- lower score = crawled sooner
                       depth         INT         NOT NULL DEFAULT 0,
                       status        crawl_status        NOT NULL DEFAULT 'pending', -- pending | in_progress | done | failed

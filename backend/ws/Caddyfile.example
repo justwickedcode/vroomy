@@ -1,0 +1,25 @@
+# Example Caddy config for terminating real HTTPS/WSS in front of the real-time multiplayer WS
+# service — same pattern as backend/api/Caddyfile.example, on its own subdomain since the
+# frontend connects to it directly via VITE_WS_URL (a full ws(s):// URL, not a path under the
+# API's domain — see frontend/src/lib/multiplayer/useMultiplayerRace.ts). Not included as a
+# service in docker-compose.prod.yml by default since it needs a real domain name pointed at
+# this host to issue a certificate for — meaningless in a local/test environment, and different
+# for every real deployment.
+#
+# Usage once you have a domain pointed at this host:
+#   1. Copy this file to Caddyfile (or append this block to the one already serving the api
+#      service — Caddy happily serves multiple site blocks from one Caddyfile/one `caddy run`).
+#   2. Replace ws.example.com with your real subdomain.
+#   3. Install Caddy on the host if it isn't already (see backend/api/Caddyfile.example), or add
+#      it as its own compose service if you'd rather keep everything containerized.
+#   4. sudo caddy run --config Caddyfile
+#
+# No special WebSocket directive needed — Caddy's reverse_proxy detects the Connection: Upgrade
+# header and proxies the upgraded connection automatically, the same as any other request.
+#
+# This assumes the ws service is reachable at 127.0.0.1:8081 — which is exactly how
+# docker-compose.prod.yml publishes it (bound to localhost only, not the public interface).
+
+ws.example.com {
+	reverse_proxy 127.0.0.1:8081
+}

@@ -10,17 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as AchievementsRouteImport } from './routes/achievements'
 import { Route as DailyChallengeRouteImport } from './routes/daily-challenge'
 import { Route as FriendsRouteImport } from './routes/friends'
 import { Route as GarageRouteImport } from './routes/garage'
-import { Route as GarageUpgradesRouteImport } from './routes/garage-upgrades'
 import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
-import { Route as PlayRouteImport } from './routes/play'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as ReplaysRouteImport } from './routes/replays'
 import { Route as StatsRouteImport } from './routes/stats'
-import { Route as ThemesRouteImport } from './routes/themes'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as RaceRoomCodeRouteImport } from './routes/race.$roomCode'
 import { Route as RaceFriendsRouteImport } from './routes/race.friends'
 import { Route as RaceMultiplayerRouteImport } from './routes/race.multiplayer'
@@ -31,6 +32,11 @@ import { Route as RaceSoloSpeedRouteImport } from './routes/race.solo.$speed'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AchievementsRoute = AchievementsRouteImport.update({
@@ -53,11 +59,6 @@ const GarageRoute = GarageRouteImport.update({
   path: '/garage',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GarageUpgradesRoute = GarageUpgradesRouteImport.update({
-  id: '/garage-upgrades',
-  path: '/garage-upgrades',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const GuideRoute = GuideRouteImport.update({
   id: '/guide',
   path: '/guide',
@@ -68,9 +69,14 @@ const LeaderboardsRoute = LeaderboardsRouteImport.update({
   path: '/leaderboards',
   getParentRoute: () => rootRouteImport,
 } as any)
-const PlayRoute = PlayRouteImport.update({
-  id: '/play',
-  path: '/play',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogoutRoute = LogoutRouteImport.update({
+  id: '/logout',
+  path: '/logout',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReplaysRoute = ReplaysRouteImport.update({
@@ -83,9 +89,9 @@ const StatsRoute = StatsRouteImport.update({
   path: '/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ThemesRoute = ThemesRouteImport.update({
-  id: '/themes',
-  path: '/themes',
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RaceRoomCodeRoute = RaceRoomCodeRouteImport.update({
@@ -121,17 +127,18 @@ const RaceSoloSpeedRoute = RaceSoloSpeedRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/achievements': typeof AchievementsRoute
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
-  '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
-  '/play': typeof PlayRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
-  '/themes': typeof ThemesRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -141,17 +148,18 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/achievements': typeof AchievementsRoute
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
-  '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
-  '/play': typeof PlayRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
-  '/themes': typeof ThemesRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -161,17 +169,18 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/achievements': typeof AchievementsRoute
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
   '/garage': typeof GarageRoute
-  '/garage-upgrades': typeof GarageUpgradesRoute
   '/guide': typeof GuideRoute
   '/leaderboards': typeof LeaderboardsRoute
-  '/play': typeof PlayRoute
+  '/login': typeof LoginRoute
+  '/logout': typeof LogoutRoute
   '/replays': typeof ReplaysRoute
   '/stats': typeof StatsRoute
-  '/themes': typeof ThemesRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
   '/race/friends': typeof RaceFriendsRoute
   '/race/multiplayer': typeof RaceMultiplayerRoute
@@ -183,17 +192,18 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/account'
     | '/achievements'
     | '/daily-challenge'
     | '/friends'
     | '/garage'
-    | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
-    | '/play'
+    | '/login'
+    | '/logout'
     | '/replays'
     | '/stats'
-    | '/themes'
+    | '/auth/callback'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -203,17 +213,18 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/account'
     | '/achievements'
     | '/daily-challenge'
     | '/friends'
     | '/garage'
-    | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
-    | '/play'
+    | '/login'
+    | '/logout'
     | '/replays'
     | '/stats'
-    | '/themes'
+    | '/auth/callback'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -222,17 +233,18 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/account'
     | '/achievements'
     | '/daily-challenge'
     | '/friends'
     | '/garage'
-    | '/garage-upgrades'
     | '/guide'
     | '/leaderboards'
-    | '/play'
+    | '/login'
+    | '/logout'
     | '/replays'
     | '/stats'
-    | '/themes'
+    | '/auth/callback'
     | '/race/$roomCode'
     | '/race/friends'
     | '/race/multiplayer'
@@ -243,17 +255,18 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountRoute: typeof AccountRoute
   AchievementsRoute: typeof AchievementsRoute
   DailyChallengeRoute: typeof DailyChallengeRoute
   FriendsRoute: typeof FriendsRoute
   GarageRoute: typeof GarageRoute
-  GarageUpgradesRoute: typeof GarageUpgradesRoute
   GuideRoute: typeof GuideRoute
   LeaderboardsRoute: typeof LeaderboardsRoute
-  PlayRoute: typeof PlayRoute
+  LoginRoute: typeof LoginRoute
+  LogoutRoute: typeof LogoutRoute
   ReplaysRoute: typeof ReplaysRoute
   StatsRoute: typeof StatsRoute
-  ThemesRoute: typeof ThemesRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   RaceRoomCodeRoute: typeof RaceRoomCodeRoute
   RaceFriendsRoute: typeof RaceFriendsRoute
   RaceMultiplayerRoute: typeof RaceMultiplayerRoute
@@ -267,6 +280,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/achievements': {
@@ -297,13 +317,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GarageRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/garage-upgrades': {
-      id: '/garage-upgrades'
-      path: '/garage-upgrades'
-      fullPath: '/garage-upgrades'
-      preLoaderRoute: typeof GarageUpgradesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/guide': {
       id: '/guide'
       path: '/guide'
@@ -318,11 +331,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeaderboardsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/play': {
-      id: '/play'
-      path: '/play'
-      fullPath: '/play'
-      preLoaderRoute: typeof PlayRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logout': {
+      id: '/logout'
+      path: '/logout'
+      fullPath: '/logout'
+      preLoaderRoute: typeof LogoutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/replays': {
@@ -339,11 +359,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/themes': {
-      id: '/themes'
-      path: '/themes'
-      fullPath: '/themes'
-      preLoaderRoute: typeof ThemesRouteImport
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/race/$roomCode': {
@@ -407,17 +427,18 @@ const RaceSoloRouteWithChildren = RaceSoloRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountRoute: AccountRoute,
   AchievementsRoute: AchievementsRoute,
   DailyChallengeRoute: DailyChallengeRoute,
   FriendsRoute: FriendsRoute,
   GarageRoute: GarageRoute,
-  GarageUpgradesRoute: GarageUpgradesRoute,
   GuideRoute: GuideRoute,
   LeaderboardsRoute: LeaderboardsRoute,
-  PlayRoute: PlayRoute,
+  LoginRoute: LoginRoute,
+  LogoutRoute: LogoutRoute,
   ReplaysRoute: ReplaysRoute,
   StatsRoute: StatsRoute,
-  ThemesRoute: ThemesRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   RaceRoomCodeRoute: RaceRoomCodeRoute,
   RaceFriendsRoute: RaceFriendsRoute,
   RaceMultiplayerRoute: RaceMultiplayerRoute,

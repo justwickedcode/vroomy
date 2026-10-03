@@ -1,10 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @theme {
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Headlines only — condensed and industrial, standing apart from the UI's own sans so
+     numbers/labels/passage text (all IBM Plex, one coherent instrument system) don't compete
+     with it. See h1/h2 base styles below for where this actually gets applied. */
+  --font-display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
 }
 
 @theme inline {
@@ -27,45 +31,54 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-signal: var(--signal);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* A shadcn-style dark theme (tweakcn "sky" flavor): neutral zinc-ish
-   surfaces, one saturated accent (sky blue) reserved for primary actions
-   and focus states, everything else flat. `accent` is the semantically
-   correct shadcn token — a *neutral* hover tint, not a second brand
-   color — so ghost buttons and row-hover states stay subtle instead of
-   flashing a bright hue. */
+/* Instrument Cluster: a cockpit, not a SaaS dashboard wearing a racing skin — see
+   frontend design notes. Structural surfaces stay near-neutral but with a deliberate warm/olive
+   hue bias (hue ~75) rather than pure gray, so "near-black" and "off-white" read as chosen
+   materials (gunmetal, dial-face paper) instead of default zinc. `--signal` is the one true
+   accent — instrument amber, reserved for live/active readouts (focus rings, the race
+   passage's caret, gauge needles) — never chrome, never a second brand color. `destructive`
+   and `success` keep their own real hue on purpose, same as before: semantic signals, not
+   brand color, so they stay put through every visual pass. */
 :root {
-  --radius: 0.625rem;
+  --radius: 0.25rem;
 
-  --background: oklch(0.1 0.012 264);
-  --foreground: oklch(0.97 0.006 95);
-  --card: oklch(0.16 0.014 264);
-  --card-foreground: oklch(0.97 0.006 95);
-  --primary: oklch(0.75 0.14 232);
-  --primary-foreground: oklch(0.15 0.03 232);
-  --secondary: oklch(0.24 0.016 264);
-  --secondary-foreground: oklch(0.97 0.006 95);
-  --muted: oklch(0.22 0.014 264);
-  --muted-foreground: oklch(0.65 0.02 260);
-  --accent: oklch(0.27 0.015 264);
-  --accent-foreground: oklch(0.97 0.006 95);
+  --background: oklch(0.09 0.004 75);
+  --foreground: oklch(0.96 0.004 85);
+  --card: oklch(0.14 0.005 75);
+  --card-foreground: oklch(0.96 0.004 85);
+  --primary: oklch(0.96 0.004 85);
+  --primary-foreground: oklch(0.09 0.004 75);
+  --secondary: oklch(0.18 0.006 75);
+  --secondary-foreground: oklch(0.96 0.004 85);
+  --muted: oklch(0.15 0.005 75);
+  --muted-foreground: oklch(0.62 0.01 75);
+  --accent: oklch(0.21 0.008 75);
+  --accent-foreground: oklch(0.96 0.004 85);
   --destructive: oklch(0.65 0.21 15);
   --destructive-foreground: oklch(0.97 0.006 95);
   --success: oklch(0.78 0.19 148);
   --success-foreground: oklch(0.14 0.03 148);
-  --border: oklch(0.3 0.016 264);
-  --input: oklch(0.3 0.016 264);
-  --ring: oklch(0.75 0.14 232 / 0.5);
+  --border: oklch(0.25 0.01 75);
+  --input: oklch(0.25 0.01 75);
+  --ring: oklch(0.78 0.15 80 / 0.55);
+  --signal: oklch(0.78 0.15 80);
 }
 
-* {
-  box-sizing: border-box;
-  border-color: var(--color-border);
+/* @layer base (not bare): same reasoning as .glass-chip's @layer components below — a bare
+   `* { border-color }` reset is unlayered and would beat every border-color utility
+   (border-primary, border-destructive, ...) app-wide, same bug, much bigger blast radius. */
+@layer base {
+  * {
+    box-sizing: border-box;
+    border-color: var(--color-border);
+  }
 }
 
 html,
@@ -82,6 +95,16 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+}
+
+/* Every headline in the app runs through the same condensed display face —
+   one global rule instead of touching every route's own h1/h2, so the whole
+   app reads as one instrument system rather than a page-by-page patchwork. */
+h1,
+h2 {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: -0.005em;
 }
 
 /* A near-flat dark surface with one faint gradient — not a SaaS hero-glow
@@ -115,9 +138,19 @@ body::before {
     0 24px 48px -16px rgb(0 0 0 / 70%);
 }
 
-.glass-chip {
-  background: var(--color-secondary);
-  border: 1px solid var(--color-border);
+/* @layer components, not a bare rule: Tailwind's own utilities (border-primary,
+   bg-primary/12, etc.) live in @layer utilities, which only beats an *unlayered* rule when the
+   unlayered one doesn't already win outright — an unlayered rule always wins over every layer
+   regardless of source order. A bare `.glass-chip` here was doing exactly that: its `border`
+   shorthand silently beat every "selected" state's border-primary across the whole Garage page
+   (Model/Powerups/Underglow too, not just Trail — those just had a checkmark or "Equipped"/"On"
+   label as a fallback tell, so the missing border went unnoticed until Trail, which has no other
+   indicator at all). */
+@layer components {
+  .glass-chip {
+    background: var(--color-secondary);
+    border: 1px solid var(--color-border);
+  }
 }
 
 .glass-divider {
@@ -132,11 +165,25 @@ body::before {
 }
 
 .kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-family: var(--font-mono);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  font-weight: 800;
+  font-weight: 600;
   font-size: 0.7rem;
-  color: var(--color-primary);
+  color: var(--color-muted-foreground);
+}
+
+.kicker::before {
+  content: '';
+  width: 0.4em;
+  height: 0.4em;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--color-signal);
+  box-shadow: 0 0 6px 1px var(--color-signal);
 }
 
 /* --- Pit-lane chrome: nav, ticker, livery stripe, stagger/tilt utilities --- */
@@ -200,14 +247,23 @@ body::before {
   background: var(--color-primary);
 }
 
+/* Wordmark glow — kept as a real class rather than a Tailwind arbitrary-value drop-shadow:
+   commas inside a nested color-mix() there broke the bracket parsing and produced a large,
+   misplaced glow bleeding down the whole sidebar instead of a small halo behind the icon. */
+.brand-logo {
+  filter: drop-shadow(
+    0 0 6px color-mix(in oklab, var(--color-signal) 55%, transparent)
+  );
+}
+
 /* Sidebar nav row — the same underline-grow mechanic as `.nav-link`,
    rotated 90° into a left-edge bar instead of an underline. */
 .sidebar-link {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.5rem 0.65rem;
+  gap: 0.7rem;
+  padding: 0.6rem 0.75rem;
   border-radius: var(--radius-md);
   font-size: 0.84rem;
   font-weight: 600;
@@ -313,88 +369,310 @@ body::before {
   background: var(--color-primary);
   box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
   transition:
-    filter 150ms ease,
-    box-shadow 150ms ease;
+    background-color 120ms ease,
+    box-shadow 200ms ease;
 }
 
+/* The one button that ever turns signal amber — an ignition switch, not a hover state every
+   control on the page shares. Ghost/outline/secondary buttons stay neutral on hover. */
 .btn-primary-glow:hover {
-  filter: brightness(1.06);
+  background: var(--color-signal);
+  box-shadow: 0 0 0 4px
+    color-mix(in oklab, var(--color-signal) 20%, transparent);
 }
 
 .btn-primary-glow:active {
   filter: brightness(0.95);
 }
 
+/* An automotive semi-circle dial (needle, ticks, a three-zone arc), not a full progress ring —
+   see Gauge.tsx for why: it's reserved for numbers with a real ceiling, so the needle position
+   itself carries meaning (calm/working/redline), the way an actual tachometer's does. */
 .gauge {
-  position: relative;
-  width: 4.25rem;
-  height: 4.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 6.5rem;
   flex-shrink: 0;
 }
 
 .gauge--lg {
-  width: 5.5rem;
-  height: 5.5rem;
+  width: 8rem;
 }
 
 .gauge--lg .gauge-value {
-  font-size: 1.3rem;
+  font-size: 1.5rem;
 }
 
 .gauge--lg .gauge-label {
-  font-size: 0.55rem;
+  font-size: 0.6rem;
 }
 
 .gauge-svg {
   width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-
-.gauge-face {
-  fill: color-mix(in oklab, black 45%, var(--color-card) 55%);
-  stroke: color-mix(in oklab, white 10%, transparent);
-  stroke-width: 1;
+  height: auto;
+  display: block;
 }
 
 .gauge-track {
   fill: none;
   stroke: color-mix(in oklab, white 8%, transparent);
-  stroke-width: 7;
+  stroke-width: 8;
+  stroke-linecap: round;
 }
 
-.gauge-fill {
+.gauge-zone {
   fill: none;
-  stroke: var(--color-primary);
-  stroke-width: 7;
+  stroke-width: 8;
+}
+
+.gauge-zone-calm {
+  stroke: var(--color-accent);
+}
+
+.gauge-zone-working {
+  stroke: color-mix(in oklab, var(--color-signal) 55%, var(--color-accent));
+}
+
+.gauge-zone-redline {
+  stroke: var(--color-signal);
+}
+
+.gauge-tick {
+  stroke: var(--color-muted-foreground);
+}
+
+.gauge-needle {
+  stroke: var(--color-foreground);
+  stroke-width: 2.5;
   stroke-linecap: round;
-  transition: stroke-dashoffset 200ms ease;
+  transition:
+    x2 150ms ease,
+    y2 150ms ease;
+}
+
+.gauge-hub {
+  fill: var(--color-foreground);
+}
+
+.gauge-hub-center {
+  fill: var(--color-background);
 }
 
 .gauge-readout {
-  position: absolute;
-  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  margin-top: -0.15rem;
 }
 
 .gauge-value {
   font-family: var(--font-mono);
-  font-size: 0.95rem;
-  font-weight: 800;
+  font-size: 1.15rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
   line-height: 1;
 }
 
 .gauge-label {
-  margin-top: 0.1rem;
-  font-size: 0.5rem;
+  margin-top: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+/* Sized to sit level with .gauge in the same row — no needle, so no arc to reserve room for. */
+.digital-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 6.5rem;
+  height: 4.0625rem;
+  flex-shrink: 0;
+}
+
+.digital-readout--lg {
+  width: 8rem;
+  height: 5rem;
+}
+
+.digital-readout--lg .gauge-value {
+  font-size: 1.5rem;
+}
+
+.digital-readout--lg .gauge-label {
+  font-size: 0.6rem;
+}
+
+/* A bordered, letter-spaced code readout — reads like a plate stamped for this
+   one race, not a form field. */
+.license-plate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 2px solid var(--color-foreground);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
   font-weight: 700;
+  font-size: 1.4rem;
+  letter-spacing: 0.2em;
+}
+
+.license-plate-tab {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted-foreground);
+}
+
+/* Numbered seats, filled or open — the lobby's real, known state (how many seats,
+   how many taken, which one is you) rather than invented names for players the
+   server hasn't identified. */
+.starting-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  border: 1px solid var(--color-border);
+  background: var(--color-border);
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.starting-grid-slot {
+  display: grid;
+  grid-template-columns: 2.25rem 0.6rem 1fr auto;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 1rem;
+  background: var(--color-card);
+}
+
+.starting-grid-pos {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--color-muted-foreground);
+}
+
+.starting-grid-slot.is-you .starting-grid-pos {
+  color: var(--color-signal);
+}
+
+.starting-grid-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--color-border);
+}
+
+.starting-grid-dot.is-you {
+  background: var(--color-signal);
+}
+
+.starting-grid-dot.is-filled {
+  background: var(--color-muted-foreground);
+}
+
+.starting-grid-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.starting-grid-flag {
+  margin-left: 0.6em;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--color-signal);
+}
+
+.starting-grid-slot.is-empty .starting-grid-name {
+  color: var(--color-muted-foreground);
+  font-weight: 500;
+}
+
+.starting-grid-state {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-success);
+}
+
+.starting-grid-state.is-waiting {
+  color: var(--color-muted-foreground);
+}
+
+.standings {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.standings-head,
+.standings-row {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 3.5rem 4.5rem;
+  gap: 0.85rem;
+  padding: 0.6rem 1rem;
+  align-items: center;
+}
+
+.standings-head {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  color: var(--color-muted-foreground);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.standings-row {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.standings-row:last-child {
+  border-bottom: none;
+}
+
+.standings-row.is-you {
+  background: color-mix(in oklab, var(--color-signal) 8%, transparent);
+}
+
+.standings-pos {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--color-muted-foreground);
+}
+
+.standings-row.is-you .standings-pos {
+  color: var(--color-signal);
+}
+
+.standings-name {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.standings-wpm {
+  font-weight: 600;
+}
+
+.standings-time {
+  text-align: right;
   color: var(--color-muted-foreground);
 }
 
@@ -796,7 +1074,7 @@ body::before {
 }
 
 .race-name-tag--you {
-  color: #38bdf8;
+  color: var(--color-primary);
   border-color: rgba(56, 189, 248, 0.4);
 }
 
@@ -875,93 +1153,416 @@ body::before {
   }
 }
 
-/* Trails off the rear of the car (nose faces right, so the flame sits at
-   the wrapper's left edge) — only rendered while a racer is actively
-   moving, see the `racing` guard in RaceTrack.tsx. */
+/* ── Powerup activation effects (RaceTrack's PowerupBurst/PowerupImpact) ──
+   One-shot, mounted fresh per use (see the `key` on RaceEffect) so back-to-back uses of the same
+   kind replay instead of no-op'ing on unchanged props. The shake below animates the standalone
+   `translate` property, not `transform` — `.race-car-wrap` already uses `transform` for its own
+   centering offset, and an animation on that property would replace it outright (the car would
+   jump), where `translate` composes with it instead. */
+.race-powerup-burst {
+  position: absolute;
+  inset: -45% -70%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.race-powerup-burst span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 999px;
+}
+
+.race-powerup-burst span:nth-child(1) {
+  width: 2.8rem;
+  height: 2.8rem;
+  margin: -1.4rem 0 0 -1.4rem;
+  background: radial-gradient(circle, var(--pu-c) 0%, transparent 70%);
+  animation: pu-burst-flash 480ms ease-out forwards;
+}
+
+.race-powerup-burst span:nth-child(2),
+.race-powerup-burst span:nth-child(3) {
+  width: 1.8rem;
+  height: 3px;
+  background: var(--pu-c);
+  box-shadow: 0 0 6px 1px var(--pu-c);
+  animation: pu-burst-streak 420ms ease-out forwards;
+}
+
+.race-powerup-burst span:nth-child(2) {
+  margin: -9px 0 0 -1.8rem;
+  animation-delay: 20ms;
+}
+
+.race-powerup-burst span:nth-child(3) {
+  margin: 6px 0 0 -1.8rem;
+  animation-delay: 80ms;
+}
+
+.race-powerup-burst--boost {
+  --pu-c: #fbbf24;
+}
+
+.race-powerup-burst--nitro {
+  --pu-c: #fb5607;
+}
+
+@keyframes pu-burst-flash {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+@keyframes pu-burst-streak {
+  0% {
+    opacity: 1;
+    transform: scaleX(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1) translateX(-16px);
+  }
+}
+
+.race-powerup-impact {
+  position: absolute;
+  inset: -50%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.race-powerup-impact span:nth-child(1) {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 3px solid var(--pu-c);
+  animation: pu-impact-ring 480ms ease-out forwards;
+}
+
+.race-powerup-impact span:nth-child(2) {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: radial-gradient(circle, var(--pu-c) 0%, transparent 65%);
+  animation: pu-impact-flash 320ms ease-out forwards;
+}
+
+.race-powerup-impact--shell {
+  --pu-c: #ef4444;
+}
+
+.race-powerup-impact--magnet {
+  --pu-c: #a855f7;
+}
+
+@keyframes pu-impact-ring {
+  0% {
+    opacity: 1;
+    transform: scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes pu-impact-flash {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.race-car-wrap--hit {
+  animation: pu-car-shake 400ms ease-in-out;
+}
+
+@keyframes pu-car-shake {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  15% {
+    translate: -4px 0;
+  }
+  30% {
+    translate: 4px 0;
+  }
+  45% {
+    translate: -3px 0;
+  }
+  60% {
+    translate: 3px 0;
+  }
+  75% {
+    translate: -1.5px 0;
+  }
+}
+
+.race-emp-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgb(125 211 252 / 55%) 0%,
+    rgb(56 189 248 / 25%) 45%,
+    transparent 75%
+  );
+  animation: pu-emp-flash 550ms ease-out forwards;
+}
+
+@keyframes pu-emp-flash {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Powerup-ready banner (TypingRace.tsx) — docked over the track's own bottom edge rather than a
+   small corner pill, which direct feedback said was easy to miss mid-race since it sat away from
+   where the player's eyes actually are. Colored per powerup via --pu-c (set inline, matching the
+   activation effects above) and kept pulsing/glowing so it reads as "act now", not ambient UI. */
+.race-powerup-banner {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: var(--radius-lg);
+  border: 1.5px solid var(--pu-c);
+  background: color-mix(in oklab, var(--pu-c) 22%, rgb(10 10 14 / 92%));
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--pu-c) 40%, transparent),
+    0 0 24px 2px color-mix(in oklab, var(--pu-c) 55%, transparent),
+    0 12px 28px -8px rgb(0 0 0 / 70%);
+  cursor: pointer;
+  text-align: left;
+  animation:
+    pu-banner-in 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    pu-banner-pulse 1100ms ease-in-out 220ms infinite;
+}
+
+.race-powerup-banner-icon {
+  flex-shrink: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  color: var(--pu-c);
+  filter: drop-shadow(0 0 6px var(--pu-c));
+}
+
+.race-powerup-banner-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.race-powerup-banner-text strong {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-foreground);
+}
+
+.race-powerup-banner-text span {
+  overflow: hidden;
+  font-size: 0.72rem;
+  color: var(--color-muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-powerup-banner-kbd {
+  flex-shrink: 0;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--pu-c);
+  border-radius: 0.3rem;
+  background: color-mix(in oklab, var(--pu-c) 30%, black 40%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: white;
+}
+
+@keyframes pu-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pu-banner-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--pu-c) 40%, transparent),
+      0 0 24px 2px color-mix(in oklab, var(--pu-c) 55%, transparent),
+      0 12px 28px -8px rgb(0 0 0 / 70%);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1.5px color-mix(in oklab, var(--pu-c) 70%, transparent),
+      0 0 34px 6px color-mix(in oklab, var(--pu-c) 75%, transparent),
+      0 12px 28px -8px rgb(0 0 0 / 70%);
+  }
+}
+
+/* Trails off the rear of the car (nose faces right, so effects sit at the wrapper's left edge)
+   — only rendered while a racer is actively moving, see the `racing` guard in RaceTrack.tsx.
+   Sized and colored to read as aggressive propulsion at a glance — direct feedback was that the
+   original set (small twinkly dots, soft bubbles) looked "cute" next to the car, not powerful. */
 .race-nitro {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 1.1rem;
-  height: 0.3rem;
-  border-radius: 999px;
-  transform-origin: right center;
+  width: 4.6rem;
+  height: 1.9rem;
   transform: translateY(-50%);
-  filter: blur(2px);
+  pointer-events: none;
+}
+
+.race-nitro span {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  border-radius: 999px 999px 999px 0;
+}
+
+.race-nitro span:nth-child(1) {
+  width: 100%;
+  height: 100%;
+  transform: translateY(-50%);
+  filter: blur(1.5px);
   background: linear-gradient(
     90deg,
     transparent,
-    color-mix(in oklab, #ffd23f 88%, transparent) 45%,
-    color-mix(in oklab, var(--color-primary) 85%, transparent)
+    #ff4d1f 25%,
+    #ffb020 62%,
+    #fff6c8
   );
-  animation: nitro-flicker 220ms ease-in-out infinite alternate;
+  box-shadow: 0 0 12px 2px rgb(255 138 20 / 70%);
+  animation: nitro-flicker-big 170ms ease-in-out infinite alternate;
 }
 
-@keyframes nitro-flicker {
+.race-nitro span:nth-child(2) {
+  width: 55%;
+  height: 55%;
+  transform: translateY(-50%);
+  filter: blur(1.5px);
+  background: linear-gradient(90deg, transparent, #fff2b8 60%, #fffef2);
+  animation: nitro-flicker-big 130ms ease-in-out infinite alternate-reverse;
+}
+
+.race-nitro span:nth-child(3) {
+  top: 15%;
+  right: 80%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #ffb020;
+  box-shadow: 0 0 10px 3px rgb(255 176 32 / 90%);
+  animation: ember-pop 420ms ease-out infinite;
+}
+
+@keyframes nitro-flicker-big {
   from {
-    transform: translateY(-50%) scaleX(0.82);
-    opacity: 0.6;
+    transform: translateY(-50%) scaleX(0.8) scaleY(0.85);
+    opacity: 0.8;
   }
   to {
-    transform: translateY(-50%) scaleX(1.15);
-    opacity: 0.95;
+    transform: translateY(-50%) scaleX(1.2) scaleY(1.1);
+    opacity: 1;
   }
 }
 
-/* Bots cycle through three trail effects — colorful orbs, a smoke puff,
-   a lightning spark — so the pack reads as varied racers with their own
-   gear, not five copies of one effect. */
+@keyframes ember-pop {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.7);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-16px, -12px) scale(0.2);
+  }
+}
+
+/* Bots cycle through three trail effects — flying embers, a thick smoke blast, a thunderbolt —
+   so the pack reads as varied racers with their own gear, not five copies of one effect. */
 .race-trail-orbs {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.1rem;
-  height: 1rem;
+  width: 4.2rem;
+  height: 2rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
 .race-trail-orbs span {
   position: absolute;
-  width: 5px;
-  height: 5px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
-  background: #fbbf24;
-  box-shadow: 0 0 6px 1px rgb(251 191 36 / 80%);
-  animation: orb-twinkle 650ms ease-in-out infinite;
+  background: radial-gradient(circle, #fff3c4 0%, #ff8c14 55%, transparent 75%);
+  box-shadow: 0 0 10px 3px rgb(255 140 20 / 85%);
+  animation: ember-fly 550ms ease-out infinite;
 }
 
 .race-trail-orbs span:nth-child(1) {
-  top: 5%;
-  left: 68%;
+  top: 12%;
+  left: 78%;
   animation-delay: 0ms;
 }
 
 .race-trail-orbs span:nth-child(2) {
   top: 55%;
-  left: 38%;
-  animation-delay: 150ms;
-  background: #f472b6;
-  box-shadow: 0 0 6px 1px rgb(244 114 182 / 80%);
+  left: 55%;
+  animation-delay: 130ms;
+  background: radial-gradient(circle, #fff 0%, #ff5b1f 55%, transparent 75%);
+  box-shadow: 0 0 10px 3px rgb(255 91 31 / 85%);
 }
 
 .race-trail-orbs span:nth-child(3) {
-  top: 25%;
-  left: 8%;
-  animation-delay: 300ms;
-  background: #38bdf8;
-  box-shadow: 0 0 6px 1px rgb(56 189 248 / 80%);
+  top: 30%;
+  left: 25%;
+  animation-delay: 260ms;
+  background: radial-gradient(circle, #fff3c4 0%, #f43f5e 55%, transparent 75%);
+  box-shadow: 0 0 10px 3px rgb(244 63 94 / 85%);
 }
 
-@keyframes orb-twinkle {
-  0%,
-  100% {
-    opacity: 0.2;
-    transform: scale(0.6);
-  }
-  50% {
+@keyframes ember-fly {
+  0% {
     opacity: 1;
-    transform: scale(1.15);
+    transform: translateX(0) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-28px) scale(0.3);
   }
 }
 
@@ -969,8 +1570,8 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 2.6rem;
-  height: 1.4rem;
+  width: 5.6rem;
+  height: 3.4rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -979,33 +1580,41 @@ body::before {
   position: absolute;
   top: 50%;
   border-radius: 999px;
-  background: rgb(255 255 255 / 22%);
-  filter: blur(3px);
-  animation: smoke-puff 700ms ease-out infinite;
+  background: rgb(235 235 240 / 92%);
+  box-shadow: 0 0 14px 4px rgb(235 235 240 / 55%);
+  filter: blur(1.5px);
+  animation: smoke-puff-big 900ms ease-out infinite;
 }
 
 .race-trail-smoke span:nth-child(1) {
-  right: 60%;
-  width: 0.85rem;
-  height: 0.85rem;
+  right: 58%;
+  width: 2.1rem;
+  height: 2.1rem;
   animation-delay: 0ms;
 }
 
 .race-trail-smoke span:nth-child(2) {
-  right: 20%;
-  width: 0.6rem;
-  height: 0.6rem;
-  animation-delay: 250ms;
+  right: 28%;
+  width: 1.6rem;
+  height: 1.6rem;
+  animation-delay: 220ms;
 }
 
-@keyframes smoke-puff {
+.race-trail-smoke span:nth-child(3) {
+  right: 6%;
+  width: 1.2rem;
+  height: 1.2rem;
+  animation-delay: 440ms;
+}
+
+@keyframes smoke-puff-big {
   0% {
-    opacity: 0.5;
-    transform: translateY(-50%) scale(0.6);
+    opacity: 0.7;
+    transform: translateY(-50%) scale(0.7);
   }
   100% {
     opacity: 0;
-    transform: translateY(-90%) scale(1.4);
+    transform: translateY(-150%) scale(2.2);
   }
 }
 
@@ -1013,21 +1622,290 @@ body::before {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 1.6rem;
-  height: 0.9rem;
+  width: 3.4rem;
+  height: 3.8rem;
   transform: translateY(-50%);
   pointer-events: none;
-  filter: drop-shadow(0 0 3px rgb(56 189 248 / 80%));
-  animation: spark-flicker 180ms step-end infinite;
 }
 
-@keyframes spark-flicker {
+.spark-bolt {
+  /* A small blur radius on purpose — stacked this close, anything bigger merges the three bolts'
+     glow into one solid haze that reads as a background panel behind them, not three bolts. */
+  filter: drop-shadow(0 0 1.5px rgb(56 189 248 / 90%));
+  animation: bolt-crackle 260ms steps(1) infinite;
+}
+
+@keyframes bolt-crackle {
   0%,
+  55% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.3;
+  }
+  85% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 0.4;
+  }
   100% {
     opacity: 1;
   }
+}
+
+/* Three horizontal chevrons blasting backward off the bumper, like speed lines — a static
+   bullseye-style ring (the first cut here) read as a plain circle icon, not a trail in motion. */
+.race-trail-bubbles {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 4.4rem;
+  height: 2.2rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-bubbles span {
+  position: absolute;
+  right: 0;
+  width: 1.9rem;
+  height: 1.1rem;
+  background: #7dd3fc;
+  clip-path: polygon(100% 0%, 12% 50%, 100% 100%, 52% 50%);
+  filter: drop-shadow(0 0 8px rgb(125 211 252 / 95%))
+    drop-shadow(2px 0 0 rgb(8 47 73 / 75%));
+  animation: shock-streak 480ms ease-out infinite;
+}
+
+.race-trail-bubbles span:nth-child(1) {
+  top: 4%;
+  animation-delay: 0ms;
+}
+
+.race-trail-bubbles span:nth-child(2) {
+  top: 44%;
+  animation-delay: 140ms;
+  background: #f0f9ff;
+  filter: drop-shadow(0 0 7px rgb(240 249 255 / 95%))
+    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
+}
+
+.race-trail-bubbles span:nth-child(3) {
+  top: 82%;
+  animation-delay: 280ms;
+  background: #38bdf8;
+  filter: drop-shadow(0 0 7px rgb(56 189 248 / 95%))
+    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
+}
+
+@keyframes shock-streak {
+  0% {
+    opacity: 1;
+    transform: translateX(4px) scaleX(0.7);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-14px) scaleX(1.3);
+  }
+}
+
+.race-trail-stars {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 4.2rem;
+  height: 2.4rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-stars span {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #fde68a;
+  box-shadow: 0 0 12px 2px rgb(253 230 138 / 90%);
+  clip-path: polygon(
+    50% 0%,
+    61% 35%,
+    98% 35%,
+    68% 57%,
+    79% 91%,
+    50% 70%,
+    21% 91%,
+    32% 57%,
+    2% 35%,
+    39% 35%
+  );
+  animation: meteor-streak 600ms ease-in infinite;
+}
+
+.race-trail-stars span:nth-child(1) {
+  top: 5%;
+  left: 75%;
+  animation-delay: 0ms;
+}
+
+.race-trail-stars span:nth-child(2) {
+  top: 50%;
+  left: 40%;
+  animation-delay: 160ms;
+  background: #fca5a5;
+  box-shadow: 0 0 12px 2px rgb(252 165 165 / 90%);
+}
+
+.race-trail-stars span:nth-child(3) {
+  top: 20%;
+  left: 5%;
+  animation-delay: 320ms;
+}
+
+@keyframes meteor-streak {
+  0% {
+    opacity: 0;
+    transform: translateX(8px) scale(0.4) rotate(0deg);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-24px) scale(1.35) rotate(45deg);
+  }
+}
+
+/* Small jagged energy-bolt chips instead of soft dots — same colorful cycle as before, but
+   shaped and glowing like the thunderbolt trail rather than a twinkling sprinkle. */
+.race-trail-rainbow {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 4.2rem;
+  height: 2.2rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.race-trail-rainbow span {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  transform: rotate(45deg);
+  animation: plasma-pulse 500ms ease-in-out infinite;
+}
+
+.race-trail-rainbow span:nth-child(1) {
+  top: 5%;
+  left: 75%;
+  background: #f87171;
+  box-shadow: 0 0 10px 2px rgb(248 113 113 / 85%);
+  animation-delay: 0ms;
+}
+
+.race-trail-rainbow span:nth-child(2) {
+  top: 55%;
+  left: 48%;
+  background: #4ade80;
+  box-shadow: 0 0 10px 2px rgb(74 222 128 / 85%);
+  animation-delay: 110ms;
+}
+
+.race-trail-rainbow span:nth-child(3) {
+  top: 12%;
+  left: 22%;
+  background: #38bdf8;
+  box-shadow: 0 0 10px 2px rgb(56 189 248 / 85%);
+  animation-delay: 220ms;
+}
+
+.race-trail-rainbow span:nth-child(4) {
+  top: 60%;
+  left: 0%;
+  background: #a78bfa;
+  box-shadow: 0 0 10px 2px rgb(167 139 250 / 85%);
+  animation-delay: 330ms;
+}
+
+@keyframes plasma-pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: rotate(45deg) scale(0.75);
+  }
   50% {
-    opacity: 0.55;
+    opacity: 1;
+    transform: rotate(45deg) scale(1.4);
+  }
+}
+
+/* One-shot celebration when the player's own car crosses the finish line —
+   mounts fresh exactly when `racer.finished` first flips true (see
+   RaceTrack.tsx's FinishBurst), so the animation always plays from its
+   0% keyframe once and then holds its faded-out end frame. */
+.race-finish-burst {
+  position: absolute;
+  inset: -60% -90%;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.race-finish-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgb(255 255 255 / 85%) 0%,
+    color-mix(in oklab, var(--color-primary) 65%, transparent) 40%,
+    transparent 72%
+  );
+  animation: finish-flash 550ms ease-out forwards;
+}
+
+@keyframes finish-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+.race-finish-confetti {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 10px;
+  margin: -5px 0 0 -3px;
+  background: var(--c, #fbbf24);
+  opacity: 0;
+  animation: finish-confetti 900ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  animation-delay: var(--d, 0ms);
+}
+
+@keyframes finish-confetti {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--r, 0deg)) translate(0, 0) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--r, 0deg))
+      translate(var(--tx, 40px), var(--ty, -30px)) scale(1);
   }
 }
 
@@ -1074,6 +1952,38 @@ body::before {
   display: inline-block;
   margin: 0 0 0.35rem 0;
   border-radius: 4px;
+}
+
+/* WordStream (the /guide practice drill) renders its queue directly inside .race-words, which
+   is itself a flex column — without this row wrapper each word span would become its own flex
+   item and stack one per line instead of flowing as a single scrolling line of words. */
+.word-stream-track {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.55ch;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* A word that just committed: kept in the DOM for one extra beat, starting at its natural
+   width, so collapsing it to zero (see the --collapsed variant) is an actual visible transition
+   rather than jumping straight there — everything after it in the flex row glides left to fill
+   the shrinking gap. */
+.word-stream-leaving {
+  max-width: 20ch;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    max-width 220ms ease,
+    opacity 180ms ease,
+    margin-right 220ms ease;
+}
+
+.word-stream-leaving--collapsed {
+  max-width: 0;
+  opacity: 0;
+  margin-right: -0.55ch;
 }
 
 .race-char-space {

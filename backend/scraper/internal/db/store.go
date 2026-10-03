@@ -7,6 +7,8 @@ import (
 	"quotes-crawler/internal/dedup"
 	"quotes-crawler/internal/models"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -25,7 +27,18 @@ func bandKey(band int, value int64) string {
 	return fmt.Sprintf("simhash:band:%d:%d", band, value)
 }
 
-// WarmSimhashCache loads all existing simhashes from Postgres into Redis LSH bands on startup
+// redisPipelineChunkSize bounds how many quotes' (or pending URLs') worth of commands go into a
+// single pipeline Exec — real bug found live: WarmSimhashCache used to build one pipeline
+// spanning the *entire* quotes table (600K+ quotes × 4 bands each, millions of commands by now
+// and growing every session), and a single Exec's wire payload got big enough to blow past
+// go-redis's default write timeout outright ("write tcp [::1]:...->[::1]:6379: i/o timeout"),
+// crashing the whole crawler on startup (main.go treats WarmSimhashCache's error as fatal).
+// Executing in bounded chunks instead keeps each individual write small regardless of how large
+// the corpus grows, rather than needing an ever-longer timeout to keep pace with it.
+// WarmFrontierCache uses the same chunk size for the same reason, on a longer fuse today.
+const redisPipelineChunkSize = 5000
+
+// WarmSimhashCache loads all existing simhashes from Postgres into Redis LSH bands on startup.
 func (s *Store) WarmSimhashCache(ctx context.Context) error {
 	rows, err := s.pool.Query(ctx, `SELECT simhash FROM quotes`)
 	if err != nil {
@@ -34,6 +47,7 @@ func (s *Store) WarmSimhashCache(ctx context.Context) error {
 	defer rows.Close()
 
 	pipe := s.rdb.Pipeline()
+	queued := 0
 	for rows.Next() {
 		var simhash int64
 		if err := rows.Scan(&simhash); err != nil {
@@ -43,45 +57,90 @@ func (s *Store) WarmSimhashCache(ctx context.Context) error {
 		for i, band := range bands {
 			pipe.SAdd(ctx, bandKey(i, band), simhash)
 		}
+		queued++
+		if queued >= redisPipelineChunkSize {
+			if _, err := pipe.Exec(ctx); err != nil {
+				return err
+			}
+			pipe = s.rdb.Pipeline()
+			queued = 0
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	_, err = pipe.Exec(ctx)
-	return err
+	if queued > 0 {
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
+// frontierKey namespaces the Redis priority queue by source. Each source gets its own sorted
+// set rather than one shared "frontier" — a single shared queue meant that whichever source
+// had a lower base priority score would always win ZPOPMIN over the other for as long as it
+// had *any* pending item, regardless of how many. That was fine when Wikiquote's backlog was
+// a small fixed stopgap list (~20 pages), but broke down completely once real title discovery
+// gave it hundreds of pending pages at once: Goodreads' one pending page sat untouched for the
+// entire time, confirmed live (476 Wikiquote pending vs. Goodreads' 1, completely unserved).
+// Per-source queues plus round-robin polling in the crawl loop (see crawler.go) is what
+// actually guarantees both sources keep making progress, instead of relying on priority scores
+// to emulate fairness.
+func frontierKey(source string) string {
+	return "frontier:" + source
+}
+
+// WarmFrontierCache loads all pending URLs from Postgres into their per-source Redis queues.
 func (s *Store) WarmFrontierCache(ctx context.Context) error {
-	rows, err := s.pool.Query(ctx, `SELECT url, priority FROM url_frontier WHERE status = 'pending'`)
+	rows, err := s.pool.Query(ctx, `SELECT url, source, priority FROM url_frontier WHERE status = 'pending'`)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
+	// Chunked the same way WarmSimhashCache is, for the same reason — see that function's doc
+	// comment. The pending count here is smaller today, but it only grows as more sources and
+	// more aggressive discovery queue more URLs, so it's the same risk on a longer fuse.
 	pipe := s.rdb.Pipeline()
+	queued := 0
 	for rows.Next() {
-		var url string
+		var url, source string
 		var priority float64
-		if err := rows.Scan(&url, &priority); err != nil {
+		if err := rows.Scan(&url, &source, &priority); err != nil {
 			return err
 		}
-		pipe.ZAdd(ctx, "frontier", redis.Z{Score: priority, Member: url})
+		pipe.ZAdd(ctx, frontierKey(source), redis.Z{Score: priority, Member: url})
+		queued++
+		if queued >= redisPipelineChunkSize {
+			if _, err := pipe.Exec(ctx); err != nil {
+				return err
+			}
+			pipe = s.rdb.Pipeline()
+			queued = 0
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	_, err = pipe.Exec(ctx)
-	return err
+	if queued > 0 {
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func (s *Store) PushURL(ctx context.Context, url string, priority float64) error {
-	return s.rdb.ZAdd(ctx, "frontier", redis.Z{Score: priority, Member: url}).Err()
+// PushURL adds url to source's priority queue.
+func (s *Store) PushURL(ctx context.Context, source string, url string, priority float64) error {
+	return s.rdb.ZAdd(ctx, frontierKey(source), redis.Z{Score: priority, Member: url}).Err()
 }
 
-func (s *Store) PopURL(ctx context.Context) (string, error) {
-	results, err := s.rdb.ZPopMin(ctx, "frontier").Result()
+// PopURL returns the lowest-priority pending URL for source, or "" if it has none right now.
+func (s *Store) PopURL(ctx context.Context, source string) (string, error) {
+	results, err := s.rdb.ZPopMin(ctx, frontierKey(source)).Result()
 	if err != nil {
 		return "", err
 	}
@@ -141,9 +200,31 @@ func (s *Store) SaveQuote(ctx context.Context, quote models.Quote) (bool, error)
 	sha256Hash := dedup.SHA256(normalizedText)
 	simhash := dedup.Simhash(normalizedText)
 
+	language := quote.Language
+	if language == "" {
+		language = "en" // every parser predating the language field is English-only
+	}
+
+	// wordCount powers the typing-game API's length filter (internal/api) — computed here
+	// rather than left to the reader, since every quote gets one regardless of which API
+	// consumes it later, and computing it once at write time (indexed) is far cheaper than
+	// re-splitting every row's text on every random-quote query.
+	wordCount := len(strings.Fields(quote.Text))
+
 	tagsJSON, err := json.Marshal(quote.Tags)
 	if err != nil {
 		return false, err
+	}
+
+	// Flagged (not rejected) at write time — see dedup.GameSuitability's own doc comment for the
+	// live-corpus evidence behind each rule. Unsuitable content is still real, correctly-sourced
+	// quote data, just not a good fit for a typing race; keeping it (flagged) rather than
+	// dropping it preserves the corpus for any future non-typing-game consumer.
+	gameUnsuitable, reasons := dedup.GameSuitability(quote.Text)
+	var unsuitableReason *string
+	if gameUnsuitable {
+		joined := strings.Join(reasons, ",")
+		unsuitableReason = &joined
 	}
 
 	nearDup, err := s.isNearDuplicate(ctx, simhash)
@@ -155,10 +236,10 @@ func (s *Store) SaveQuote(ctx context.Context, quote models.Quote) (bool, error)
 	}
 
 	tag, err := s.pool.Exec(ctx,
-		`INSERT INTO quotes (text, author, tags, source, sha256_hash, simhash)
-         VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO quotes (text, author, tags, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (sha256_hash) DO NOTHING`,
-		quote.Text, quote.Author, tagsJSON, quote.Source, sha256Hash, simhash,
+		quote.Text, quote.Author, tagsJSON, quote.Source, quote.SourceURL, language, sha256Hash, simhash, wordCount, gameUnsuitable, unsuitableReason,
 	)
 	if err != nil {
 		return false, err
@@ -169,6 +250,169 @@ func (s *Store) SaveQuote(ctx context.Context, quote models.Quote) (bool, error)
 	}
 
 	return true, s.addToSimhashCache(ctx, simhash)
+}
+
+// SaveQuotes is SaveQuote for a whole page's worth of quotes at once — a single Goodreads page
+// yields ~30, each previously costing its own INSERT round trip. Returns a bool per input quote,
+// same order, true where it was actually saved (false for both a near-duplicate and an exact
+// sha256 duplicate, same as SaveQuote's single bool doesn't distinguish the two either).
+//
+// Near-duplicate checks still happen sequentially, one Redis round trip per quote, same as
+// SaveQuote — that's unavoidable, each check depends on the cache state so far. What's batched
+// is the Postgres side: every quote that passes its own near-dup check is collected, then
+// inserted in one multi-row statement (same unnest(...)/RETURNING pattern as SaveURLsBatch), and
+// only the sha256 hashes that come back from RETURNING (i.e. weren't rejected by ON CONFLICT as
+// an exact duplicate) get added to the simhash cache — never before confirming the row actually
+// landed in Postgres, or the cache would end up "remembering" quotes that were never saved.
+//
+// Accepted trade-off: two near-identical quotes within the *same* page no longer catch each
+// other via the near-dup check the way two SaveQuote calls in a row would (the second would see
+// the first already in the cache) — the whole batch's near-dup checks all read the cache before
+// any of the batch's own quotes are added to it. Rare in practice (near-dup exists to catch the
+// same quote resurfacing across different pages/sources, not to catch a single page repeating
+// itself), and worth it for cutting N Postgres round trips to 1.
+func (s *Store) SaveQuotes(ctx context.Context, quotes []models.Quote) ([]bool, error) {
+	saved := make([]bool, len(quotes))
+	if len(quotes) == 0 {
+		return saved, nil
+	}
+
+	type candidate struct {
+		idx              int
+		text             string
+		author           string
+		tagsJSON         string
+		source           string
+		sourceURL        string
+		language         string
+		sha256Hash       string
+		simhash          int64
+		wordCount        int
+		gameUnsuitable   bool
+		unsuitableReason *string
+	}
+
+	var candidates []candidate
+	for i, quote := range quotes {
+		normalizedText := dedup.Normalize(quote.Text)
+		sha256Hash := dedup.SHA256(normalizedText)
+		simhash := dedup.Simhash(normalizedText)
+
+		nearDup, err := s.isNearDuplicate(ctx, simhash)
+		if err != nil {
+			return nil, err
+		}
+		if nearDup {
+			continue
+		}
+
+		language := quote.Language
+		if language == "" {
+			language = "en"
+		}
+		tagsJSON, err := json.Marshal(quote.Tags)
+		if err != nil {
+			return nil, err
+		}
+
+		gameUnsuitable, reasons := dedup.GameSuitability(quote.Text)
+		var unsuitableReason *string
+		if gameUnsuitable {
+			joined := strings.Join(reasons, ",")
+			unsuitableReason = &joined
+		}
+
+		candidates = append(candidates, candidate{
+			idx: i, text: quote.Text, author: quote.Author, tagsJSON: string(tagsJSON),
+			source: quote.Source, sourceURL: quote.SourceURL, language: language,
+			sha256Hash: sha256Hash, simhash: simhash, wordCount: len(strings.Fields(quote.Text)),
+			gameUnsuitable: gameUnsuitable, unsuitableReason: unsuitableReason,
+		})
+	}
+	if len(candidates) == 0 {
+		return saved, nil
+	}
+
+	// De-duplicate by sha256Hash *before* building the batch — real bug found live (caught by
+	// a test deliberately including two same-text quotes in one batch): RETURNING only reports
+	// which hashes landed a row, not which specific input instance earned it, so if two
+	// candidates in this batch share a hash, a hash-keyed map marks both saved — inserting one
+	// physical row but incorrectly reporting two. Keeping only the first occurrence and letting
+	// any later same-hash candidate stay at its zero-value (unsaved) matches exactly what two
+	// sequential SaveQuote calls with the same text would do (the second always loses to the
+	// first via ON CONFLICT), whether or not either one turns out to already exist in Postgres.
+	seen := make(map[string]bool, len(candidates))
+	unique := candidates[:0]
+	for _, c := range candidates {
+		if seen[c.sha256Hash] {
+			continue
+		}
+		seen[c.sha256Hash] = true
+		unique = append(unique, c)
+	}
+	candidates = unique
+
+	texts := make([]string, len(candidates))
+	authors := make([]string, len(candidates))
+	tags := make([]string, len(candidates))
+	sources := make([]string, len(candidates))
+	sourceURLs := make([]string, len(candidates))
+	languages := make([]string, len(candidates))
+	sha256Hashes := make([]string, len(candidates))
+	simhashes := make([]int64, len(candidates))
+	wordCounts := make([]int32, len(candidates))
+	gameUnsuitables := make([]bool, len(candidates))
+	unsuitableReasons := make([]*string, len(candidates))
+	for i, c := range candidates {
+		texts[i] = c.text
+		authors[i] = c.author
+		tags[i] = c.tagsJSON
+		sources[i] = c.source
+		sourceURLs[i] = c.sourceURL
+		languages[i] = c.language
+		sha256Hashes[i] = c.sha256Hash
+		simhashes[i] = c.simhash
+		wordCounts[i] = int32(c.wordCount)
+		gameUnsuitables[i] = c.gameUnsuitable
+		unsuitableReasons[i] = c.unsuitableReason
+	}
+
+	rows, err := s.pool.Query(ctx,
+		`INSERT INTO quotes (text, author, tags, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason)
+         SELECT text, author, tags::jsonb, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason
+         FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::bigint[], $9::int[], $10::bool[], $11::text[])
+              AS t(text, author, tags, source, source_url, language, sha256_hash, simhash, word_count, game_unsuitable, unsuitable_reason)
+         ON CONFLICT (sha256_hash) DO NOTHING
+         RETURNING sha256_hash`,
+		texts, authors, tags, sources, sourceURLs, languages, sha256Hashes, simhashes, wordCounts, gameUnsuitables, unsuitableReasons,
+	)
+	if err != nil {
+		return nil, err
+	}
+	insertedHashes := make(map[string]bool)
+	for rows.Next() {
+		var h string
+		if err := rows.Scan(&h); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		insertedHashes[h] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, c := range candidates {
+		if !insertedHashes[c.sha256Hash] {
+			continue
+		}
+		saved[c.idx] = true
+		if err := s.addToSimhashCache(ctx, c.simhash); err != nil {
+			return saved, err
+		}
+	}
+	return saved, nil
 }
 
 func (s *Store) SaveURL(ctx context.Context, urlFrontier models.URLFrontier) (bool, error) {
@@ -197,6 +441,64 @@ ON CONFLICT (url) DO NOTHING`,
 	return true, nil
 }
 
+// SaveURLsBatch inserts many URLs for one source/priority/depth in a single round trip instead
+// of one INSERT per URL — added because discovery batches (e.g. one Wikiquote category page,
+// up to 500 titles) were doing exactly that: 500 sequential awaited INSERTs for what's really
+// one bulk operation. Uses unnest to turn the Go slice into a set-returning INSERT ... SELECT,
+// still going through the same ON CONFLICT (url) DO NOTHING as SaveURL, and RETURNING url so
+// the caller knows exactly which URLs were newly added (for per-URL discovery logging) without
+// a second query.
+func (s *Store) SaveURLsBatch(ctx context.Context, urls []string, source string, priority float64, depth int32) ([]string, error) {
+	if len(urls) == 0 {
+		return nil, nil
+	}
+
+	sources := make([]string, len(urls))
+	priorities := make([]float64, len(urls))
+	depths := make([]int32, len(urls))
+	for i := range urls {
+		sources[i] = source
+		priorities[i] = priority
+		depths[i] = depth
+	}
+
+	rows, err := s.pool.Query(ctx,
+		`INSERT INTO url_frontier (url, source, priority, depth)
+         SELECT * FROM unnest($1::text[], $2::text[], $3::float8[], $4::int[])
+         ON CONFLICT (url) DO NOTHING
+         RETURNING url`,
+		urls, sources, priorities, depths,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var inserted []string
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return nil, err
+		}
+		inserted = append(inserted, u)
+	}
+	return inserted, rows.Err()
+}
+
+// PushURLsBatch adds many URLs to source's priority queue in a single Redis round trip
+// (variadic ZADD) instead of one ZADD per URL — the Redis-side counterpart to SaveURLsBatch.
+func (s *Store) PushURLsBatch(ctx context.Context, source string, urls []string, priority float64) error {
+	if len(urls) == 0 {
+		return nil
+	}
+
+	members := make([]redis.Z, len(urls))
+	for i, u := range urls {
+		members[i] = redis.Z{Score: priority, Member: u}
+	}
+	return s.rdb.ZAdd(ctx, frontierKey(source), members...).Err()
+}
+
 func (s *Store) MarkURLDone(ctx context.Context, url string) error {
 	if url == "" {
 		return fmt.Errorf("URL is required")
@@ -223,6 +525,97 @@ func (s *Store) MarkURLInProgress(ctx context.Context, url string) error {
 
 }
 
+// RequeueStuckInProgress resets any 'in_progress' row back to 'pending' and returns how many
+// were reset. A row stuck at 'in_progress' means a previous crawler process was killed (or
+// crashed) mid-fetch: PopURL already removed it from Redis, so without this it would never be
+// retried — lost work, observed live (crawler restarted mid-crawl, left 3 rows stranded).
+// Since this crawler runs as a single synchronous loop, any 'in_progress' row found at
+// startup is necessarily leftover from a previous run, never the current one.
+func (s *Store) RequeueStuckInProgress(ctx context.Context) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE url_frontier SET status = 'pending' WHERE status = 'in_progress'`)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+// RetryURL resets a URL back to pending with an incremented error_count and an updated
+// priority, for a bounded automatic retry instead of permanently failing on the first bad
+// fetch. Unlike MarkURLFailed, this doesn't touch last_crawled_at — the URL hasn't actually
+// been crawled yet, just attempted. The caller (Crawler.failOrRetry) still needs to push the
+// URL back onto the source's Redis queue itself after this succeeds — it isn't done here, so
+// the DB write (source of truth for "a retry was recorded") always commits before the URL
+// becomes fetchable again.
+func (s *Store) RetryURL(ctx context.Context, url string, errorCount int32, priority float64) error {
+	if url == "" {
+		return fmt.Errorf("URL is required")
+	}
+	_, err := s.pool.Exec(ctx,
+		`UPDATE url_frontier SET status = 'pending', error_count = $2, priority = $3 WHERE url = $1`,
+		url, errorCount, priority,
+	)
+	return err
+}
+
+// delayedFrontierKey namespaces the per-source "held" retry set — a ZSET scored by the Unix
+// timestamp a URL becomes eligible again, separate from frontierKey's live queue (scored by
+// priority). Keeping these as two separate keys, rather than one queue with mixed scoring,
+// means PopURL's plain ZPopMin never has to reason about "is this one actually due yet" — a
+// held URL simply isn't in that set at all until PromoteDueRetries moves it over.
+func delayedFrontierKey(source string) string {
+	return "frontier:delayed:" + source
+}
+
+// ScheduleDelayedRetry is RetryURL plus a hold: it records the same retry bookkeeping in
+// Postgres (status back to 'pending', incremented error_count, updated priority) but, instead
+// of the caller pushing it straight onto the live Redis frontier, adds it to
+// delayedFrontierKey(source) scored by readyAt — invisible to PopURL until
+// PromoteDueRetries moves it over once that time has passed. Used for a plain outright failure
+// that isn't itself evidence of a source-wide problem (see Crawler.failOrRetry's
+// hardFailureRetryDelay), so that one bad URL doesn't come back into rotation before it's had a
+// real chance to have resolved itself, while everything else keeps flowing normally.
+func (s *Store) ScheduleDelayedRetry(ctx context.Context, source string, url string, errorCount int32, priority float64, readyAt time.Time) error {
+	if err := s.RetryURL(ctx, url, errorCount, priority); err != nil {
+		return err
+	}
+	return s.rdb.ZAdd(ctx, delayedFrontierKey(source), redis.Z{Score: float64(readyAt.Unix()), Member: url}).Err()
+}
+
+// PromoteDueRetries moves every URL in source's delayed set whose hold has expired back onto
+// the live frontier, using the priority RetryURL already recorded in Postgres (re-read here via
+// GetURLByURL rather than carried in the delayed ZSET itself, which only has room for a score
+// and a member — Redis's two queues would otherwise have no way to agree on priority without
+// a third piece of state). Returns how many were promoted; a source with nothing due is the
+// common case and costs one cheap ZRangeByScore against an empty result. Best-effort — if a
+// specific due URL fails to look up or move, it's skipped (and still sitting in the delayed set,
+// so it's retried again on the very next call) rather than aborting the rest of the batch.
+func (s *Store) PromoteDueRetries(ctx context.Context, source string) (int, error) {
+	key := delayedFrontierKey(source)
+	due, err := s.rdb.ZRangeByScore(ctx, key, &redis.ZRangeBy{
+		Min: "-inf",
+		Max: strconv.FormatInt(time.Now().Unix(), 10),
+	}).Result()
+	if err != nil {
+		return 0, err
+	}
+
+	promoted := 0
+	for _, url := range due {
+		row, err := s.GetURLByURL(ctx, url)
+		if err != nil {
+			continue
+		}
+		if err := s.rdb.ZAdd(ctx, frontierKey(source), redis.Z{Score: row.Priority, Member: url}).Err(); err != nil {
+			continue
+		}
+		if err := s.rdb.ZRem(ctx, key, url).Err(); err != nil {
+			continue
+		}
+		promoted++
+	}
+	return promoted, nil
+}
+
 func (s *Store) MarkURLFailed(ctx context.Context, url string) error {
 	if url == "" {
 		return fmt.Errorf("URL is required")
@@ -232,6 +625,62 @@ func (s *Store) MarkURLFailed(ctx context.Context, url string) error {
 		url,
 	)
 	return err
+}
+
+func (s *Store) GetURLByURL(ctx context.Context, url string) (models.URLFrontier, error) {
+	var u models.URLFrontier
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, url, source, priority, depth, status, error_count, last_crawled_at, created_at
+		 FROM url_frontier WHERE url = $1`,
+		url,
+	).Scan(
+		&u.ID, &u.URL, &u.Source, &u.Priority, &u.Depth,
+		&u.Status, &u.ErrorCount, &u.LastCrawledAt, &u.CreatedAt,
+	)
+	return u, err
+}
+
+// HasAnyURLs reports whether the frontier has ever been seeded, regardless of status.
+// Unlike checking GetPendingURLs for emptiness, this stays true once seeding has happened
+// even after every seed URL finishes (done/failed) — a "pending only" check would otherwise
+// re-trigger seeding (and re-crawl already-completed pages) the moment a batch finishes.
+func (s *Store) HasAnyURLs(ctx context.Context) (bool, error) {
+	var exists bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM url_frontier)`).Scan(&exists)
+	return exists, err
+}
+
+// CountPendingBySource returns how many url_frontier rows for source are still 'pending' —
+// used to decide whether a source needs more work discovered before it runs dry.
+func (s *Store) CountPendingBySource(ctx context.Context, source string) (int64, error) {
+	var count int64
+	err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM url_frontier WHERE source = $1 AND status = 'pending'`,
+		source,
+	).Scan(&count)
+	return count, err
+}
+
+// discoveryCursorKey namespaces continuation-token storage in Redis by source, so each
+// source's title-enumeration (e.g. Wikiquote's MediaWiki allpages) can resume where it left
+// off across restarts without needing its own Postgres table.
+func discoveryCursorKey(source string) string {
+	return fmt.Sprintf("discovery:cursor:%s", source)
+}
+
+// GetDiscoveryCursor returns the saved continuation token for source's title discovery, or
+// "" if none has been saved yet (i.e. discovery hasn't run, or has reached the end).
+func (s *Store) GetDiscoveryCursor(ctx context.Context, source string) (string, error) {
+	val, err := s.rdb.Get(ctx, discoveryCursorKey(source)).Result()
+	if err == redis.Nil {
+		return "", nil
+	}
+	return val, err
+}
+
+// SetDiscoveryCursor saves source's title-discovery continuation token for next time.
+func (s *Store) SetDiscoveryCursor(ctx context.Context, source string, cursor string) error {
+	return s.rdb.Set(ctx, discoveryCursorKey(source), cursor, 0).Err()
 }
 
 func (s *Store) GetPendingURLs(ctx context.Context) ([]models.URLFrontier, error) {
@@ -256,4 +705,58 @@ func (s *Store) GetPendingURLs(ctx context.Context) ([]models.URLFrontier, error
 		urls = append(urls, u)
 	}
 	return urls, rows.Err()
+}
+
+// CountQuotes returns the total number of rows in quotes — the source of truth for the running
+// total the crawler logs milestones against (see crawler.go's recordQuotesSaved), not an
+// in-memory guess: queried once at startup to seed that counter, so a milestone logged mid-run
+// always reflects what's actually in the database, restarts included.
+func (s *Store) CountQuotes(ctx context.Context) (int64, error) {
+	var count int64
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM quotes`).Scan(&count)
+	return count, err
+}
+
+// QuoteCountsBySourceAndLanguage returns the full corpus broken down two ways — by source and,
+// separately, by language — for the periodic breakdown crawler.go logs every
+// summaryMilestoneInterval quotes (see recordQuotesSaved). Two simple grouped counts rather than
+// one combined (source, language) grouping: this only runs once every 10k quotes, so the extra
+// query is free, and two short maps log far more readably than a combinatorial source×language
+// table would.
+func (s *Store) QuoteCountsBySourceAndLanguage(ctx context.Context) (bySource map[string]int64, byLanguage map[string]int64, err error) {
+	bySource, err = s.countQuotesGroupedBy(ctx, "source")
+	if err != nil {
+		return nil, nil, err
+	}
+	byLanguage, err = s.countQuotesGroupedBy(ctx, "language")
+	if err != nil {
+		return nil, nil, err
+	}
+	return bySource, byLanguage, nil
+}
+
+// countQuotesGroupedBy runs `SELECT <column>, count(*) FROM quotes GROUP BY <column>` and
+// collects the result into a map. column is never user input — always one of the two literal
+// column names passed by QuoteCountsBySourceAndLanguage above — so building the query string
+// directly is safe here, unlike if it ever came from a request.
+func (s *Store) countQuotesGroupedBy(ctx context.Context, column string) (map[string]int64, error) {
+	// COALESCE guards source specifically — it has no NOT NULL constraint (unlike language,
+	// which defaults to 'en') even though every write path sets it; a bare Scan into a string
+	// would error out the whole summary over one unexpected NULL row.
+	rows, err := s.pool.Query(ctx, fmt.Sprintf(`SELECT COALESCE(%s, 'unknown'), count(*) FROM quotes GROUP BY %s`, column, column))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int64)
+	for rows.Next() {
+		var key string
+		var count int64
+		if err := rows.Scan(&key, &count); err != nil {
+			return nil, err
+		}
+		counts[key] = count
+	}
+	return counts, rows.Err()
 }

@@ -1,0 +1,141 @@
+# Production deployment: crawler, api, ws, and frontend bundled into one Compose project,
+# deployed against Postgres and Redis that already exist as their own Dokploy Database resources
+# (managed and backed up outside this file) — no postgres/redis service blocks here at all. This
+# bundling is required, not just convenient: it's the minimum needed for frontend to reach api by
+# plain internal DNS (http://api:8080). See PRODUCTION.md's "Isolating api behind the frontend"
+# for why api and frontend specifically must be deployed together — Dokploy only gives automatic
+# service-name networking to services deployed together this way; separate Applications each get
+# an isolated network with no way to resolve each other by name
+# (https://github.com/Dokploy/dokploy/issues/3670).
+#
+# Required env vars on this Dokploy Compose project:
+#   DATABASE_URL          — your existing Postgres Database resource's connection string
+#   REDIS_ADDR            — your existing Redis Database resource's connection string
+#                           (redis://... is fine directly; see PRODUCTION.md's Dokploy section)
+#   CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com)
+#   VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
+#   PUBLIC_URL            — same as CORS_ALLOWED_ORIGIN, no trailing slash — used to build the
+#                           OIDC redirect_uri (must exactly match a Redirect URI registered on
+#                           the identity provider's "vroomy" OIDC application)
+#   OIDC_ISSUER           — the identity provider's own domain, e.g. https://auth.example.com
+#                           (endpoints/claims are read from its real discovery document at
+#                           runtime — frontend/src/lib/auth/oidc.ts — so this code works
+#                           unchanged against any standard OIDC provider, not just one specific
+#                           product)
+#   OIDC_CLIENT_ID        — from the "vroomy" application in the identity provider
+#   OIDC_CLIENT_SECRET    — from the "vroomy" application in the identity provider
+#   OIDC_ORG_ID           — optional, Zitadel-specific. A bare client_id does NOT scope the login
+#                           flow to that application's own organization in Zitadel — without this,
+#                           it falls back to the instance's default org's Login Policy (branding,
+#                           allowed auth methods, enabled IDPs), not the org the app actually
+#                           belongs to. Find it on the organization's own settings page in
+#                           Zitadel's console. Harmless to leave unset for other providers.
+#   SESSION_SECRET        — random, >=32 chars (e.g. `openssl rand -base64 48`) — seals Vroomy's
+#                           own login-session cookie; never reuse across environments
+#
+# frontend/ws deliberately have no `ports:` host-publish — Dokploy's Traefik routes to them
+# directly over dokploy-network based on each service's Domain config (set container port 3000
+# for frontend, 8081 for ws). Publishing a host port isn't needed here the way it is for the
+# plain-docker-compose+Caddy setup in PRODUCTION.md, and 3000 specifically collides with
+# Dokploy's own dashboard, which already listens on host port 3000.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  crawler:
+    build: ./backend/scraper
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_ADDR: ${REDIS_ADDR}
+      REDIS_DB: 0
+      GOMEMLIMIT: 1536MiB
+      LOG_LEVEL: error
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  api:
+    build: ./backend/api
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      API_PORT: 8080
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
+      GOMEMLIMIT: 100MiB
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  ws:
+    build: ./backend/ws
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      WS_PORT: 8081
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN}
+      GOMEMLIMIT: 100MiB
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:8081/health']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Plain service-name DNS, only reachable because frontend and api are in this same compose
+      # project. Not VITE_-prefixed on purpose — see frontend/src/lib/typing/sentences.ts.
+      API_INTERNAL_URL: http://api:8080
+      VITE_WS_URL: ${VITE_WS_URL}
+      PUBLIC_URL: ${PUBLIC_URL}
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_ORG_ID: ${OIDC_ORG_ID}
+      SESSION_SECRET: ${SESSION_SECRET}
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:3000/']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+# Postgres/Redis Database resources are deployed as Docker Swarm services on Dokploy's shared
+# "dokploy-network" overlay network, not on whatever network a plain Compose project would
+# create by default — a brand-new default network (e.g. the auto-created
+# "<project>_default" bridge) has no route to them at all, and DATABASE_URL/REDIS_ADDR hostname
+# lookups fail outright (not an auth/connection-refused error, a DNS resolution failure).
+# Pointing this project's implicit "default" network at that same external network instead of
+# letting Compose create its own fixes it, while still giving api/crawler/ws/frontend
+# service-name DNS between each other (they're still all on one shared network together).
+networks:
+  default:
+    name: dokploy-network
+    external: true

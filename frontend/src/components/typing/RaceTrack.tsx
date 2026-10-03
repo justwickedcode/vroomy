@@ -3,6 +3,8 @@ import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
+import type { TrailVariant } from '#/lib/trails'
+import type { PowerupKind } from '#/lib/powerups'
 
 export interface Racer {
   id: string
@@ -11,8 +13,23 @@ export interface Racer {
   wpm: number
   isYou?: boolean
   finished?: boolean
-  color?: string
   model?: CarModel
+  // Only ever set for the player's own racer entry — bots/opponents stay in their stock look
+  // (see BOT_TRAILS below for theirs).
+  underglow?: boolean
+  underglowColor?: string
+  trail?: TrailVariant
+}
+
+// One-shot powerup activation effect (see TypingRace.tsx's usePowerup) — `key` changes on every
+// use, even reusing the same kind back-to-back, so consumers can remount the animated element
+// instead of it no-op'ing because its own props didn't change. `targetId` names which bot a
+// shell/magnet hit landed on; boost/nitro (no target — the effect plays on the player's own car)
+// and emp (plays on every lane at once) leave it unset.
+export interface RaceEffect {
+  kind: PowerupKind
+  targetId?: string
+  key: number
 }
 
 // Cars start at 12% and stop at 92% (finish band position)
@@ -243,10 +260,13 @@ function SponsorStrip() {
 
 // ─── Trail effects ──────────────────────────────────────────────────
 
-const BOT_TRAILS = ['orbs', 'smoke', 'spark'] as const
-type TrailVariant = 'nitro' | (typeof BOT_TRAILS)[number]
+// Bots always cycle through these three regardless of what the player has unlocked (see
+// #/lib/trails) — only the player's own trail choice is gated.
+const BOT_TRAILS: Array<TrailVariant> = ['orbs', 'smoke', 'spark']
 
-function Trail({ variant }: { variant: TrailVariant }) {
+// Exported for reuse in the Garage's Trail picker — a preview needs to render the exact same
+// visual, not a re-description of it.
+export function Trail({ variant }: { variant: TrailVariant }) {
   if (variant === 'orbs') {
     return (
       <span className="race-trail-orbs" aria-hidden="true">
@@ -261,24 +281,169 @@ function Trail({ variant }: { variant: TrailVariant }) {
       <span className="race-trail-smoke" aria-hidden="true">
         <span />
         <span />
+        <span />
       </span>
     )
   }
   if (variant === 'spark') {
-    return (
-      <svg className="race-trail-spark" viewBox="0 0 32 18" aria-hidden="true">
+    // Three bolts grouped as a column, all anchored at the same tip (near the car) but running
+    // different lengths — short/long/medium, like uneven flame tongues — rather than three
+    // identical-length copies, which read as one bolt repeated instead of a cluster.
+    const makeBolt = (points: string) => (
+      <>
         <polyline
-          points="32,4 18,8 24,9 8,14 14,10 0,9"
+          points={points}
           fill="none"
-          stroke="#38bdf8"
-          strokeWidth="2"
+          stroke="#0c4a6e"
+          strokeWidth="9"
           strokeLinejoin="round"
           strokeLinecap="round"
         />
+        <polyline
+          points={points}
+          fill="none"
+          stroke="#38bdf8"
+          strokeWidth="6"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        <polyline
+          points={points}
+          fill="none"
+          stroke="#f0f9ff"
+          strokeWidth="2.6"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      </>
+    )
+    return (
+      <svg className="race-trail-spark" viewBox="0 0 56 62" aria-hidden="true">
+        <g
+          className="spark-bolt"
+          style={{ animationDelay: '0ms' }}
+          transform="translate(22,1) rotate(-3) scale(0.95)"
+        >
+          {makeBolt('44,7 34,3 37,9 24,4 27,10 16,5')}
+        </g>
+        <g
+          className="spark-bolt"
+          style={{ animationDelay: '80ms' }}
+          transform="translate(22,20) rotate(3) scale(0.95)"
+        >
+          {makeBolt('44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6')}
+        </g>
+        <g
+          className="spark-bolt"
+          style={{ animationDelay: '160ms' }}
+          transform="translate(22,39) rotate(-4) scale(0.95)"
+        >
+          {makeBolt('44,7 36,3 39,8 30,4')}
+        </g>
       </svg>
     )
   }
-  return <span className="race-nitro" aria-hidden="true" />
+  if (variant === 'bubbles') {
+    return (
+      <span className="race-trail-bubbles" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    )
+  }
+  if (variant === 'stars') {
+    return (
+      <span className="race-trail-stars" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    )
+  }
+  if (variant === 'rainbow') {
+    return (
+      <span className="race-trail-rainbow" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+        <span />
+      </span>
+    )
+  }
+  return (
+    <span className="race-nitro" aria-hidden="true">
+      <span />
+      <span />
+      <span />
+    </span>
+  )
+}
+
+// ─── Finish celebration ─────────────────────────────────────────────
+
+const CONFETTI: Array<{ c: string; r: number; tx: number; ty: number; d: number }> = [
+  { c: '#fbbf24', r: -40, tx: -46, ty: -54, d: 0 },
+  { c: '#f472b6', r: 20, tx: 40, ty: -58, d: 30 },
+  { c: '#38bdf8', r: 70, tx: 58, ty: -8, d: 70 },
+  { c: '#4ade80', r: -90, tx: -60, ty: 4, d: 40 },
+  { c: '#a78bfa', r: 140, tx: 36, ty: 50, d: 90 },
+  { c: '#fb7185', r: -140, tx: -34, ty: 52, d: 20 },
+  { c: '#fbbf24', r: 10, tx: 8, ty: -66, d: 110 },
+  { c: '#38bdf8', r: -20, tx: -10, ty: 62, d: 60 },
+]
+
+function FinishBurst() {
+  return (
+    <div className="race-finish-burst" aria-hidden="true">
+      <div className="race-finish-flash" />
+      {CONFETTI.map((piece, i) => (
+        <span
+          key={i}
+          className="race-finish-confetti"
+          style={
+            {
+              '--c': piece.c,
+              '--r': `${piece.r}deg`,
+              '--tx': `${piece.tx}px`,
+              '--ty': `${piece.ty}px`,
+              '--d': `${piece.d}ms`,
+            } as CSSProperties
+          }
+        />
+      ))}
+    </div>
+  )
+}
+
+// ─── Powerup activation effects ─────────────────────────────────────
+// One-shot visuals for actually *using* a powerup (see the always-visible Trail above for the
+// ambient cosmetic one) — mounted fresh per `key` so using the same kind twice in a row still
+// replays instead of no-op'ing on unchanged props.
+
+function PowerupBurst({ kind }: { kind: 'boost' | 'nitro' }) {
+  return (
+    <span
+      className={cn('race-powerup-burst', `race-powerup-burst--${kind}`)}
+      aria-hidden="true"
+    >
+      <span />
+      <span />
+      <span />
+    </span>
+  )
+}
+
+function PowerupImpact({ kind }: { kind: 'shell' | 'magnet' }) {
+  return (
+    <span
+      className={cn('race-powerup-impact', `race-powerup-impact--${kind}`)}
+      aria-hidden="true"
+    >
+      <span />
+      <span />
+    </span>
+  )
 }
 
 // ─── Lane ───────────────────────────────────────────────────────────
@@ -286,28 +451,51 @@ function Trail({ variant }: { variant: TrailVariant }) {
 function Lane({
   racer,
   trailVariant,
+  effect,
 }: {
   racer: Racer
   trailVariant: TrailVariant
+  effect?: RaceEffect | null
 }) {
-  const color =
-    racer.color ?? (racer.isYou ? 'var(--color-primary)' : '#94a3b8')
   const racing = racer.progress > 0 && !racer.finished
+
+  // Boost/nitro play on the player's own car (there's no bot equivalent); shell/magnet play on
+  // whichever bot the hit actually landed on. Narrowed into a {kind, key} pair up front so the
+  // JSX below doesn't need to re-check `effect` is non-null just to read its fields.
+  const burst =
+    effect &&
+    racer.isYou &&
+    (effect.kind === 'boost' || effect.kind === 'nitro')
+      ? { kind: effect.kind, key: effect.key }
+      : null
+  const impact =
+    effect &&
+    effect.targetId === racer.id &&
+    (effect.kind === 'shell' || effect.kind === 'magnet')
+      ? { kind: effect.kind, key: effect.key }
+      : null
 
   return (
     <div className="race-lane">
-      <div className="race-car-wrap" style={{ left: `${carLeft(racer)}%` }}>
+      <div
+        className={cn('race-car-wrap', impact && 'race-car-wrap--hit')}
+        style={{ left: `${carLeft(racer)}%` }}
+      >
         <span
           className={cn('race-name-tag', racer.isYou && 'race-name-tag--you')}
         >
           {racer.name}
         </span>
         {racing && <Trail variant={trailVariant} />}
+        {racer.isYou && racer.finished && <FinishBurst />}
+        {burst && <PowerupBurst key={burst.key} kind={burst.kind} />}
+        {impact && <PowerupImpact key={impact.key} kind={impact.kind} />}
         <CarIcon
-          color={color}
           model={racer.model ?? 'sport'}
+          underglow={racer.underglow}
+          underglowColor={racer.underglowColor}
           className={cn(
-            'race-car-svg aspect-[8/5] w-20 drop-shadow-[0_4px_8px_rgb(0_0_0/0.55)]',
+            'race-car-svg w-20 drop-shadow-[0_4px_8px_rgb(0_0_0/0.55)]',
             racing && 'race-car-bob',
           )}
         />
@@ -323,11 +511,13 @@ export default function RaceTrack({
   racers,
   countdown,
   phase,
+  effect,
   className,
 }: {
   racers: Array<Racer>
   countdown?: number
   phase?: 'waiting' | 'counting' | 'ready'
+  effect?: RaceEffect | null
   className?: string
 }) {
   const player = racers.find((r) => r.isYou) ?? racers[0]
@@ -400,10 +590,15 @@ export default function RaceTrack({
         <div className="race-curb" aria-hidden="true" />
         {racers.map((racer, index) => {
           const trailVariant: TrailVariant = racer.isYou
-            ? 'nitro'
+            ? (racer.trail ?? 'nitro')
             : BOT_TRAILS[index % BOT_TRAILS.length]
           return (
-            <Lane key={racer.id} racer={racer} trailVariant={trailVariant} />
+            <Lane
+              key={racer.id}
+              racer={racer}
+              trailVariant={trailVariant}
+              effect={effect}
+            />
           )
         })}
         <div className="race-curb" aria-hidden="true" />
@@ -412,6 +607,13 @@ export default function RaceTrack({
           style={{ left: `${FINISH_X}%` }}
           aria-hidden="true"
         />
+        {effect?.kind === 'emp' && (
+          <span
+            key={effect.key}
+            className="race-emp-flash"
+            aria-hidden="true"
+          />
+        )}
       </div>
 
       {phase === 'counting' && countdown !== undefined && (
