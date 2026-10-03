@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as AchievementsRouteImport } from './routes/achievements'
 import { Route as DailyChallengeRouteImport } from './routes/daily-challenge'
 import { Route as FriendsRouteImport } from './routes/friends'
@@ -31,6 +32,11 @@ import { Route as RaceSoloSpeedRouteImport } from './routes/race.solo.$speed'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AchievementsRoute = AchievementsRouteImport.update({
@@ -121,6 +127,7 @@ const RaceSoloSpeedRoute = RaceSoloSpeedRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/achievements': typeof AchievementsRoute
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
@@ -141,6 +148,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/achievements': typeof AchievementsRoute
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
@@ -161,6 +169,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/account': typeof AccountRoute
   '/achievements': typeof AchievementsRoute
   '/daily-challenge': typeof DailyChallengeRoute
   '/friends': typeof FriendsRoute
@@ -183,6 +192,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/account'
     | '/achievements'
     | '/daily-challenge'
     | '/friends'
@@ -203,6 +213,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/account'
     | '/achievements'
     | '/daily-challenge'
     | '/friends'
@@ -222,6 +233,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/account'
     | '/achievements'
     | '/daily-challenge'
     | '/friends'
@@ -243,6 +255,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccountRoute: typeof AccountRoute
   AchievementsRoute: typeof AchievementsRoute
   DailyChallengeRoute: typeof DailyChallengeRoute
   FriendsRoute: typeof FriendsRoute
@@ -267,6 +280,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/achievements': {
@@ -407,6 +427,7 @@ const RaceSoloRouteWithChildren = RaceSoloRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccountRoute: AccountRoute,
   AchievementsRoute: AchievementsRoute,
   DailyChallengeRoute: DailyChallengeRoute,
   FriendsRoute: FriendsRoute,
