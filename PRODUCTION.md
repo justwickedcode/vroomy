@@ -57,6 +57,15 @@ REDIS_ADDR            — your existing Redis connection string (redis://... for
                          directly — see "Deploying via Dokploy" below)
 CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com)
 VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
+PUBLIC_URL            — same as CORS_ALLOWED_ORIGIN, no trailing slash — builds the OIDC
+                         redirect_uri (.../auth/callback); must exactly match a Redirect URI
+                         registered on the identity provider's client — see "Authentication" below
+OIDC_ISSUER           — the identity provider's own URL, including any realm/org path it needs
+                         (e.g. https://auth.example.com/realms/apps for Keycloak) — see below
+OIDC_CLIENT_ID        — Vroomy's client/application ID in the identity provider
+OIDC_CLIENT_SECRET    — Vroomy's client secret in the identity provider
+SESSION_SECRET        — random, >=32 chars (e.g. `openssl rand -base64 48`) — seals Vroomy's own
+                         login-session cookie; never reuse across environments
 ```
 
 `.env.example` documents the same four vars — copy it to `.env.prod` and fill in real values if
@@ -232,6 +241,62 @@ independently of each other:
   ```
   This only applies to _new_ containers — existing ones keep their old log config until
   recreated.
+
+## 5. Authentication (OIDC via Keycloak)
+
+Login is handled by a self-hosted **Keycloak** instance, shared across projects — not something
+`docker-compose.yml` deploys itself; it's a separate standing service, currently at
+`https://auth.justwickedcode.dev`, realm **`apps`** (a deliberately generic realm name, not
+`vroomy` — the plan is every future project registers its own client in this same realm, sharing
+one user base/login session across all of them, per the original "unified login" goal).
+
+`frontend/src/lib/auth/oidc.ts` is provider-agnostic on purpose — it reads every endpoint
+(authorize/token/jwks/userinfo) from the provider's own `/.well-known/openid-configuration`
+discovery document rather than hardcoding them, and uses only standard OIDC claim names
+(`sub`/`name`/`email`/`picture`). This code was built against Casdoor, then Zitadel, then
+Keycloak over one long session — each switch needed zero code changes beyond env vars, which is
+exactly what this design is for. If you ever switch providers again, same expectation applies.
+
+### Adding a new project's client to this same Keycloak realm
+
+1. `https://auth.justwickedcode.dev` → log in as admin → confirm you're in the **`apps`** realm
+   (top-left dropdown) — never configure real users in the `master` realm, that's Keycloak's own
+   admin account only
+2. **Clients → Create client** → Client ID = your new project's name → **Client authentication:
+   On** (confidential client, gets a real secret — not a public/PKCE-only client) → Next →
+   **Valid redirect URIs**: `https://<your-project-domain>/auth/callback` → Save
+3. **Credentials** tab → copy the Client Secret
+4. Set that project's own `OIDC_ISSUER=https://auth.justwickedcode.dev/realms/apps`,
+   `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` env vars
+5. GitHub/Google providers are already configured at the realm level (**Identity providers** in
+   the console) — every client in this realm gets them automatically, no per-client setup needed
+
+### Known gotchas, found live
+
+- **`OIDC_ISSUER` must include the realm path, not just the bare domain**
+  (`.../realms/apps`, not just `https://auth.justwickedcode.dev`) — `oidc.ts`'s discovery fetch
+  was originally written as `new URL('/.well-known/...', issuerBase())`, which silently drops
+  any path component already on the issuer URL (a leading `/` in the relative argument resets
+  to domain root instead of appending). Invisible with Casdoor/Zitadel (bare-domain issuers,
+  nothing to lose) until Keycloak's realm-scoped issuer hit it directly — fixed with plain string
+  concatenation instead of relative `URL` resolution. If a future provider's issuer also has a
+  path component, this is already handled; nothing to redo.
+- **Keycloak's `firstName`/`lastName` are "root attributes" and cannot be deleted**, only
+  reconfigured — Realm settings → User profile → click the attribute → turn off "Required field"
+  and uncheck "User" under Permissions (both view and edit) to fully hide it from every
+  user-facing flow, including the GitHub/Google first-login screen. Vroomy never reads these
+  fields anyway (only the combined `name`/`email` claims), so hiding them costs nothing.
+- **Cloudflare bot-protection rules must explicitly exempt the VPS's IP for every new auth
+  subdomain** — a rule written against one subdomain doesn't automatically cover another, even
+  with a broad `http.host contains "yourdomain.dev"` match, if the rule was created before that
+  subdomain existed. `api`/`frontend`'s own server-to-server calls to the identity provider
+  (token exchange, JWKS fetch, discovery) run from the VPS and will get Cloudflare-challenged
+  exactly like a browser-less `curl` would if this isn't set up — this is a real production
+  blocker, not just a local-testing inconvenience, since Vroomy's actual login flow depends on
+  these same calls succeeding.
+- **Dokploy's "Create Environment File" toggle must be on**, and env var changes need an actual
+  **redeploy** (not just saving settings) to reach the running container — bit us more than once
+  across this whole stack, not just auth.
 
 ## What's already handled
 
