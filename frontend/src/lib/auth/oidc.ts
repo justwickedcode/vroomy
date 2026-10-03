@@ -60,10 +60,12 @@ export async function buildAuthorizeUrl(state: string): Promise<string> {
   // it deliberately doesn't touch the identity provider's SSO session, since that session may
   // be shared with other apps later (the whole point of a shared identity provider). Without
   // this, clicking "Log in" again after logging out silently reuses the still-alive provider
-  // session instead of showing the account/provider chooser — confirmed live: logging out and
-  // back in skipped straight past GitHub/Google selection. `prompt=select_account` forces the
-  // chooser every time, regardless of an existing provider-side session.
-  url.searchParams.set('prompt', 'select_account')
+  // session instead of a real login. `select_account` alone isn't enough — confirmed live, it
+  // let a single click "confirm" the existing session without re-entering a password. `login`
+  // is the OIDC prompt value that actually forces fresh re-authentication regardless of an
+  // existing session; the two combine (space-separated, per spec) to get both a real login and
+  // a chooser shown every time.
+  url.searchParams.set('prompt', 'select_account login')
   return url.toString()
 }
 
