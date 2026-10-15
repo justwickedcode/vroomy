@@ -26,8 +26,8 @@ func main() {
 	}
 
 	// This service only ever reads the quotes table — it deliberately does not run migrations.
-	// backend/scraper owns the schema; run it at least once against a fresh database before
-	// starting this service.
+	// quotes-crawler (a separate project) owns the schema; run it at least once against a fresh
+	// database before starting this service.
 	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal("Could not connect to Postgres: ", err)

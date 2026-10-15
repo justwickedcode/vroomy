@@ -1,6 +1,6 @@
 # quotes-api
 
-A small read-only Go HTTP API serving quotes from the `backend/scraper` crawler's Postgres database, currently used for one thing: feeding the frontend's typing-race game real passages instead of its static placeholder pool (see `frontend/src/lib/typing/sentences.ts`).
+A small read-only Go HTTP API serving quotes from the separate `quotes-crawler` project's Postgres database, currently used for one thing: feeding the frontend's typing-race game real passages instead of its static placeholder pool (see `frontend/src/lib/typing/sentences.ts`).
 
 ## Why Go, not Elysia/Hono
 
@@ -8,13 +8,13 @@ The original plan here (see git history) was a TypeScript API using Elysia or Ho
 
 If a broader REST API (auth, other resources, a real API for the whole app) becomes needed later, that's a fair reason to revisit the stack — Elysia/Hono are still perfectly reasonable choices for that. This one just didn't need it.
 
-## Relationship to backend/scraper
+## Relationship to quotes-crawler
 
-This is a **separate Go module** (its own `go.mod`), not a package inside `backend/scraper` — Go's `internal/` visibility rules mean it couldn't import `backend/scraper`'s internal packages even if it wanted to, and it doesn't need to: it only needs a Postgres connection and a couple of read queries, both trivial to have directly.
+The crawler that fills the quotes corpus lives in its own repo (`quotes-crawler`, split out of this monorepo's former `backend/scraper`). The **only** coupling between the two is the shared Postgres database — this API needs nothing from the crawler beyond a `DATABASE_URL` and a couple of read queries. No Redis, no shared code.
 
-- **Database**: points at the _same_ Postgres instance `backend/scraper` writes to (see `.env` — `DATABASE_URL`), not a separate one. Run `backend/scraper`'s own `docker-compose.yml` to get that database running.
-- **Schema/migrations**: owned entirely by `backend/scraper`. This API never runs migrations and never writes — run the scraper at least once against a fresh database before starting this API, so the `quotes` table (and its `word_count` column, which this API's filtering depends on) actually exists.
-- **`word_count`**: a column `backend/scraper`'s `db.SaveQuote` computes and stores on every quote at write time (indexed alongside `language`) — this API filters on it directly rather than re-splitting every candidate row's text on every request.
+- **Database**: points at the _same_ Postgres instance quotes-crawler writes to (see `.env` — `DATABASE_URL`), not a separate one. Run quotes-crawler's own `docker-compose.yml` to get that database running locally.
+- **Schema/migrations**: the `quotes` table is owned entirely by quotes-crawler (its `PRODUCTION.md` lists the columns Vroomy depends on). This API never migrates or writes it — run the crawler at least once against a fresh database before starting this API, so the `quotes` table (and its `word_count` column, which this API's filtering depends on) actually exists.
+- **`word_count`**: a column quotes-crawler's `db.SaveQuote` computes and stores on every quote at write time (indexed alongside `language`) — this API filters on it directly rather than re-splitting every candidate row's text on every request.
 
 ## Running it
 

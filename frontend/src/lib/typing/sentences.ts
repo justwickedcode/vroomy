@@ -64,7 +64,7 @@ const fetchRandomQuote = createServerFn({ method: 'GET' })
 //
 // Falls back to the local SENTENCE_POOL (via getRandomSentence) on any failure — a down API,
 // a network blip, an empty corpus on a fresh deploy — so a race never fails to start just
-// because the backend had a bad moment. Same "always have a fallback" principle backend/scraper
+// because the backend had a bad moment. Same "always have a fallback" principle quotes-crawler
 // itself applies to its own quote sources (see its README), just one layer further out.
 export async function getRandomQuoteText(exclude?: string): Promise<string> {
   try {

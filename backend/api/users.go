@@ -391,7 +391,7 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		// One multi-row INSERT rather than N round trips — same batching principle as the
-		// crawler's own "one INSERT per page, not per quote" (see backend/scraper).
+		// crawler's own "one INSERT per page, not per quote" (see quotes-crawler).
 		tx, err := pool.Begin(ctx)
 		if err != nil {
 			log.Printf("begin import tx failed: %s\n", err)

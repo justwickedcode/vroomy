@@ -26,7 +26,7 @@ type TypingQuote struct {
 // RandomTypingQuote returns one random quote matching language and a word-count range
 // [minWords, maxWords], excluding exclude (typically the previous race's passage, so
 // consecutive races don't repeat it back to back) if it's non-empty. word_count and
-// game_unsuitable are precomputed, indexed columns backend/scraper's db.SaveQuote sets at write
+// game_unsuitable are precomputed, indexed columns quotes-crawler's db.SaveQuote sets at write
 // time — filtering on them directly is far cheaper than re-deriving them from text on every
 // request. game_unsuitable flags real, correctly-sourced quotes that just aren't a good fit for
 // a typing race (too short, unwritable characters, leaked citation/markup — see

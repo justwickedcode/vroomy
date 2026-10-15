@@ -1,6 +1,8 @@
-# Production deployment: crawler, api, ws, and frontend bundled into one Compose project,
-# deployed against Postgres and Redis that already exist as their own Dokploy Database resources
-# (managed and backed up outside this file) — no postgres/redis service blocks here at all. This
+# Production deployment: api, ws, and frontend bundled into one Compose project, deployed
+# against a Postgres that already exists as its own Dokploy Database resource (managed and
+# backed up outside this file) — no postgres service block here at all. The quotes corpus in
+# that database is filled by the separate quotes-crawler project; the shared DATABASE_URL is the
+# only coupling between the two (see PRODUCTION.md). This
 # bundling is required, not just convenient: it's the minimum needed for frontend to reach api by
 # plain internal DNS (http://api:8080). See PRODUCTION.md's "Isolating api behind the frontend"
 # for why api and frontend specifically must be deployed together — Dokploy only gives automatic
@@ -9,9 +11,8 @@
 # (https://github.com/Dokploy/dokploy/issues/3670).
 #
 # Required env vars on this Dokploy Compose project:
-#   DATABASE_URL          — your existing Postgres Database resource's connection string
-#   REDIS_ADDR            — your existing Redis Database resource's connection string
-#                           (redis://... is fine directly; see PRODUCTION.md's Dokploy section)
+#   DATABASE_URL          — your existing Postgres Database resource's connection string (the
+#                           same database quotes-crawler writes to)
 #   CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com)
 #   VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
 #   PUBLIC_URL            — same as CORS_ALLOWED_ORIGIN, no trailing slash — used to build the
@@ -46,21 +47,6 @@ x-logging: &default-logging
     max-file: '3'
 
 services:
-  crawler:
-    build: ./backend/scraper
-    restart: unless-stopped
-    logging: *default-logging
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_ADDR: ${REDIS_ADDR}
-      REDIS_DB: 0
-      GOMEMLIMIT: 1536MiB
-      LOG_LEVEL: error
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-
   api:
     build: ./backend/api
     restart: unless-stopped
@@ -127,13 +113,13 @@ services:
         limits:
           memory: 256M
 
-# Postgres/Redis Database resources are deployed as Docker Swarm services on Dokploy's shared
+# Postgres Database resources are deployed as Docker Swarm services on Dokploy's shared
 # "dokploy-network" overlay network, not on whatever network a plain Compose project would
 # create by default — a brand-new default network (e.g. the auto-created
-# "<project>_default" bridge) has no route to them at all, and DATABASE_URL/REDIS_ADDR hostname
+# "<project>_default" bridge) has no route to them at all, and DATABASE_URL hostname
 # lookups fail outright (not an auth/connection-refused error, a DNS resolution failure).
 # Pointing this project's implicit "default" network at that same external network instead of
-# letting Compose create its own fixes it, while still giving api/crawler/ws/frontend
+# letting Compose create its own fixes it, while still giving api/ws/frontend
 # service-name DNS between each other (they're still all on one shared network together).
 networks:
   default:

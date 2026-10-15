@@ -1,4 +1,4 @@
-// Package db owns api's own tables (users, race_results) — distinct from backend/scraper's
+// Package db owns api's own tables (users, race_results) — distinct from quotes-crawler's
 // migrations, which own quotes/url_frontier in the same physical Postgres database. goose's
 // migration-version tracking defaults to one shared "goose_db_version" table regardless of
 // which Go binary calls it, so without SetTableName below, api's and scraper's independent

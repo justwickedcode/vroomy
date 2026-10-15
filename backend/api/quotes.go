@@ -26,8 +26,8 @@ type TypingQuote struct {
 // RandomTypingQuote returns one random quote matching language and a word-count range
 // [minWords, maxWords], excluding exclude (typically the sentence the client was just shown,
 // so consecutive races don't repeat the same passage back to back) if it's non-empty.
-// word_count and game_unsuitable are precomputed, indexed columns the scraper (backend/scraper)
-// sets at write time — filtering on them directly is far cheaper than re-deriving them from text
+// word_count and game_unsuitable are precomputed, indexed columns the crawler (the separate
+// quotes-crawler project) sets at write time — filtering on them directly is far cheaper than re-deriving them from text
 // on every request. game_unsuitable flags real, correctly-sourced quotes that just aren't a good
 // fit for a typing race (too short, unwritable characters, leaked citation/markup — see
 // dedup.GameSuitability) — excluded here, not deleted from the corpus, since some other future
@@ -40,7 +40,7 @@ type TypingQuote struct {
 // O(N log N) full-set sort on this API's one public endpoint, on every single request. Fine at
 // today's corpus size, but the crawler this API reads from is explicitly designed to grow into
 // the hundreds of thousands of rows (Goodreads' own sitemap alone lists ~5.5M quote URLs — see
-// backend/scraper/README.md), at which point that sort becomes real, measurable cost paid by
+// quotes-crawler's README.md), at which point that sort becomes real, measurable cost paid by
 // every typing-race request. Instead: pick a random starting id (from the table's live min/max,
 // so it always tracks the crawler's growing corpus with no cache to invalidate) and scan forward
 // from there for the first row matching the filters — an index range scan on the primary key,
