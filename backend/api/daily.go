@@ -59,10 +59,10 @@ func DailyTypingQuote(ctx context.Context, pool *pgxpool.Pool, day time.Time) (D
 		return DailyQuote{}, err
 	}
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO daily_quotes (day, text, author, source, language)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO daily_quotes (day, text, author, source, language, source_url)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))
 		ON CONFLICT (day) DO NOTHING
-	`, day, candidate.Text, candidate.Author, candidate.Source, candidate.Language); err != nil {
+	`, day, candidate.Text, candidate.Author, candidate.Source, candidate.Language, candidate.SourceURL); err != nil {
 		return DailyQuote{}, err
 	}
 	return loadDailyQuote(ctx, pool, day)
@@ -72,8 +72,9 @@ func loadDailyQuote(ctx context.Context, pool *pgxpool.Pool, day time.Time) (Dai
 	var q DailyQuote
 	var stored time.Time
 	err := pool.QueryRow(ctx, `
-		SELECT day, text, author, source, language FROM daily_quotes WHERE day = $1
-	`, day).Scan(&stored, &q.Text, &q.Author, &q.Source, &q.Language)
+		SELECT day, text, author, source, language, COALESCE(source_url, '')
+		FROM daily_quotes WHERE day = $1
+	`, day).Scan(&stored, &q.Text, &q.Author, &q.Source, &q.Language, &q.SourceURL)
 	q.Date = stored.Format(dailyDateLayout)
 	return q, err
 }

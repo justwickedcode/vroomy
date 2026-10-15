@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   CalendarDays,
@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import TypingWords from '#/components/typing/TypingWords'
+import RaceTrack from '#/components/typing/RaceTrack'
+import QuoteCredit from '#/components/typing/QuoteCredit'
 import Gauge from '#/components/typing/Gauge'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
@@ -43,14 +45,6 @@ function formatHistoryDate(date: string): string {
 export default function DailyChallengeCard() {
   const { hydrated, result, complete, history, bestWpm, streak } =
     useDailyChallenge()
-  // useTypingRace only wants the passage text — the author is captured on the side here so the
-  // card can credit the quote without widening that hook's contract for one caller.
-  const [author, setAuthor] = useState<string | null>(null)
-  const loadDailyText = useCallback(async () => {
-    const quote = await getDailyQuote()
-    setAuthor(quote.author)
-    return quote.text
-  }, [])
   const {
     spans,
     typed,
@@ -58,11 +52,13 @@ export default function DailyChallengeCard() {
     finished,
     wpm,
     accuracy,
+    progress,
     handleInputChange,
     start,
     reset,
     getReplay,
-  } = useTypingRace(loadDailyText)
+    credit,
+  } = useTypingRace(getDailyQuote)
   // Keyed on the local date, so the board rolls over at the same midnight the passage does.
   const leaderboard = useLeaderboard({ board: 'daily', date: todayKey() })
   const { user, loaded: userLoaded } = useCurrentUser()
@@ -162,7 +158,25 @@ export default function DailyChallengeCard() {
           <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
         </div>
       </CardHeader>
-      <div className="glass-divider" />
+
+      <RaceTrack
+        racers={[
+          {
+            id: 'you',
+            name: user?.name ?? 'You',
+            progress,
+            wpm,
+            finished,
+            isYou: true,
+            model: profile.carModel,
+            underglow: profile.underglow,
+            underglowColor: profile.underglowColor,
+            trail: profile.trail,
+          },
+        ]}
+        phase="ready"
+        className="flex-shrink-0"
+      />
 
       <CardContent className="pt-6">
         {hydrated && bestWpm > 0 && !finished && (
@@ -182,7 +196,7 @@ export default function DailyChallengeCard() {
           locked={locked}
           onInputChange={handleInputChange}
           inputRef={inputRef}
-          className={author ? 'mb-2' : 'mb-5'}
+          className="mb-2"
           overlay={
             finished ? (
               <div className="countdown-overlay">
@@ -222,11 +236,7 @@ export default function DailyChallengeCard() {
           }
         />
 
-        {author && (
-          <p className="mb-5 text-right text-sm text-muted-foreground italic">
-            — {author}
-          </p>
-        )}
+        <QuoteCredit {...credit} className="mb-5" />
 
         {finished ? (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4">

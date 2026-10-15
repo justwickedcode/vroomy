@@ -26,6 +26,7 @@ export interface MultiplayerQuote {
   author: string
   source: string
   language: string
+  sourceUrl?: string
 }
 
 export interface Opponent {

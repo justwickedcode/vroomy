@@ -811,8 +811,8 @@ body::before {
 
 /* ══════════════════════════════════════════════════════════════════
    RACE TRACK — NitroType-faithful rebuild
-   Layout: race-track-panel (flex col) → grandstand → sponsor strip
-   → top curb → lanes → bottom curb. Finish band is absolute over all.
+   Layout: race-track-panel (flex col) → top curb → lanes → bottom curb.
+   Finish band is absolute over all.
    ══════════════════════════════════════════════════════════════════ */
 
 .race-track-panel {
@@ -820,163 +820,10 @@ body::before {
   display: flex;
   flex-direction: column;
   overflow-x: clip; /* clip horizontally; labels bleed vertically */
-}
-
-/* ── Grandstand ──────────────────────────────────────────────────── */
-
-.race-grandstand {
-  position: relative;
-  flex-shrink: 0;
-  height: 132px;
-  overflow: hidden;
-  background: linear-gradient(180deg, #060910 0%, #0d1322 50%, #172038 100%);
-}
-
-/* Triangle flag bunting — 8 colours, 208px tile, always scrolling */
-.race-flags-band {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 26px;
-  z-index: 5;
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='208' height='26'%3E%3Cpolygon points='0,0 26,0 13,26' fill='%23ef4444'/%3E%3Cpolygon points='26,0 52,0 39,26' fill='%233b82f6'/%3E%3Cpolygon points='52,0 78,0 65,26' fill='%23facc15'/%3E%3Cpolygon points='78,0 104,0 91,26' fill='%238b5cf6'/%3E%3Cpolygon points='104,0 130,0 117,26' fill='%2322c55e'/%3E%3Cpolygon points='130,0 156,0 143,26' fill='%23f97316'/%3E%3Cpolygon points='156,0 182,0 169,26' fill='%2306b6d4'/%3E%3Cpolygon points='182,0 208,0 195,26' fill='%23ec4899'/%3E%3Cline x1='0' y1='1.5' x2='208' y2='1.5' stroke='rgba(255,255,255,.4)' stroke-width='2'/%3E%3C/svg%3E");
-  background-size: 208px 26px;
-  background-repeat: repeat-x;
-  background-position: calc(-1 * var(--road-pos, 0px)) 0;
-}
-.race-flags-band::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, transparent 70%);
-}
-
-/* Crowd SVG — 2200px wide (2× 1100px tile); driven by rAF --crowd-pos (modulo 1100) */
-.race-crowd-svg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform: translateX(calc(-1 * var(--crowd-pos, 0px)));
-}
-
-@keyframes fan-wave {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-2px);
-  }
-}
-.race-crowd-svg circle:not(.cf) {
-  animation: fan-wave 2.2s ease-in-out infinite;
-}
-.race-crowd-svg circle:not(.cf):nth-child(4n + 2) {
-  animation-delay: -0.55s;
-}
-.race-crowd-svg circle:not(.cf):nth-child(4n + 3) {
-  animation-delay: -1.1s;
-}
-.race-crowd-svg circle:not(.cf):nth-child(4n + 4) {
-  animation-delay: -1.65s;
-}
-
-@keyframes cam {
-  0%,
-  88%,
-  100% {
-    opacity: 0;
-  }
-  93% {
-    opacity: 1;
-  }
-}
-.race-crowd-svg .cf {
-  animation: cam var(--d, 3s) var(--delay, 0s) linear infinite;
-}
-
-/* ── Sponsor strip ───────────────────────────────────────────────── */
-
-.race-sponsor-strip {
-  flex-shrink: 0;
-  height: 42px;
-  overflow: hidden;
-  border-top: 2px solid #c8930f;
-  border-bottom: 2px solid #c8930f;
-  position: relative;
-  z-index: 2;
-  box-shadow: 0 2px 12px rgba(200, 147, 15, 0.22);
-}
-
-/* Sponsor inner — 8 blocks × 183px = 1464px per half; driven by rAF --sponsor-pos (modulo 1464) */
-.race-sponsor-inner {
-  display: flex;
-  width: max-content;
-  transform: translateX(calc(-1 * var(--sponsor-pos, 0px)));
-}
-
-.race-sponsor-block {
-  flex: 0 0 183px;
-  width: 183px;
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.95);
-  border-right: 1px solid rgba(0, 0, 0, 0.25);
-  position: relative;
-  overflow: hidden;
-}
-
-.race-sponsor-block::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.09) 0%,
-    rgba(255, 255, 255, 0.02) 50%,
-    rgba(0, 0, 0, 0.12) 100%
-  );
-  pointer-events: none;
-}
-
-.race-sponsor-block::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 3px;
-  background: rgba(255, 255, 255, 0.22);
-}
-
-.race-sponsor-logo {
-  font-size: 15px;
-  flex-shrink: 0;
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
-}
-
-.race-sponsor-name {
-  line-height: 1.05;
-  font-size: 9px;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
-}
-
-.race-sponsor-tag {
-  font-size: 5.8px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  opacity: 0.62;
-  display: block;
-  margin-top: 2.5px;
+  /* A slim asphalt shoulder above the top curb, so the first lane's name tag has room above
+     the car instead of being cut off by the card's top edge. */
+  padding-top: 14px;
+  background: #3f434f;
 }
 
 /* ── Curbs ───────────────────────────────────────────────────────── */
@@ -2000,26 +1847,15 @@ body::before {
 .race-char-current {
   color: #fff;
   background: oklch(0.58 0.2 232);
-  border-radius: 4px;
-  padding: 0 2px;
+  border-radius: 3px;
+  /* No padding: the keycap would be wider than every other character, so as it moved along
+     each keystroke the rest of the line shifted with it and words near a wrap jumped between
+     lines. The first shadow (a 2px spread in the keycap's own color) draws that extra edge
+     outside the layout box instead, so the text never moves. */
   box-shadow:
-    0 2px 0 oklch(0.38 0.18 232),
-    0 0 14px oklch(0.58 0.2 232 / 0.5);
-  animation: char-key-breathe 1.1s ease-in-out infinite;
-}
-
-@keyframes char-key-breathe {
-  0%,
-  100% {
-    box-shadow:
-      0 2px 0 oklch(0.38 0.18 232),
-      0 0 10px oklch(0.58 0.2 232 / 0.4);
-  }
-  50% {
-    box-shadow:
-      0 2px 0 oklch(0.38 0.18 232),
-      0 0 22px oklch(0.58 0.2 232 / 0.7);
-  }
+    0 0 0 2px oklch(0.58 0.2 232),
+    0 3px 0 1px oklch(0.38 0.18 232),
+    0 0 12px 2px oklch(0.58 0.2 232 / 0.45);
 }
 
 /* Error: wrong key — red keycap */
@@ -2027,9 +1863,9 @@ body::before {
   color: #fff;
   background: oklch(0.52 0.22 20);
   box-shadow:
-    0 2px 0 oklch(0.34 0.18 20),
-    0 0 14px oklch(0.52 0.22 20 / 0.6);
-  animation: none;
+    0 0 0 2px oklch(0.52 0.22 20),
+    0 3px 0 1px oklch(0.34 0.18 20),
+    0 0 12px 2px oklch(0.52 0.22 20 / 0.55);
 }
 
 .race-word-pending {

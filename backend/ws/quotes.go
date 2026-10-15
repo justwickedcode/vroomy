@@ -21,6 +21,9 @@ type TypingQuote struct {
 	Author   string `json:"author"`
 	Source   string `json:"source"`
 	Language string `json:"language"`
+	// SourceURL is the exact page the crawler took this quote from, so the game can link to
+	// it. Empty for quotes crawled before quotes-crawler started recording it.
+	SourceURL string `json:"sourceUrl,omitempty"`
 }
 
 // RandomTypingQuote returns one random quote matching language and a word-count range
@@ -50,7 +53,7 @@ func RandomTypingQuote(ctx context.Context, pool *pgxpool.Pool, language string,
 	}
 	randomID := minID + rand.Int63n(maxID-minID+1)
 
-	const selectQuery = `SELECT text, author, source, language
+	const selectQuery = `SELECT text, COALESCE(author, ''), COALESCE(source, ''), language, COALESCE(source_url, '')
          FROM quotes
          WHERE id >= $1 AND language = $2 AND word_count BETWEEN $3 AND $4 AND text != $5
                AND game_unsuitable = false
@@ -59,13 +62,13 @@ func RandomTypingQuote(ctx context.Context, pool *pgxpool.Pool, language string,
 
 	var q TypingQuote
 	err := pool.QueryRow(ctx, selectQuery, randomID, language, minWords, maxWords, exclude).
-		Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+		Scan(&q.Text, &q.Author, &q.Source, &q.Language, &q.SourceURL)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Nothing at or after randomID matched — wrap around to the start of the id range
 		// instead of giving up.
 		err = pool.QueryRow(ctx, selectQuery, minID, language, minWords, maxWords, exclude).
-			Scan(&q.Text, &q.Author, &q.Source, &q.Language)
+			Scan(&q.Text, &q.Author, &q.Source, &q.Language, &q.SourceURL)
 	}
 
 	if errors.Is(err, pgx.ErrNoRows) {

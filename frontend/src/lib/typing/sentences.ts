@@ -1,7 +1,31 @@
 import { createServerFn } from '@tanstack/react-start'
 import { apiFetch } from '#/lib/api/server'
 
-// Fallback pool for when backend/api is unreachable (see getRandomQuoteText and getDailyQuote
+// A passage to type, plus who said it and the page the crawler took it from (both absent for
+// the local fallback sentences below, which have no author).
+export interface Passage {
+  text: string
+  author?: string | null
+  sourceUrl?: string | null
+}
+
+interface ApiQuote {
+  text: string
+  author: string
+  sourceUrl?: string
+}
+
+function passageFrom(quote: ApiQuote): Passage | null {
+  return quote.text
+    ? {
+        text: quote.text,
+        author: quote.author || null,
+        sourceUrl: quote.sourceUrl || null,
+      }
+    : null
+}
+
+// Fallback pool for when backend/api is unreachable (see getRandomPassage and getDailyQuote
 // below). No longer the primary source for anything — solo races and the daily challenge both
 // come from the real scraped corpus, served live over the API.
 //
@@ -32,13 +56,13 @@ export function getRandomSentence(exclude?: string): string {
 const fetchRandomQuote = createServerFn({ method: 'GET' })
   .validator((data?: { exclude?: string }) => data)
   .handler(async ({ data }) => {
-    const quote = await apiFetch<{ text: string }>('/api/quotes/random', {
+    const quote = await apiFetch<ApiQuote>('/api/quotes/random', {
       search: { exclude: data?.exclude },
     })
-    return quote.text ? quote.text : null
+    return passageFrom(quote)
   })
 
-// getRandomQuoteText is the real solo-race quote source: backend/api's live, scraped corpus
+// getRandomPassage is the real solo-race quote source: backend/api's live, scraped corpus
 // (see backend/api/quotes.go's RandomTypingQuote — word-count range and game-suitability
 // filtering already match what a typing race needs, no client-side filtering required here).
 // exclude is forwarded as-is so the API can avoid repeating the sentence a player was just
@@ -48,17 +72,17 @@ const fetchRandomQuote = createServerFn({ method: 'GET' })
 // a network blip, an empty corpus on a fresh deploy — so a race never fails to start just
 // because the backend had a bad moment. Same "always have a fallback" principle quotes-crawler
 // itself applies to its own quote sources (see its README), just one layer further out.
-export async function getRandomQuoteText(exclude?: string): Promise<string> {
+export async function getRandomPassage(exclude?: string): Promise<Passage> {
   try {
-    const text = await fetchRandomQuote({ data: { exclude } })
-    if (text) return text
+    const passage = await fetchRandomQuote({ data: { exclude } })
+    if (passage) return passage
   } catch (err) {
     console.warn(
-      'getRandomQuoteText: falling back to the local sentence pool — quotes API unavailable:',
+      'getRandomPassage: falling back to the local sentence pool — quotes API unavailable:',
       err,
     )
   }
-  return getRandomSentence(exclude)
+  return { text: getRandomSentence(exclude) }
 }
 
 // Local calendar date as "YYYY-MM-DD" — shared by todayKey() below and by the daily challenge's
@@ -88,31 +112,23 @@ function getDailyFallbackSentence(): string {
   return SENTENCE_POOL[hash % SENTENCE_POOL.length]
 }
 
-export interface DailyQuote {
-  text: string
-  author: string | null
-}
-
 // date is the player's own local calendar date, so the challenge rolls over at their midnight —
 // api accepts any date that's currently "today" in some timezone (see backend/api/daily.go's
 // parseDailyDate).
 const fetchDailyQuote = createServerFn({ method: 'GET' })
   .validator((data: { date: string }) => data)
   .handler(async ({ data }) => {
-    const quote = await apiFetch<{ text: string; author: string }>(
-      '/api/quotes/daily',
-      { search: { date: data.date } },
-    )
-    return quote.text
-      ? { text: quote.text, author: quote.author || null }
-      : null
+    const quote = await apiFetch<ApiQuote>('/api/quotes/daily', {
+      search: { date: data.date },
+    })
+    return passageFrom(quote)
   })
 
 // getDailyQuote is the daily challenge's passage: one real quote from the corpus per day,
 // picked and frozen server-side (backend/api's daily_quotes table) so every player types the
 // identical passage all day. Falls back to the local pool if the API is unavailable, same as
-// getRandomQuoteText.
-export async function getDailyQuote(): Promise<DailyQuote> {
+// getRandomPassage.
+export async function getDailyQuote(): Promise<Passage> {
   try {
     const quote = await fetchDailyQuote({ data: { date: todayKey() } })
     if (quote) return quote

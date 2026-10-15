@@ -22,6 +22,7 @@ import RaceTrack from '#/components/typing/RaceTrack'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
+import QuoteCredit from '#/components/typing/QuoteCredit'
 import type { CSSProperties } from 'react'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
@@ -92,6 +93,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     start,
     reset,
     getReplay,
+    credit,
   } = useTypingRace()
 
   const profile = useProfile()
@@ -347,7 +349,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     : undefined
 
   return (
-    <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">
+    <Card className="rise-in flex flex-col overflow-hidden">
       <CardContent className="flex flex-col p-0">
         <div className="relative flex-shrink-0">
           <RaceTrack
@@ -414,6 +416,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
             </>
           }
         />
+        <QuoteCredit {...credit} className="px-1 pt-3" />
       </CardContent>
 
       {finished && <div className="glass-divider" />}

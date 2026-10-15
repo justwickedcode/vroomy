@@ -5,6 +5,7 @@ import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
+import QuoteCredit from '#/components/typing/QuoteCredit'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
@@ -278,9 +279,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   ]
 
   return (
-    <main className="flex-1 px-4 py-6">
+    <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap flex flex-col">
-        <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">
+        <Card className="rise-in flex flex-col overflow-hidden">
           <CardContent className="flex flex-col p-0">
             <RaceTrack
               racers={racers}
@@ -319,6 +320,11 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                   </div>
                 )
               }
+            />
+            <QuoteCredit
+              author={mp.quote?.author}
+              sourceUrl={mp.quote?.sourceUrl}
+              className="px-4 pt-3"
             />
           </CardContent>
 

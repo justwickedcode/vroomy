@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getRandomQuoteText } from './sentences'
+import { getRandomPassage } from './sentences'
+import type { Passage } from './sentences'
 import { useReplayRecorder } from '#/lib/replay/recorder'
 
 const TICK_MS = 100
@@ -24,7 +25,7 @@ export function computeWordSpans(text: string): Array<WordSpan> {
 }
 
 export function useTypingRace(
-  getText: (exclude?: string) => string | Promise<string> = getRandomQuoteText,
+  getText: (exclude?: string) => Passage | Promise<Passage> = getRandomPassage,
 ) {
   // Starts empty rather than calling getText() directly in useState's
   // initializer — that would run once during SSR and again on client
@@ -36,6 +37,9 @@ export function useTypingRace(
   const getTextRef = useRef(getText)
   getTextRef.current = getText
   const [text, setText] = useState('')
+  // Who said the current passage and where it was scraped from — shown under the text, empty for
+  // the local fallback sentences.
+  const [credit, setCredit] = useState<Omit<Passage, 'text'>>({})
   const [typed, setTyped] = useState('')
   // Which word is "current" is tracked as its own piece of state, advanced
   // only by an explicit, verified space-commit — never re-derived from raw
@@ -58,7 +62,9 @@ export function useTypingRace(
   useEffect(() => {
     let cancelled = false
     Promise.resolve(getTextRef.current()).then((next) => {
-      if (!cancelled) setText(next)
+      if (cancelled) return
+      setText(next.text)
+      setCredit({ author: next.author, sourceUrl: next.sourceUrl })
     })
     // Guards against setting state from a stale request that resolves after this effect's
     // own cleanup — can't happen from a plain remount today, but getText is caller-supplied,
@@ -251,7 +257,11 @@ export function useTypingRace(
     // finished text until the next one resolves — reuses the exact same "waiting" handling
     // (see the text-keyed effect in TypingRace) instead of needing a second loading state.
     setText('')
-    Promise.resolve(getTextRef.current(exclude)).then(setText)
+    setCredit({})
+    Promise.resolve(getTextRef.current(exclude)).then((next) => {
+      setText(next.text)
+      setCredit({ author: next.author, sourceUrl: next.sourceUrl })
+    })
   }
 
   // The just-finished race as a replay (see useReplayRecorder), or null if there isn't one.
@@ -259,6 +269,7 @@ export function useTypingRace(
 
   return {
     text,
+    credit,
     spans,
     typed,
     activeWordIndex,
