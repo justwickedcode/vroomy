@@ -63,7 +63,7 @@ something already running.
   **server-broadcast event** — every player in a room gets the same
   countdown at once. Nobody clicks "ready"; the room decides.
 - **Content pipeline:** instead of a fixed sentence list, passages should
-  come from a scraped, deduplicated corpus of real quotes (`backend/scraper`),
+  come from a scraped, deduplicated corpus of real quotes (`quotes-crawler`),
   served to the frontend through a REST API (`backend/api`).
 - **Product pillars this plan optimizes for**, in priority order:
   1. Solo play must never depend on the network — it's the fallback when
@@ -224,8 +224,8 @@ specifies the full protocol.
 
 One Postgres instance, one root-level `docker-compose.yml` (see
 [§13.1](#131-unifying-the-two-docker-composes)) — not the two independent,
-port-colliding Postgres containers that exist today in `backend/api/` and
-`backend/scraper/`. Two ownership zones inside the same database, enforced
+port-colliding Postgres containers that used to exist in `backend/api/` and
+the former `backend/scraper/` (now `quotes-crawler`). Two ownership zones inside the same database, enforced
 by convention (and, if this ever needs hardening, Postgres role grants):
 
 - **`scraper` owns and is the sole writer of** `quotes`, `url_frontier`.
@@ -249,7 +249,7 @@ by convention (and, if this ever needs hardening, Postgres role grants):
 | `created_at`  | timestamp  |                                                      |
 
 `url_frontier` (already migrated, full field list in
-`backend/scraper/README.md`) — the crawl priority queue: url, source,
+`quotes-crawler`'s `README.md`) — the crawl priority queue: url, source,
 priority, depth, a `pending`/`in_progress`/`done`/`failed` status, error
 count, timestamps.
 
@@ -732,7 +732,7 @@ this section covers the two supporting pieces referenced from there.)
 
 ### 8.1 Redis key design for room state
 
-Redis DB1 (kept separate from the scraper's DB0 dedup/frontier keys — see
+Redis DB1 (the crawler now runs its own Redis, so there is no shared DB0 to collide with — see
 the architecture diagram in [§3](#3-target-architecture)):
 
 ```
