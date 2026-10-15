@@ -6,7 +6,10 @@ import { Button } from '#/components/ui/button'
 import WordStream from '#/components/guide/WordStream'
 import Gauge from '#/components/typing/Gauge'
 import Keyboard from '#/components/guide/Keyboard'
+import RaceTrack from '#/components/typing/RaceTrack'
 import { useWordStream } from '#/lib/guide/useWordStream'
+import { useProfile } from '#/lib/profile/useProfile'
+import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 
 export const Route = createFileRoute('/guide')({ component: GuidePage })
 
@@ -17,6 +20,8 @@ function Practice() {
     useWordStream()
 
   const inputRef = useRef<HTMLInputElement>(null)
+  const profile = useProfile()
+  const { user } = useCurrentUser()
   const currentWord = queue[0]
   const nextKey = !currentWord
     ? null
@@ -47,7 +52,27 @@ function Practice() {
           <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
         </div>
       </CardHeader>
-      <div className="glass-divider" />
+
+      {/* The drill never ends, so there's no finish to drive toward: the car pulls off the line
+          once you start typing and then cruises, with the road scrolling at your current WPM. */}
+      <RaceTrack
+        racers={[
+          {
+            id: 'you',
+            name: user?.name ?? 'You',
+            progress: wpm > 0 ? 0.4 : 0,
+            wpm,
+            isYou: true,
+            model: profile.carModel,
+            underglow: profile.underglow,
+            underglowColor: profile.underglowColor,
+            trail: profile.trail,
+          },
+        ]}
+        phase="ready"
+        finishLine={false}
+        className="flex-shrink-0"
+      />
 
       <CardContent className="pt-6">
         <WordStream

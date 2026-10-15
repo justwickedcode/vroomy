@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   CalendarDays,
   Flame,
   Play,
+  PlayCircle,
   RotateCcw,
   Sparkles,
   Trophy,
@@ -12,6 +13,8 @@ import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import TypingWords from '#/components/typing/TypingWords'
+import RaceTrack from '#/components/typing/RaceTrack'
+import QuoteCredit from '#/components/typing/QuoteCredit'
 import Gauge from '#/components/typing/Gauge'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
@@ -43,14 +46,6 @@ function formatHistoryDate(date: string): string {
 export default function DailyChallengeCard() {
   const { hydrated, result, complete, history, bestWpm, streak } =
     useDailyChallenge()
-  // useTypingRace only wants the passage text — the author is captured on the side here so the
-  // card can credit the quote without widening that hook's contract for one caller.
-  const [author, setAuthor] = useState<string | null>(null)
-  const loadDailyText = useCallback(async () => {
-    const quote = await getDailyQuote()
-    setAuthor(quote.author)
-    return quote.text
-  }, [])
   const {
     spans,
     typed,
@@ -58,11 +53,13 @@ export default function DailyChallengeCard() {
     finished,
     wpm,
     accuracy,
+    progress,
     handleInputChange,
     start,
     reset,
     getReplay,
-  } = useTypingRace(loadDailyText)
+    credit,
+  } = useTypingRace(getDailyQuote)
   // Keyed on the local date, so the board rolls over at the same midnight the passage does.
   const leaderboard = useLeaderboard({ board: 'daily', date: todayKey() })
   const { user, loaded: userLoaded } = useCurrentUser()
@@ -81,7 +78,11 @@ export default function DailyChallengeCard() {
   // `finished` going true) is otherwise identical every time.
   const [attempt, setAttempt] = useState(0)
   const [newBest, setNewBest] = useState(false)
+  // This attempt's replay, once saved — for the "Watch replay" button.
+  const [replayId, setReplayId] = useState<string | null>(null)
   const recordedAttemptRef = useRef<number | null>(null)
+  const latestAttemptRef = useRef(attempt)
+  latestAttemptRef.current = attempt
 
   const locked = phase !== 'ready'
 
@@ -113,15 +114,20 @@ export default function DailyChallengeCard() {
     recordedAttemptRef.current = attempt
     setNewBest(wpm > bestWpm)
     complete(wpm, accuracy)
-    profile.addRace({
-      wpm,
-      accuracy,
-      placement: 1,
-      racerCount: 1,
-      mode: 'daily',
-      dailyDate: todayKey(),
-      replay: getReplay(),
-    })
+    void profile
+      .addRace({
+        wpm,
+        accuracy,
+        placement: 1,
+        racerCount: 1,
+        mode: 'daily',
+        dailyDate: todayKey(),
+        replay: getReplay(),
+      })
+      .then((id) => {
+        // Ignore a save that lands after the player already hit "Try again".
+        if (latestAttemptRef.current === attempt) setReplayId(id)
+      })
   }, [
     finished,
     wpm,
@@ -141,6 +147,7 @@ export default function DailyChallengeCard() {
   function handleTryAgain() {
     reset()
     setNewBest(false)
+    setReplayId(null)
     setAttempt((a) => a + 1)
     setPhase('idle')
   }
@@ -162,7 +169,25 @@ export default function DailyChallengeCard() {
           <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
         </div>
       </CardHeader>
-      <div className="glass-divider" />
+
+      <RaceTrack
+        racers={[
+          {
+            id: 'you',
+            name: user?.name ?? 'You',
+            progress,
+            wpm,
+            finished,
+            isYou: true,
+            model: profile.carModel,
+            underglow: profile.underglow,
+            underglowColor: profile.underglowColor,
+            trail: profile.trail,
+          },
+        ]}
+        phase="ready"
+        className="flex-shrink-0"
+      />
 
       <CardContent className="pt-6">
         {hydrated && bestWpm > 0 && !finished && (
@@ -182,10 +207,10 @@ export default function DailyChallengeCard() {
           locked={locked}
           onInputChange={handleInputChange}
           inputRef={inputRef}
-          className={author ? 'mb-2' : 'mb-5'}
+          className="mb-2"
           overlay={
             finished ? (
-              <div className="countdown-overlay">
+              <div className="countdown-overlay gap-3">
                 <Button
                   onClick={handleTryAgain}
                   size="lg"
@@ -194,6 +219,18 @@ export default function DailyChallengeCard() {
                   <RotateCcw />
                   Try again
                 </Button>
+                {replayId && (
+                  <Button
+                    asChild
+                    size="lg"
+                    className="pointer-events-auto"
+                  >
+                    <Link to="/replays/$replayId" params={{ replayId }}>
+                      <PlayCircle />
+                      Watch replay
+                    </Link>
+                  </Button>
+                )}
               </div>
             ) : phase === 'idle' ? (
               <div className="countdown-overlay">
@@ -222,11 +259,7 @@ export default function DailyChallengeCard() {
           }
         />
 
-        {author && (
-          <p className="mb-5 text-right text-sm text-muted-foreground italic">
-            — {author}
-          </p>
-        )}
+        <QuoteCredit {...credit} className="mb-5" />
 
         {finished ? (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4">

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Copy, Trophy, Users } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowLeft, Check, Copy, PlayCircle, Trophy, Users } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
+import QuoteCredit from '#/components/typing/QuoteCredit'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
@@ -221,17 +223,21 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   // server's figure, computed from its own word count and our elapsed time.
   const recordedQuoteRef = useRef<string | null>(null)
   const { myResult, getReplay } = mp
+  // This race's replay, once saved — for the "Watch replay" button on the results screen.
+  const [replayId, setReplayId] = useState<string | null>(null)
   useEffect(() => {
     if (!myResult || recordedQuoteRef.current === mp.text) return
     recordedQuoteRef.current = mp.text
-    profile.addRace({
-      wpm: Math.round(myResult.wpm),
-      accuracy: mp.accuracy,
-      placement: myResult.rank,
-      racerCount: Math.max(mp.racerCount, myResult.rank),
-      mode: 'multiplayer',
-      replay: getReplay(),
-    })
+    void profile
+      .addRace({
+        wpm: Math.round(myResult.wpm),
+        accuracy: mp.accuracy,
+        placement: myResult.rank,
+        racerCount: Math.max(mp.racerCount, myResult.rank),
+        mode: 'multiplayer',
+        replay: getReplay(),
+      })
+      .then(setReplayId)
   }, [
     myResult,
     mp.text,
@@ -278,9 +284,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   ]
 
   return (
-    <main className="flex-1 px-4 py-6">
+    <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap flex flex-col">
-        <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">
+        <Card className="rise-in flex flex-col overflow-hidden">
           <CardContent className="flex flex-col p-0">
             <RaceTrack
               racers={racers}
@@ -319,6 +325,11 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                   </div>
                 )
               }
+            />
+            <QuoteCredit
+              author={mp.quote?.author}
+              sourceUrl={mp.quote?.sourceUrl}
+              className="px-4 pt-3"
             />
           </CardContent>
 
@@ -369,7 +380,15 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 </div>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-3">
+                {replayId && (
+                  <Button asChild variant="outline">
+                    <Link to="/replays/$replayId" params={{ replayId }}>
+                      <PlayCircle />
+                      Watch replay
+                    </Link>
+                  </Button>
+                )}
                 <Button variant="outline" onClick={onLeave}>
                   <ArrowLeft />
                   Back to play

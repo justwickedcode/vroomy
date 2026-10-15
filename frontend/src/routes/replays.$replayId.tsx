@@ -119,7 +119,7 @@ function ReplayPage() {
   if (isDesktop === null) return null
 
   return (
-    <main className="flex-1 px-4 py-6">
+    <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Button asChild variant="ghost" size="sm">
