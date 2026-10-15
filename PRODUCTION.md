@@ -1,10 +1,10 @@
 # Production deployment
 
-One file, `docker-compose.yml` at the repo root, deploys `crawler` (`backend/scraper`), `api`
-(`backend/api`), `ws` (`backend/ws`), and `frontend` (TanStack Start, via `frontend/Dockerfile`)
-together. It deliberately has **no** `postgres`/`redis` service blocks — this deploys against
-Postgres and Redis that already exist elsewhere (e.g. Dokploy Database resources you manage and
-back up separately), via `DATABASE_URL`/`REDIS_ADDR`. The frontend is bundled in with the
+One file, `docker-compose.yml` at the repo root, deploys `api` (`backend/api`), `ws`
+(`backend/ws`), and `frontend` (TanStack Start, via `frontend/Dockerfile`) together. It
+deliberately has **no** `postgres` service block — this deploys against a Postgres that already
+exists elsewhere (e.g. a Dokploy Database resource you manage and back up separately), via
+`DATABASE_URL`. The frontend is bundled in with the
 backend, not deployed to its own separate host, for a specific reason: see **"Isolating api
 behind the frontend"** below.
 
@@ -29,6 +29,14 @@ no error anywhere. `API_INTERNAL_URL` needs none of this — it's read fresh fro
 inside a server-only `createServerFn` handler, which never runs in the browser, so there's
 nothing to bake at build time in the first place.
 
+**The quote crawler is not part of this project.** It lives in its own repo, `quotes-crawler`
+(split out of the former `backend/scraper`, history included), deployed as its own Compose
+project with its own Redis. Its only interface to Vroomy is the shared Postgres database: it owns
+and migrates the `quotes` table and writes to it; `api`/`ws` just read it through the same
+`DATABASE_URL`. Vroomy needs no Redis at all. Crawler deployment, memory sizing, backups,
+`LOG_LEVEL` and its live-testing findings are documented in `quotes-crawler/PRODUCTION.md`,
+along with the `quotes` columns Vroomy depends on.
+
 Everything here was built and verified against a real, isolated instance of this exact stack —
 not assumed to work from the compose file alone. Several real bugs were caught this way (see
 "Findings from live testing" below), and the api proxy above was verified by running a real
@@ -52,9 +60,8 @@ just a preference.
 ## 1. Required environment variables
 
 ```
-DATABASE_URL          — your existing Postgres connection string
-REDIS_ADDR            — your existing Redis connection string (redis://... form is fine
-                         directly — see "Deploying via Dokploy" below)
+DATABASE_URL          — your existing Postgres connection string (the same database
+                         quotes-crawler writes to)
 CORS_ALLOWED_ORIGIN   — the frontend's real public domain (e.g. https://vroomy.example.com)
 VITE_WS_URL           — ws's real public wss:// domain (e.g. wss://ws.vroomy.example.com)
 PUBLIC_URL            — same as CORS_ALLOWED_ORIGIN, no trailing slash — builds the OIDC
@@ -68,11 +75,11 @@ SESSION_SECRET        — random, >=32 chars (e.g. `openssl rand -base64 48`) �
                          login-session cookie; never reuse across environments
 ```
 
-`.env.example` documents the same four vars — copy it to `.env.prod` and fill in real values if
+`.env.example` documents the deploy-specific vars — copy it to `.env.prod` and fill in real values if
 deploying with plain `docker compose` rather than Dokploy (`.env.prod` is gitignored, never
-committed). **Never reuse dev placeholder values** here; `backend/scraper`'s own local-dev
-`docker-compose.yml` is a completely separate, unrelated Postgres/Redis instance from whatever
-you point `DATABASE_URL`/`REDIS_ADDR` at here.
+committed). **Never reuse dev placeholder values** here; quotes-crawler's own local-dev
+`docker-compose.dev.yml` is a completely separate, unrelated Postgres instance from whatever you
+point `DATABASE_URL` at here.
 
 ## 2. Bring up the stack (plain `docker compose`, no Dokploy)
 
@@ -81,7 +88,7 @@ docker compose --env-file .env.prod up -d --build
 docker compose --env-file .env.prod logs -f
 ```
 
-All four containers run with `restart: unless-stopped`, so a crash or host reboot brings them
+All three containers run with `restart: unless-stopped`, so a crash or host reboot brings them
 back automatically. `api` has no host-published port at all — only reachable from other
 containers on this compose network, by service name. `frontend`/`ws` also publish nothing to the
 host by default (see "Deploying via Dokploy" below for why) — if running this outside Dokploy,
@@ -89,32 +96,17 @@ front them yourself with a reverse proxy (see `backend/ws/Caddyfile.example` and
 `frontend/Caddyfile.example` for two-line Caddy configs that get real, auto-renewing Let's
 Encrypt certs) proxying to each container's own address on this compose network.
 
-The crawler self-migrates the database schema on startup (same as it does in dev); neither the
-API nor `ws` ever migrates or writes, so make sure the crawler has started at least once against
-a fresh database before relying on either of them.
+quotes-crawler self-migrates the `quotes` schema on startup; neither `api` nor `ws` ever
+migrates or writes that table (`api` only migrates its own `users`/`race_results`), so make sure
+the crawler has started at least once against the same database before relying on either.
 
 ## 3. Set up backups
 
-**If Postgres/Redis are managed by an orchestrator with its own backup scheduler (e.g. Dokploy's
-built-in per-database scheduled backups to S3-compatible storage), use that instead of the
-script below** — it already handles off-host storage and scheduling, which the script does not.
-The script here is for a Postgres you're managing yourself with no orchestrator backing it:
-
-```bash
-export POSTGRES_USER=quotes POSTGRES_DB=quotes POSTGRES_CONTAINER=quotes-postgres
-./backend/scraper/scripts/backup.sh
-```
-
-Dumps to `./backups/quotes_<timestamp>.sql.gz` and prunes anything older than 14 days
-(`RETENTION_DAYS`, `BACKUP_DIR` are both overridable). Schedule it — a cron entry works fine:
-
-```cron
-0 3 * * * cd /path/to/vroomy && POSTGRES_USER=quotes POSTGRES_DB=quotes POSTGRES_CONTAINER=quotes-postgres ./backend/scraper/scripts/backup.sh >> /var/log/quotes-backup.log 2>&1
-```
-
-This writes to local disk only — for real disaster recovery (surviving the host itself being
-lost), `BACKUP_DIR` should point somewhere that's itself synced offsite, or the script extended
-to push each dump to object storage.
+Postgres isn't run by this project, so neither are its backups. If it's a Dokploy Database
+resource, use Dokploy's built-in per-database scheduled backups to S3-compatible storage. For a
+self-managed Postgres, `quotes-crawler/scripts/backup.sh` (`pg_dump` + gzip + retention pruning)
+dumps the whole database — Vroomy's `users`/`race_results` included, since they live in the same
+one — see `quotes-crawler/PRODUCTION.md`.
 
 ## 4. Deploying via Dokploy
 
@@ -128,11 +120,11 @@ Separately-deployed standalone Applications each get their own isolated Docker n
 isolation from "Isolating api behind the frontend" above simply doesn't work: `frontend` would
 fail to resolve `api` and every quote fetch would fall back to the local sentence pool.
 
-**Postgres/Redis Database resources run as Docker Swarm services on Dokploy's shared
+**Postgres Database resources run as Docker Swarm services on Dokploy's shared
 `dokploy-network` overlay network — not whatever network a plain Compose deploy creates by
 default.** `docker-compose.yml`'s `networks.default` is pinned to `dokploy-network` (`external:
-true`) specifically so this project lands on the same network your existing Database resources
-are already on; without this, `DATABASE_URL`/`REDIS_ADDR` hostnames fail to resolve at all (a
+true`) specifically so this project lands on the same network your existing Database resource
+is already on; without this, `DATABASE_URL`'s hostname fails to resolve at all (a
 DNS lookup failure, not an auth/connection-refused error — easy to misdiagnose as a credentials
 problem when it's actually a networking one). Find your own Database resource's network with
 `docker service ls` and `docker network ls` on the host if you're ever unsure it's really
@@ -146,15 +138,13 @@ independently of each other:
 - **`ws` needs a Domain** too, for now — container **Port 8081**, health-check path `/health`.
   This goes away once ws is proxied through the frontend the same way `api` already is (not yet
   built — see this file's top section).
-- **`api` and `crawler` get no Domain at all.** `crawler` never did (it's a background worker
-  with no HTTP server — nothing for a reverse proxy to route to or poll); `api` is deliberately
-  unexposed, the whole point of this setup.
+- **`api` gets no Domain at all** — it's deliberately unexposed, the whole point of this setup.
 - `docker-compose.yml` deliberately has no `ports:` host-publish on `frontend`/`ws` — Dokploy's
   Traefik routes to them directly over `dokploy-network` based on the Domain config above, so
   publishing a host port isn't needed the way it is for the plain-`docker compose`+Caddy path in
   step 2. **Port 3000 specifically must stay unpublished** — it collides with Dokploy's own
   dashboard, which already owns that host port.
-- Set the four env vars from "Required environment variables" above as this Compose project's
+- Set the env vars from "Required environment variables" above as this Compose project's
   environment variables, under Dokploy's **Environment Settings** tab. Make sure **"Create
   Environment File"** is enabled there — if it's off, the values you type are saved in Dokploy's
   own database but never written to an actual `.env` file next to the compose file, so every
@@ -164,69 +154,24 @@ independently of each other:
   retroactively change already-running containers either — trigger an actual redeploy after
   saving, since `restart: unless-stopped` just keeps recreating the _same_ crashed container with
   its old baked-in env otherwise.
-- **`REDIS_ADDR` accepts Dokploy's internal Redis connection URL directly** (`redis://...`) —
-  `ConnectRedis` (see finding #1 below) switches to URL parsing for anything containing `://`,
-  so `REDIS_PASSWORD`/`REDIS_DB` env vars are unused in that case; only set `REDIS_ADDR`. Only
-  the crawler uses Redis at all — api and ws only ever need `DATABASE_URL`.
 - **Memory limits are already encoded in `docker-compose.yml` itself** (each service's own
   `deploy.resources.limits.memory`), and Dokploy's Compose deployment reads that file directly —
   no need to re-enter these per service in Dokploy's UI. The table below is just what's already
-  in the file, for reference (crawler sized for its real measured ~1.25GB working set — see
-  finding #2 below; api/ws/frontend are far lighter, no language models loaded — **frontend's
-  figure specifically is an unmeasured starting point**, worth checking with `docker stats`
-  under real traffic):
+  in the file, for reference (**frontend's figure specifically is an unmeasured starting
+  point**, worth checking with `docker stats` under real traffic):
 
-  | Service  | Limit  | Also set             |
-  | -------- | ------ | -------------------- |
-  | crawler  | 2 GB   | `GOMEMLIMIT=1536MiB` |
-  | api      | 128 MB | `GOMEMLIMIT=100MiB`  |
-  | ws       | 128 MB | `GOMEMLIMIT=100MiB`  |
-  | frontend | 256 MB | —                    |
+  | Service  | Limit  | Also set            |
+  | -------- | ------ | ------------------- |
+  | api      | 128 MB | `GOMEMLIMIT=100MiB` |
+  | ws       | 128 MB | `GOMEMLIMIT=100MiB` |
+  | frontend | 256 MB | —                   |
 
   If Dokploy's UI also exposes a separate Reservation (soft) field for Compose-deployed services,
   a reasonable soft target is roughly half of each hard Limit above — a bare single hard limit
   with no slack turns an ordinary transient spike into an unnecessary SIGKILL.
 
-- **A memory-limit kill is a blip here, not a real incident, by design**: `WarmSimhashCache` and
-  `WarmFrontierCache` fully rehydrate Redis from Postgres on every restart, and
-  `db.RequeueStuckInProgress` recovers any URL a killed process left stuck mid-fetch — both
-  already exist for the ordinary case of the crawler process itself dying, and apply equally to
-  an OOM-triggered container restart. Combined with `restart: unless-stopped`, the practical
-  effect of hitting a limit is a few seconds of downtime, not lost work.
-- **On a small host (e.g. 4-5GB total), add a swapfile** as a cheap way to reduce how often a
-  transient spike escalates to an OOM-kill at all — the kernel pages out cold memory first
-  instead of immediately SIGKILLing on hitting a hard limit:
-  ```bash
-  sudo fallocate -l 2G /swapfile
-  sudo chmod 600 /swapfile
-  sudo mkswap /swapfile
-  sudo swapon /swapfile
-  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-  ```
-- **Day/night scheduling is handled by stopping and starting the crawler service itself**, not
-  by anything inside the process. As part of one Compose project, check whether Dokploy's
-  Scheduled Tasks can target a single service within the project — if it can only toggle the
-  whole project, that's coarser (it would also stop api/ws/frontend), and a plain scheduled
-  `docker compose stop crawler` / `start crawler` on the host is the fallback. An earlier
-  in-app pause-only approach (an active-hours env var) was tried and reverted: pausing the
-  worker loops cut CPU/network but never freed the ~1.25GB RAM the crawler holds once its
-  language-detection models are loaded, since that memory stays resident for the life of the
-  process whether it's fetching or idle — only actually stopping the container frees it.
-- **`LOG_LEVEL` cuts log volume at the source, on top of the disk-side cap below.** Three levels:
-  `info` (unset, the default) is today's full output; `warn` drops the highest-volume routine
-  narration (one line per page parsed, per quote saved, per URL discovered) but keeps every
-  skip/retry/fallback line — a rejected quote, a low-yield category abandoned, a rate-limit
-  backoff, a retry after a failed fetch — alongside real failures; `error` drops warnings too,
-  down to genuine failures only (`Could not ...`, a fetch/DB error, giving up on a URL) — never
-  suppressed at any level. **`error` is the recommended production setting** for a low-noise log
-  — `warn` is there for when you actually want to see _why_ the crawler's doing what it's doing
-  (rate-limited? skipping bad content? just quiet right now?) without the full per-item flood.
-  `docker-compose.yml` already sets `LOG_LEVEL: error` for the `crawler` service. Leave it unset
-  in dev if you want the full picture of what the crawler's doing.
-- **Cap container log size, or the crawler's own logs can fill the disk.** Docker's default
-  `json-file` log driver has no size limit — the crawler logs roughly one line per URL
-  discovered/fetched (`internal/crawler/crawler.go`), so left running for weeks that adds up.
-  `docker-compose.yml` already caps every service at 10MB × 3 files via its `x-logging` anchor,
+- **Cap container log size.** Docker's default `json-file` log driver has no size limit, so
+  anything chatty left running for weeks adds up. `docker-compose.yml` already caps every service at 10MB × 3 files via its `x-logging` anchor,
   and this takes effect automatically since Dokploy's Compose deployment runs the file directly.
   A host-wide default is still worth setting for anything outside this project (Dokploy's own
   Traefik/dashboard containers, any other project on the same host) via `/etc/docker/daemon.json`:
@@ -313,42 +258,23 @@ exactly what this design is for. If you ever switch providers again, same expect
   request-rate limiter — a WebSocket connection is long-lived, not a discrete request a token
   bucket makes sense against; this one's unaffected since browsers still connect to `ws`
   directly for now.
-- **Graceful shutdown** — the crawler, the API, and `ws` all stop cleanly on `SIGTERM` (what
+- **Graceful shutdown** — the API and `ws` both stop cleanly on `SIGTERM` (what
   `docker stop` and Compose both send), finishing in-flight work rather than dying mid-request.
-- **Health checks** — `api`/`ws`/`frontend` all have Docker healthchecks; `crawler` doesn't
-  expose one (it's a background worker, not a request-serving process — its own logs are the
-  signal to watch, e.g. via `docker compose logs -f crawler`).
+- **Health checks** — `api`/`ws`/`frontend` all have Docker healthchecks.
 
 ## Findings from live testing (read before assuming this "just works")
 
 Real, non-obvious bugs/gotchas caught by actually running this stack end-to-end in a real
 Dokploy deployment, not by reasoning about the code:
 
-1. **`REDIS_ADDR=redis:6379` silently connected to the wrong host.** `redis.ParseURL("redis:6379")`
-   doesn't error — it parses `"redis"` as a URL _scheme_ and produces `Addr="localhost:6379"`,
-   discarding the real host entirely. This was invisible in every local dev run only because
-   `REDIS_ADDR` has always literally _been_ `localhost:6379` there — the same wrong answer, by
-   coincidence. Fixed in `internal/db/redis.go` (`ConnectRedis` now only attempts URL parsing
-   for input that actually contains `://`).
-2. **The crawler's real memory need is ~1.25GB, not the ~250MB first assumed.** The language
-   detector added for language verification (see `backend/scraper/README.md`) loads statistical
-   models into memory; even restricted to Latin-script languages only (~330MB, down from ~1GB
-   for the full 75-language set), combined with normal crawling overhead the container's real,
-   stable working set plateaus at ~1.25GB. `docker-compose.yml`'s `crawler` service is sized at
-   a 2G hard limit with `GOMEMLIMIT=1536MiB` — both **measured empirically** (memory limit
-   removed entirely, real usage observed over a sustained run) rather than guessed. An earlier
-   attempt set both values far below this real number, which didn't prevent OOM kills — it just
-   made the GC fight a losing battle to stay under an impossibly small target, burning 400-600%
-   CPU in the process before still eventually hitting the wall. `GOMEMLIMIT` only helps once
-   it's set _above_ actual need, giving the GC real slack to collect proactively.
-3. **A plain Compose deploy lands on its own isolated network by default, not Dokploy's shared
-   one.** Dokploy Database resources (Postgres/Redis) run as Swarm services on `dokploy-network`;
+1. **A plain Compose deploy lands on its own isolated network by default, not Dokploy's shared
+   one.** Dokploy Database resources run as Swarm services on `dokploy-network`;
    a Compose project with no `networks:` override gets its own fresh `<project>_default` bridge
-   network instead, which has no route to them at all — `DATABASE_URL`/`REDIS_ADDR` hostnames
-   then fail DNS resolution outright. Fixed by pinning `networks.default` to the external
+   network instead, which has no route to them at all — `DATABASE_URL`'s hostname then fails DNS
+   resolution outright. Fixed by pinning `networks.default` to the external
    `dokploy-network` in `docker-compose.yml`. `dokploy-network` is created `Attachable: true`,
    so a plain (non-Swarm-service) Compose container can join it.
-4. **`wget --spider http://localhost:PORT/` inside the `frontend`/`ws` containers failed with
+2. **`wget --spider http://localhost:PORT/` inside the `frontend`/`ws` containers failed with
    `Connection refused`, even though the exact same request from a different container on the
    same network succeeded.** Alpine/musl's `wget` resolving `localhost` prefers the IPv6 loopback
    (`::1`) first; Bun/Nitro (and `ws`) only bind IPv4 `0.0.0.0`, so nothing listens on `::1` and
@@ -358,7 +284,7 @@ Dokploy deployment, not by reasoning about the code:
    actually landed on `api`'s router instead, worth checking the Domain's Service Name field
    first if you see it). Fixed by pointing both healthchecks at `127.0.0.1` instead of
    `localhost`, forcing IPv4 and sidestepping the ambiguity.
-5. **Dokploy's dashboard itself listens on host port 3000** — the same default port
+3. **Dokploy's dashboard itself listens on host port 3000** — the same default port
    `frontend` uses. Publishing `frontend`'s port to the host (`ports: - '127.0.0.1:3000:3000'`,
    needed for the plain-`docker compose`+Caddy path) collides with it under Dokploy. Dokploy's
    own Traefik doesn't need a host-published port at all — it routes to containers directly over
@@ -367,6 +293,5 @@ Dokploy deployment, not by reasoning about the code:
    add a host-port mapping back if deploying with plain `docker compose` + your own reverse proxy
    (step 2 above), on a host that isn't also running Dokploy's dashboard on the same port.
 
-If you change what the crawler does (add a source, change filters) in a way that could shift its
-memory profile, re-verify rather than assuming these numbers still hold — the method that found
-them (`docker stats` against an unconstrained container over a sustained run) is quick to repeat.
+The crawler's own live-testing findings (the `REDIS_ADDR` host-parsing bug, its measured ~1.25GB
+memory need) moved with it to `quotes-crawler/PRODUCTION.md`.

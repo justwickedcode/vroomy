@@ -27,11 +27,12 @@ func main() {
 		log.Fatal("Error loading .env file: ", err)
 	}
 
-	// This API only ever reads the quotes table — backend/scraper owns that schema (its own
-	// migrations create and evolve the quotes/url_frontier tables), and api never writes to or
-	// migrates it. api does own and migrate its own separate tables (users, race_results) —
-	// see internal/db/migrate.go for why that's safe to run from a second independent binary
-	// against the same database without colliding with the scraper's own migration history.
+	// This API only ever reads the quotes table — quotes-crawler (a separate project) owns that
+	// schema (its own migrations create and evolve the quotes/url_frontier tables), and api never
+	// writes to or migrates it. api does own and migrate its own separate tables (users,
+	// race_results) — see internal/db/migrate.go for why that's safe to run from a second
+	// independent binary against the same database without colliding with the crawler's own
+	// migration history.
 	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal("Could not connect to Postgres: ", err)

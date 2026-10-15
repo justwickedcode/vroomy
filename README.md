@@ -18,6 +18,13 @@ something already running.
 > For local dev quick-start, see the "For Max" notes at the very bottom.
 > Everything above that is architecture and planning.
 
+> **The quote crawler has moved out of this repo.** The former `backend/scraper`
+> (plus its Redis) now lives in its own project, `quotes-crawler`, git history
+> included. Its only interface to Vroomy is the shared Postgres database: it
+> owns and fills the `quotes` table, and `api`/`ws` just read it through
+> `DATABASE_URL`. Scraper-related sections below are kept as historical
+> planning — the crawler's own README/PRODUCTION.md are the source of truth now.
+
 **Table of contents**
 
 1. [What Vroomy actually is](#1-what-vroomy-actually-is)
@@ -29,7 +36,7 @@ something already running.
 7. [`ws` — real-time protocol](#7-ws--real-time-protocol)
 8. [Matchmaking & room lifecycle](#8-matchmaking--room-lifecycle)
 9. [Anti-cheat & server authority](#9-anti-cheat--server-authority)
-10. [Scraper deep plan](#10-scraper-deep-plan)
+10. [Scraper deep plan (moved to quotes-crawler)](#10-scraper-deep-plan-moved-to-quotes-crawler)
 11. [Frontend integration plan](#11-frontend-integration-plan)
 12. [Security](#12-security)
 13. [Deployment & infrastructure](#13-deployment--infrastructure)
@@ -56,7 +63,7 @@ something already running.
   **server-broadcast event** — every player in a room gets the same
   countdown at once. Nobody clicks "ready"; the room decides.
 - **Content pipeline:** instead of a fixed sentence list, passages should
-  come from a scraped, deduplicated corpus of real quotes (`backend/scraper`),
+  come from a scraped, deduplicated corpus of real quotes (`quotes-crawler`),
   served to the frontend through a REST API (`backend/api`).
 - **Product pillars this plan optimizes for**, in priority order:
   1. Solo play must never depend on the network — it's the fallback when
@@ -76,9 +83,8 @@ something already running.
 vroomy/
 ├── frontend/            TanStack Start app — the only thing that runs today
 ├── backend/
-│   ├── scraper/         Go crawler — the only backend service with real code
-│   ├── api/             REST API — currently just notes + a docker-compose.yml
-│   └── ws/               WebSocket server — currently just a TODO
+│   ├── api/             Go REST API — reads quotes, owns users/race_results
+│   └── ws/              Go WebSocket server — multiplayer races
 ├── package.json          root: husky + lint-staged + prettier only (no workspaces)
 └── README.md              this file
 ```
@@ -185,63 +191,13 @@ manager. Path alias `#/*` → `src/*`.
 - No environment-based API base URL config (no `.env`, no `import.meta.env`
   usage anywhere in `frontend/src`).
 
-### 4.2 `backend/scraper/` — the only backend service with real logic
+### 4.2 Quote crawler — moved to its own project
 
-Go module `quotes-crawler`. This is the furthest-along piece of the backend
-and the most important one to understand because it defines the _shape_ of
-the content the frontend will eventually consume.
-
-**Package layout** (`internal/`):
-
-- `crawler` — orchestration (`Crawler.Run`, `Crawler.SeedFrontier`).
-- `fetcher` — a bare `net/http` GET with a custom User-Agent. No retries,
-  no rate limiting, no timeout set on the `http.Client` yet (despite the
-  scraper README claiming rate limiting is done — verify before relying on
-  that claim; see [§10.2](#102-politeness--rate-limiting-highest-priority-gap)).
-- `parser` — a `Parser` interface (`Parse(html string) (Result, error)`
-  returning both extracted quotes _and_ discovered next-page URLs, so
-  crawling and pagination share one call). Implementations: `ToscrapeParser`
-  (works, sandbox-only target), `WikiquotesParser` (empty stub, commented
-  out), **no BrainyQuote parser yet** despite BrainyQuote being the only
-  seeded source.
-- `dedup` — two-layer duplicate detection: exact match via SHA256 of a
-  normalized string (`ON CONFLICT (sha256_hash) DO NOTHING` at the DB layer),
-  near-duplicate match via 64-bit Simhash + 4×16-bit LSH banding in Redis, so
-  a new quote only needs Hamming-distance comparison against same-band
-  candidates instead of the whole corpus.
-- `scoring` — `CalculatePriority(source, depth, errorCount)`: lower score
-  crawls sooner. Per-source base score (`brainyquote`=5.0, `quotable`=1.0,
-  `goodreads`=20.0, unknown=1000.0) plus depth and error penalties.
-- `db` — Postgres (via `pgxpool`) as source of truth, Redis as a warm
-  working cache for both the dedup index and the crawl frontier (a sorted
-  set used as a priority queue: `ZADD`/`ZPOPMIN`). On every startup, both
-  caches are rebuilt from Postgres (`WarmSimhashCache`, `WarmFrontierCache`)
-  — Redis holds no state that isn't recoverable from Postgres.
-
-**Schema today** (`internal/db/migrations/`, managed with Goose):
-
-```
-quotes: id, text, author, tags, source, sha256_hash (unique), simhash, created_at
-url_frontier: id, url (unique), source, priority, depth,
-              status (pending | in_progress | done | failed), error_count,
-              last_crawled_at, created_at
-```
-
-**Actual runtime state right now** (per `handoff.md` and a direct read of
-`crawler.go`): the crawl loop seeds one BrainyQuote URL, pops it, fetches it,
-then **hardcodes a call to `ToscrapeParser`** regardless of source (there's a
-`// brainy not implemented` comment marking this as known-wrong) — so every
-real crawl attempt fails to parse and the URL gets marked `failed`. The
-frontier then empties and the loop just sleeps in 5s intervals forever. The
-crawler currently cannot produce a single real quote end-to-end. Additionally,
-`Run()` discards the parsed `Result` entirely (`_, err = ...`) even where
-parsing _does_ succeed — nothing calls `store.SaveQuote` from inside the loop
-today, so even fixing the dispatch bug alone would not yet persist quotes.
-
-**Sources table** (from the scraper's own README): only `quotes.toscrape.com`
-(sandbox, not a real target) is actually done. Quotable API was dropped
-(service permanently down). BrainyQuote, Wikiquote, GoodReads, and a Kaggle
-CSV import are all still planned.
+Formerly `backend/scraper/` (Go module `quotes-crawler`). Now a separate repo,
+deployed as its own Compose project with its own Redis. Vroomy depends on it
+only through the shared Postgres database (`quotes` table) — see that
+project's README and PRODUCTION.md, which also lists the `quotes` columns
+`api`/`ws` rely on.
 
 ### 4.3 `backend/api/` — not started
 
@@ -268,8 +224,8 @@ specifies the full protocol.
 
 One Postgres instance, one root-level `docker-compose.yml` (see
 [§13.1](#131-unifying-the-two-docker-composes)) — not the two independent,
-port-colliding Postgres containers that exist today in `backend/api/` and
-`backend/scraper/`. Two ownership zones inside the same database, enforced
+port-colliding Postgres containers that used to exist in `backend/api/` and
+the former `backend/scraper/` (now `quotes-crawler`). Two ownership zones inside the same database, enforced
 by convention (and, if this ever needs hardening, Postgres role grants):
 
 - **`scraper` owns and is the sole writer of** `quotes`, `url_frontier`.
@@ -293,7 +249,7 @@ by convention (and, if this ever needs hardening, Postgres role grants):
 | `created_at`  | timestamp  |                                                      |
 
 `url_frontier` (already migrated, full field list in
-`backend/scraper/README.md`) — the crawl priority queue: url, source,
+`quotes-crawler`'s `README.md`) — the crawl priority queue: url, source,
 priority, depth, a `pending`/`in_progress`/`done`/`failed` status, error
 count, timestamps.
 
@@ -776,7 +732,7 @@ this section covers the two supporting pieces referenced from there.)
 
 ### 8.1 Redis key design for room state
 
-Redis DB1 (kept separate from the scraper's DB0 dedup/frontier keys — see
+Redis DB1 (the crawler now runs its own Redis, so there is no shared DB0 to collide with — see
 the architecture diagram in [§3](#3-target-architecture)):
 
 ```
@@ -876,129 +832,11 @@ this project's actual threat model (leaderboard bragging rights, not money).
 
 ---
 
-## 10. Scraper deep plan
+## 10. Scraper deep plan (moved to quotes-crawler)
 
-### 10.1 Immediate correctness fixes (blocking everything else in this section)
-
-Per `backend/scraper/handoff.md`, in order, unchanged from the prior plan
-but worth restating as the literal first thing that must happen before any
-new source is added:
-
-1. Fix `crawler.Run()` to dispatch on `URLFrontier.Source` instead of
-   hardcoding `ToscrapeParser`. Needs a DB lookup after `PopURL` (Redis only
-   stores URL + priority; source lives in Postgres) — add
-   `GetURLByURL(ctx, url) (models.URLFrontier, error)` to `store.go`.
-2. Wire `result.Quotes` into `store.SaveQuote` and `result.NextURLs` back
-   into the frontier (`SaveURL` + `PushURL` per discovered URL, priority via
-   `scoring.CalculatePriority(source, depth+1, 0)`) — currently the parse
-   result is discarded entirely even where parsing succeeds.
-
-### 10.2 Politeness / rate limiting (highest-priority gap)
-
-`internal/fetcher/fetcher.go` today is a bare, unthrottled `http.Client.Do`
-with no timeout set on the client (a hung remote server would hang the
-entire crawl loop indefinitely) and no per-domain delay — despite the
-scraper's own README marking rate limiting `✅ Done`. This must be resolved
-_before_ Phase 1's BrainyQuote crawl runs against the real site, or the
-crawler will get IP-banned on the first run against a source the scraper's
-own README already flags as having "aggressive bot detection" (that note is
-about Goodreads specifically, but the underlying gap is fetcher-wide).
-
-Concrete plan:
-
-- **`http.Client` timeout:** set explicitly (e.g. 15s) — a client with no
-  timeout is a hang waiting to happen the first time a target server stalls.
-- **`robots.txt` compliance:** fetch and cache each domain's `robots.txt` on
-  first request to that domain (in-memory cache, TTL 24h), respect
-  `Disallow` rules and any `Crawl-delay` directive as a floor on the
-  per-domain delay below.
-- **Per-domain token bucket:** one bucket per hostname (map keyed by
-  `url.Host`, guarded by a mutex — the fetcher will eventually run
-  concurrently, see §10.5), refilling at a conservative default (e.g. 1
-  request per 2s per domain, tunable per source since BrainyQuote/Goodreads
-  likely need different ceilings — reuse the existing `scoring` package's
-  per-source config pattern rather than inventing a second one).
-- **Exponential backoff on non-2xx/network errors:** on a failed fetch,
-  don't just `MarkURLFailed` and move on immediately (today's behavior) —
-  the _next_ attempt at that URL should back off (`error_count` already
-  exists on `url_frontier` and already feeds `scoring.CalculatePriority`'s
-  `ErrorPenalty`, so the frontier naturally deprioritizes a flaky URL; what's
-  missing is an actual minimum wall-clock delay before retry, not just a
-  lower queue priority — add a `next_attempt_after` column or reuse
-  `last_crawled_at` as the gate).
-- **Circuit breaker per domain:** if a domain returns N consecutive
-  failures (e.g. 5) across any URLs, stop attempting that domain entirely
-  for a cool-down window (e.g. 1 hour) rather than burning through the rest
-  of that domain's frontier entries one by one into `failed`.
-
-### 10.3 BrainyQuote parser (`internal/parser/brainyquote.go`)
-
-Implements the `Parser` interface — returns both quotes and next-page URLs
-in one `Result`, per the pattern `parser.go` already establishes. Before
-writing selectors: open the target page, inspect the DOM for the quote
-container, quote text, author name, and pagination link elements (topic
-pages and individual author pages are structurally different on
-BrainyQuote — handle both shapes inside this one parser via a type-sniff on
-the HTML, rather than a second parser type, since they're still one
-logical source). Use `goquery` (already a scraper dependency) for
-extraction, same as `ToscrapeParser`.
-
-### 10.4 Wikiquote via MediaWiki API (`internal/parser/wikiquotes.go`)
-
-Currently an empty stub. Wikiquote is the one source in the table where
-**"Crawler" isn't actually the right method** — it exposes a real MediaWiki
-API (`action=parse` / `action=query`) that returns wikitext, not HTML to
-scrape. This parser is architecturally different from the other two: it
-should hit the API endpoint directly (no `goquery` HTML parsing at all) and
-parse MediaWiki's `{{quote|...}}`-style templates and bullet-list quote
-formatting out of wikitext. Because this doesn't fit the "fetch HTML, run a
-CSS-selector parser" shape the `Parser` interface otherwise assumes, decide
-at implementation time whether it's a variant `Parse` call fed API JSON
-instead of HTML, or a small adapter that fetches+converts before handing
-off to the same interface — either way, note it up front so it isn't
-implemented by accident as an HTML scraper against Wikiquote's rendered
-pages (which would be far more fragile and exactly the kind of
-over-engineering the "trust framework guarantees" principle warns against
-when a real API already exists).
-
-### 10.5 Worker concurrency
-
-Today's crawl loop is strictly single-threaded (one `PopURL` → fetch →
-parse → save cycle at a time). Once Phase 3 adds multiple real sources, a
-single-threaded loop means a slow/rate-limited domain (Goodreads,
-deliberately throttled per §10.2) blocks progress on every _other_ domain's
-otherwise-available frontier entries. Plan: a small worker-pool (N
-goroutines, N tunable, small default like 4) each running the same
-pop→fetch→parse→save cycle independently — the per-domain token bucket from
-§10.2 already makes this safe (a worker that pops a rate-limited domain's
-URL just waits on that domain's bucket, it doesn't block other workers
-pulling different domains). This is explicitly **not** the previously-noted
-"Asynq weighted queues" idea from the scraper's own README TODO — a plain
-goroutine pool against the existing Redis frontier is simpler and
-sufficient at this project's scale; only revisit Asynq if queue
-observability/retry tooling actually becomes a pain point in practice.
-
-### 10.6 Content licensing note
-
-Worth recording explicitly since it's easy to overlook while heads-down on
-scraping mechanics: BrainyQuote, Goodreads, and Wikiquote each have their
-own terms of use around scraping/reuse, and quotes themselves may carry
-attribution expectations independent of copyright status on the quote text.
-Before Phase 3 sources go live in anything user-facing beyond local dev,
-confirm each source's terms permit this use, and keep `quotes.source`
-populated (it already is) so attribution/removal-on-request is always
-possible per-source.
-
-### 10.7 Scheduling
-
-The crawler is a long-running loop today (`Run()` never returns), which is
-fine for continuous operation but means "run the crawler" and "keep the
-crawler running forever" are the same deploy decision. Plan: keep it as a
-long-running process (not a cron-triggered one-shot) since the frontier
-model already assumes a persistent loop (`WarmFrontierCache` /
-`WarmSimhashCache` on startup would otherwise re-run needlessly on every
-cron tick) — deploy it as a single long-lived container/systemd service,
-restart-on-crash, not as a scheduled job.
+The crawler and its plans now live in the separate `quotes-crawler` project —
+see its README and handoff.md. This section's previous content is in git
+history.
 
 ---
 
@@ -1427,7 +1265,7 @@ one to already exist for what it delivers to matter.
 
 - [ ] Add CI (e.g. GitHub Actions) running `go build`/`go test` for all
       three backends (`api`, `ws`, `scraper`) and `bun run build`/`bun run
-    lint` for the frontend on every push/PR — currently these only run
+lint` for the frontend on every push/PR — currently these only run
       locally, by hand, so nothing stops a broken commit from landing on
       `main`.
 - [ ] Add frontend test coverage. The three Go backends have real test

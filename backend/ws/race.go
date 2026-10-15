@@ -243,7 +243,7 @@ func (r *Room) startCountdown() {
 		return
 	}
 
-	// Same tokenization backend/scraper's own word_count column uses (see
+	// Same tokenization quotes-crawler's own word_count column uses (see
 	// internal/db/store.go's SaveQuote) — the two must agree, since the client-side progress
 	// bar and this server's own WPM calculation both assume "word count" means the same thing
 	// everywhere.

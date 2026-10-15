@@ -2,11 +2,11 @@
 
 A small Go WebSocket service that runs the real-time multiplayer typing race: auto-matchmaking into small lobbies (2-6 players) or a private lobby you share with specific friends by code, a synchronized countdown, live opponent progress, and final rankings — all in-memory, no persistence beyond picking each race's quote.
 
-## Relationship to backend/api and backend/scraper
+## Relationship to backend/api and quotes-crawler
 
 This is a **separate Go module** (its own `go.mod`), same pattern as `backend/api` — a small, independent service rather than a package inside a larger one.
 
-- **Database**: points at the _same_ Postgres instance `backend/scraper` writes to and `backend/api` reads from (see `.env` — `DATABASE_URL`). This service only ever reads the `quotes` table (one query per race, to pick that race's passage) and never runs migrations.
+- **Database**: points at the _same_ Postgres instance the separate quotes-crawler project writes to and `backend/api` reads from (see `.env` — `DATABASE_URL`). This service only ever reads the `quotes` table (one query per race, to pick that race's passage) and never runs migrations.
 - **Why a separate service from backend/api, not just another route there**: a WebSocket connection is long-lived (a whole lobby wait plus race, potentially several minutes) and stateful (each connection belongs to exactly one in-memory `Room`), which is a fundamentally different lifecycle from `backend/api`'s stateless, one-shot HTTP reads. Keeping them separate means either can be restarted, scaled, or deployed independently without the other's concerns leaking in (e.g. `backend/api`'s per-request rate limiter and this service's per-IP concurrent-connection cap are different problems with different shapes).
 - **Process-local state**: matchmaking and room state live entirely in this process's memory. Running more than one replica of this service without a shared matchmaking layer in front would split players across independent instances that can never match each other — fine for a single instance, a real constraint if this ever needs to scale horizontally.
 
