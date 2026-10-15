@@ -46,7 +46,7 @@ func main() {
 	if err := db.Migrate(pool); err != nil {
 		log.Fatal("Could not migrate api's own tables: ", err)
 	}
-	log.Println("api's own tables (users, race_results) are up to date")
+	log.Println("api's own tables are up to date")
 
 	allowedOrigin := os.Getenv("CORS_ALLOWED_ORIGIN")
 	if allowedOrigin == "" {

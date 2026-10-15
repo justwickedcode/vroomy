@@ -8,7 +8,6 @@ import {
   Trophy,
   UserPlus,
 } from 'lucide-react'
-import { Badge } from '#/components/ui/badge'
 import { cn } from '#/lib/utils'
 
 // Grouped like lichess's sidebar rather than one flat list of links —
@@ -24,21 +23,21 @@ export const NAV_GROUPS = [
   {
     label: 'Improve',
     items: [
-      { to: '/guide', label: 'Type faster', icon: Keyboard, soon: false },
-      { to: '/stats', label: 'Stats', icon: LineChart, soon: false },
-      { to: '/achievements', label: 'Achievements', icon: Award, soon: false },
+      { to: '/guide', label: 'Type faster', icon: Keyboard },
+      { to: '/stats', label: 'Stats', icon: LineChart },
+      { to: '/achievements', label: 'Achievements', icon: Award },
     ],
   },
   {
     label: 'Garage',
-    items: [{ to: '/garage', label: 'Garage', icon: Car, soon: false }],
+    items: [{ to: '/garage', label: 'Garage', icon: Car }],
   },
   {
     label: 'Compete',
     items: [
-      { to: '/leaderboards', label: 'Leaderboards', icon: Trophy, soon: true },
-      { to: '/friends', label: 'Friends', icon: UserPlus, soon: true },
-      { to: '/replays', label: 'Replays', icon: PlayCircle, soon: true },
+      { to: '/leaderboards', label: 'Leaderboards', icon: Trophy },
+      { to: '/friends', label: 'Friends', icon: UserPlus },
+      { to: '/replays', label: 'Replays', icon: PlayCircle },
     ],
   },
 ] as const
@@ -82,33 +81,12 @@ export function SidebarNavList({
                   data-active={active}
                   data-collapsed={collapsed}
                   title={item.label}
-                  className={cn(
-                    'sidebar-link',
-                    item.soon && !collapsed && 'opacity-70',
-                  )}
+                  className="sidebar-link"
                 >
                   <span className="relative flex shrink-0 items-center justify-center">
                     <item.icon className="size-4" strokeWidth={2.25} />
-                    {item.soon && collapsed && (
-                      <span
-                        className="absolute -top-1 -right-1 size-1.5 rounded-full bg-muted-foreground"
-                        aria-hidden="true"
-                      />
-                    )}
                   </span>
-                  {!collapsed && (
-                    <>
-                      <span className="truncate">{item.label}</span>
-                      {item.soon && (
-                        <Badge
-                          variant="outline"
-                          className="ml-auto shrink-0 px-1.5 py-0 text-[0.6rem] font-bold"
-                        >
-                          soon
-                        </Badge>
-                      )}
-                    </>
-                  )}
+                  {!collapsed && <span className="truncate">{item.label}</span>}
                 </Link>
               )
             })}

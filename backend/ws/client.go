@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/gorilla/websocket"
 )
@@ -43,7 +45,9 @@ type clientMessage struct {
 // all writes go through send — readPump owns reads, writePump owns writes, and nothing else
 // touches conn directly.
 type Client struct {
-	id   string
+	id string
+	// name is the optional display name from the connection's ?name= (see sanitizeName).
+	name string
 	conn *websocket.Conn
 	send chan []byte
 	room *Room
@@ -82,6 +86,28 @@ func newClientID() string {
 		return "p_fallback"
 	}
 	return "p_" + hex.EncodeToString(b)
+}
+
+// maxNameRunes keeps a display name to something that fits a lane label.
+const maxNameRunes = 24
+
+// sanitizeName turns a client-supplied display name into something safe to show other players:
+// trimmed, single-line, printable characters only, and at most maxNameRunes long. An empty
+// result means "no name" and the frontend falls back to a generic label.
+func sanitizeName(raw string) string {
+	var b strings.Builder
+	runes := 0
+	for _, r := range strings.TrimSpace(raw) {
+		if runes == maxNameRunes {
+			break
+		}
+		if !unicode.IsPrint(r) {
+			continue
+		}
+		b.WriteRune(r)
+		runes++
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // send helpers below all encode to JSON and push onto the client's send channel rather than

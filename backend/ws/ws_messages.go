@@ -12,9 +12,9 @@ package main
 //
 //	← welcome        {playerId}                                   sent once, right after connecting
 //	← host_assigned  {}                                            sent once, only to a private room's creator
-//	← waiting        {code, playersInRoom, minPlayers, maxPlayers} lobby size changed (code empty for public rooms)
+//	← waiting        {code, playersInRoom, minPlayers, maxPlayers, players} lobby changed (code empty for public rooms)
 //	→ start          {}                                            private-room host only: skip the wait, start now
-//	← race_start     {quote, wordCount, startsInMs}                quote chosen, countdown begins
+//	← race_start     {quote, wordCount, startsInMs, players}       quote chosen, countdown begins
 //	← go             {}                                            countdown elapsed, race is live
 //	→ progress       {wordIndex}                                   "I've correctly typed this many words"
 //	← player_progress {playerId, wordIndex}                        relayed to this player's opponents only
@@ -47,7 +47,19 @@ type serverMessage struct {
 
 	Results []playerResult `json:"results,omitempty"`
 
+	// Players is everyone currently in the room, so clients can label opponents by name — sent
+	// with "waiting" and "race_start".
+	Players []playerInfo `json:"players,omitempty"`
+
 	Message string `json:"message,omitempty"`
+}
+
+// playerInfo identifies one player in a room. Name is whatever the client asked to be called
+// when it connected (see sanitizeName) — unverified, since ws has no login of its own, so it's
+// a display label only and never used to attribute results to an account.
+type playerInfo struct {
+	PlayerID string `json:"playerId"`
+	Name     string `json:"name,omitempty"`
 }
 
 // playerResult is one player's line in a race_end message's final standings.

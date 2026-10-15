@@ -22,11 +22,16 @@ function formatTime(ms: number) {
   return `${minutes}:${seconds}`
 }
 
-// Player IDs are opaque hex tokens (see backend/ws's newClientID) — there's no username system
-// yet, so this is the closest thing to a readable label until one exists.
-function shortName(id: string, myId: string | null) {
+// A player's display name when they connected with one (logged-in players do — see
+// useMultiplayerRace's ?name=), otherwise a label built from their opaque id (backend/ws's
+// newClientID).
+function shortName(
+  id: string,
+  myId: string | null,
+  names: Record<string, string | undefined>,
+) {
   if (id === myId) return 'You'
-  return `Player ${id.replace(/^p_/, '').slice(0, 4)}`
+  return names[id] ?? `Player ${id.replace(/^p_/, '').slice(0, 4)}`
 }
 
 type Mp = ReturnType<typeof useMultiplayerRace>
@@ -52,13 +57,16 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     }
   }
 
-  // The server only tells us how many seats are filled, not who's in them (no username
-  // system yet — see shortName). Slot 1 is always us; the rest are honestly labeled
-  // "Racer" rather than inventing names for players we have no identity for.
+  // Slot 1 is always us; the others are everyone else in the room, by name when they have one
+  // (guests connect without a name and show as "Racer").
+  const others = Object.entries(mp.names)
+    .filter(([id]) => id !== mp.myId)
+    .map(([, name]) => name)
   const seats = Array.from({ length: mp.maxPlayers }, (_, i) => ({
     pos: i + 1,
     filled: i < mp.playersInRoom,
     isYou: i === 0,
+    name: i > 0 ? others[i - 1] : undefined,
   }))
 
   return (
@@ -115,7 +123,7 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                         )}
                       </>
                     ) : seat.filled ? (
-                      'Racer'
+                      (seat.name ?? 'Racer')
                     ) : (
                       'Open seat'
                     )}
@@ -196,7 +204,8 @@ function ErrorView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
 }
 
 function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
-  const { carModel, underglow, underglowColor, trail } = useProfile()
+  const profile = useProfile()
+  const { carModel, underglow, underglowColor, trail } = profile
   const [countdown, setCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -206,6 +215,31 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     const id = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000)
     return () => clearInterval(id)
   }, [mp.phase, mp.startsInMs])
+
+  // Saved to history the moment our own result arrives (player_finished), not at race_end — the
+  // rank is final then, and the player may leave before everyone else finishes. WPM is the
+  // server's figure, computed from its own word count and our elapsed time.
+  const recordedQuoteRef = useRef<string | null>(null)
+  const { myResult, getReplay } = mp
+  useEffect(() => {
+    if (!myResult || recordedQuoteRef.current === mp.text) return
+    recordedQuoteRef.current = mp.text
+    profile.addRace({
+      wpm: Math.round(myResult.wpm),
+      accuracy: mp.accuracy,
+      placement: myResult.rank,
+      racerCount: Math.max(mp.racerCount, myResult.rank),
+      mode: 'multiplayer',
+      replay: getReplay(),
+    })
+  }, [
+    myResult,
+    mp.text,
+    mp.accuracy,
+    mp.racerCount,
+    getReplay,
+    profile.addRace,
+  ])
 
   useEffect(() => {
     if (mp.phase === 'racing') {
@@ -229,7 +263,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     },
     ...mp.opponents.map((opponent, index) => ({
       id: opponent.id,
-      name: shortName(opponent.id, mp.myId) + (opponent.left ? ' (left)' : ''),
+      name:
+        shortName(opponent.id, mp.myId, mp.names) +
+        (opponent.left ? ' (left)' : ''),
       progress: opponent.finished
         ? 1
         : mp.wordCount > 0
@@ -320,11 +356,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                         result.playerId === mp.myId && 'is-you',
                       )}
                     >
-                      <span className="standings-pos">
-                        P{result.rank}
-                      </span>
+                      <span className="standings-pos">P{result.rank}</span>
                       <span className="standings-name">
-                        {shortName(result.playerId, mp.myId)}
+                        {shortName(result.playerId, mp.myId, mp.names)}
                       </span>
                       <span className="standings-wpm">{result.wpm}</span>
                       <span className="standings-time">
@@ -351,7 +385,12 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               </p>
               <div className="flex items-center gap-4">
                 <Gauge label="wpm" value={mp.wpm} max={WPM_GAUGE_MAX} />
-                <Gauge label="accuracy" value={mp.accuracy} max={100} suffix="%" />
+                <Gauge
+                  label="accuracy"
+                  value={mp.accuracy}
+                  max={100}
+                  suffix="%"
+                />
                 <DigitalReadout label="time" value={formatTime(mp.elapsedMs)} />
               </div>
             </div>

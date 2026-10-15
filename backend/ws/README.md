@@ -26,24 +26,24 @@ Reads `.env` for `DATABASE_URL`, `WS_PORT` (default `8081`), and `CORS_ALLOWED_O
 | `GET /ws/private/create`           | A brand-new private room; you become its host and get a share `code` (in the `waiting` message) to send to friends |
 | `GET /ws/private/join?code=ABC123` | The private room for `code`, if it's still open to new joiners — an `error` message and immediate close otherwise  |
 
-All three are WebSocket upgrades and speak the same protocol from there on.
+All three are WebSocket upgrades and speak the same protocol from there on. Each also accepts an optional `name` query parameter, the display name other players see (the frontend sends the logged-in player's name). It's trimmed to 24 printable characters and is unverified, since this service has no login of its own: it's a label, never an identity. `players` in `waiting` and `race_start` is `[{playerId, name}]` for everyone in the room.
 
 ## Protocol
 
 ### Server → client messages
 
-| `type`            | Fields                                              | When                                                                                                                      |
-| ----------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `welcome`         | `playerId`                                          | Immediately after the WebSocket upgrade completes                                                                         |
-| `host_assigned`   | —                                                   | Sent once, only to the client that created a private room — the only client whose `start` message has any effect          |
-| `waiting`         | `code`, `playersInRoom`, `minPlayers`, `maxPlayers` | On join, and whenever the room's player count changes while waiting (`code` empty for a public room)                      |
-| `race_start`      | `quote`, `wordCount`, `startsInMs`                  | Once the room has enough players and stops accepting new joiners                                                          |
-| `go`              | —                                                   | `startsInMs` after `race_start` — the race actually begins                                                                |
-| `player_progress` | `playerId`, `wordIndex`                             | An opponent's live progress (never echoed back to that player)                                                            |
-| `player_finished` | `playerId`, `rank`, `elapsedMs`, `wpm`              | A player finishes typing the quote                                                                                        |
-| `player_left`     | `playerId`                                          | A player disconnects mid-race                                                                                             |
-| `race_end`        | `results` (`[{playerId, rank, elapsedMs, wpm}]`)    | Every connected player has finished, or `raceMaxDuration` elapses                                                         |
-| `error`           | `message`                                           | The room couldn't start (e.g. no eligible quote found), or a private-room join failed (e.g. unknown/already-started code) |
+| `type`            | Fields                                                         | When                                                                                                                      |
+| ----------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`         | `playerId`                                                     | Immediately after the WebSocket upgrade completes                                                                         |
+| `host_assigned`   | —                                                              | Sent once, only to the client that created a private room — the only client whose `start` message has any effect          |
+| `waiting`         | `code`, `playersInRoom`, `minPlayers`, `maxPlayers`, `players` | On join, and whenever the room's player count changes while waiting (`code` empty for a public room)                      |
+| `race_start`      | `quote`, `wordCount`, `startsInMs`, `players`                  | Once the room has enough players and stops accepting new joiners                                                          |
+| `go`              | —                                                              | `startsInMs` after `race_start` — the race actually begins                                                                |
+| `player_progress` | `playerId`, `wordIndex`                                        | An opponent's live progress (never echoed back to that player)                                                            |
+| `player_finished` | `playerId`, `rank`, `elapsedMs`, `wpm`                         | A player finishes typing the quote                                                                                        |
+| `player_left`     | `playerId`                                                     | A player disconnects mid-race                                                                                             |
+| `race_end`        | `results` (`[{playerId, rank, elapsedMs, wpm}]`)               | Every connected player has finished, or `raceMaxDuration` elapses                                                         |
+| `error`           | `message`                                                      | The room couldn't start (e.g. no eligible quote found), or a private-room join failed (e.g. unknown/already-started code) |
 
 ### Client → server messages
 
