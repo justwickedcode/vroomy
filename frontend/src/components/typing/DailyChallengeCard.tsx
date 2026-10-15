@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Flame,
   Play,
+  PlayCircle,
   RotateCcw,
   Sparkles,
   Trophy,
@@ -77,7 +78,11 @@ export default function DailyChallengeCard() {
   // `finished` going true) is otherwise identical every time.
   const [attempt, setAttempt] = useState(0)
   const [newBest, setNewBest] = useState(false)
+  // This attempt's replay, once saved — for the "Watch replay" button.
+  const [replayId, setReplayId] = useState<string | null>(null)
   const recordedAttemptRef = useRef<number | null>(null)
+  const latestAttemptRef = useRef(attempt)
+  latestAttemptRef.current = attempt
 
   const locked = phase !== 'ready'
 
@@ -109,15 +114,20 @@ export default function DailyChallengeCard() {
     recordedAttemptRef.current = attempt
     setNewBest(wpm > bestWpm)
     complete(wpm, accuracy)
-    profile.addRace({
-      wpm,
-      accuracy,
-      placement: 1,
-      racerCount: 1,
-      mode: 'daily',
-      dailyDate: todayKey(),
-      replay: getReplay(),
-    })
+    void profile
+      .addRace({
+        wpm,
+        accuracy,
+        placement: 1,
+        racerCount: 1,
+        mode: 'daily',
+        dailyDate: todayKey(),
+        replay: getReplay(),
+      })
+      .then((id) => {
+        // Ignore a save that lands after the player already hit "Try again".
+        if (latestAttemptRef.current === attempt) setReplayId(id)
+      })
   }, [
     finished,
     wpm,
@@ -137,6 +147,7 @@ export default function DailyChallengeCard() {
   function handleTryAgain() {
     reset()
     setNewBest(false)
+    setReplayId(null)
     setAttempt((a) => a + 1)
     setPhase('idle')
   }
@@ -199,7 +210,7 @@ export default function DailyChallengeCard() {
           className="mb-2"
           overlay={
             finished ? (
-              <div className="countdown-overlay">
+              <div className="countdown-overlay gap-3">
                 <Button
                   onClick={handleTryAgain}
                   size="lg"
@@ -208,6 +219,18 @@ export default function DailyChallengeCard() {
                   <RotateCcw />
                   Try again
                 </Button>
+                {replayId && (
+                  <Button
+                    asChild
+                    size="lg"
+                    className="pointer-events-auto"
+                  >
+                    <Link to="/replays/$replayId" params={{ replayId }}>
+                      <PlayCircle />
+                      Watch replay
+                    </Link>
+                  </Button>
+                )}
               </div>
             ) : phase === 'idle' ? (
               <div className="countdown-overlay">

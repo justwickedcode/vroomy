@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import {
   Crosshair,
   Flame,
   Magnet,
   Medal,
+  PlayCircle,
   Radar,
   RotateCcw,
   Sparkles,
@@ -16,14 +18,13 @@ import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
-import { ordinal } from '#/lib/utils'
+import { cn, ordinal } from '#/lib/utils'
 import { POWERUPS } from '#/lib/powerups'
 import RaceTrack from '#/components/typing/RaceTrack'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
 import QuoteCredit from '#/components/typing/QuoteCredit'
-import type { CSSProperties } from 'react'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
 import type { PowerupKind } from '#/lib/powerups'
@@ -37,22 +38,13 @@ const POWERUP_ICONS: Record<PowerupKind, typeof Zap> = {
 }
 
 // Matches each powerup's `--pu-c` accent in styles.css (activation burst/impact effects) so the
-// ready-banner and the effect that fires when you use it read as the same thing.
+// status chip and the effect that fires when you use it read as the same thing.
 const POWERUP_COLORS: Record<PowerupKind, string> = {
   boost: '#fbbf24',
   nitro: '#fb5607',
   shell: '#ef4444',
   emp: '#38bdf8',
   magnet: '#a855f7',
-}
-
-// Words between spawns is randomized in this range so pickups don't land on a predictable
-// cadence — re-rolled every time one is granted or used.
-const SPAWN_EVERY_WORDS: [number, number] = [3, 6]
-
-function randomSpawnGap() {
-  const [min, max] = SPAWN_EVERY_WORDS
-  return min + Math.floor(Math.random() * (max - min + 1))
 }
 
 const MEDAL_COLORS: Record<number, string> = {
@@ -156,17 +148,17 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   }, [phase, countdown, start])
 
   // ── Powerups ─────────────────────────────────────────────────────
-  // Spawns roughly every 3-6 words typed (see randomSpawnGap) while the player holds none —
-  // ties the cadence to actual typing progress instead of a wall-clock timer, so slower typists
-  // don't get flooded and faster ones don't wait around.
-  const [powerup, setPowerup] = useState<PowerupKind | null>(null)
+  // One per race: the equipped powerup (see Garage) is ready from GO and can be fired at any
+  // moment with Tab, then it's spent until the next race. Picking the moment is the skill.
+  const [powerupUsed, setPowerupUsed] = useState(false)
+  const powerup: PowerupKind | null =
+    powerupUsed || finished ? null : profile.equippedPowerup
   const [lastEvent, setLastEvent] = useState<string | null>(null)
   // Drives the one-shot activation animation (RaceTrack's PowerupBurst/PowerupImpact/emp-flash)
   // — a plain object, not a boolean, so RaceTrack knows which kind/target to render; `key` is
   // bumped on every use (see triggerEffect) so using the same kind twice in a row still remounts
   // and replays instead of no-op'ing on unchanged props.
   const [activeEffect, setActiveEffect] = useState<RaceEffect | null>(null)
-  const nextSpawnAtRef = useRef(randomSpawnGap())
   const eventTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const effectKeyRef = useRef(0)
   const effectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -181,18 +173,11 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     [],
   )
 
+  // A new passage is a new race, with a fresh powerup.
   useEffect(() => {
-    setPowerup(null)
+    setPowerupUsed(false)
     setLastEvent(null)
-    nextSpawnAtRef.current = randomSpawnGap()
   }, [text])
-
-  // Spawns whichever powerup the player has equipped (see Garage's Powerups section).
-  useEffect(() => {
-    if (finished || powerup || activeWordIndex < nextSpawnAtRef.current) return
-    setPowerup(profile.equippedPowerup)
-    nextSpawnAtRef.current = activeWordIndex + randomSpawnGap()
-  }, [activeWordIndex, finished, powerup, profile.equippedPowerup])
 
   useEffect(() => {
     return () => {
@@ -248,7 +233,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       }
     }
 
-    setPowerup(null)
+    setPowerupUsed(true)
     if (eventTimeoutRef.current) clearTimeout(eventTimeoutRef.current)
     eventTimeoutRef.current = setTimeout(() => setLastEvent(null), 1800)
   }, [
@@ -309,20 +294,29 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   // added, so it's computed in the same tick, ahead of the `addRace` call.
   const recordedRaceRef = useRef<string | null>(null)
   const [newBest, setNewBest] = useState(false)
+  // The just-finished race's replay, once it's saved — for the "Watch replay" button.
+  const [replayId, setReplayId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!finished || !place) return
     if (recordedRaceRef.current === text) return
     recordedRaceRef.current = text
     setNewBest(profile.stats.racesPlayed > 0 && wpm > profile.stats.bestWpm)
-    profile.addRace({
-      wpm,
-      accuracy,
-      placement: place,
-      racerCount: bots.length + 1,
-      mode: 'solo',
-      replay: getReplay(),
-    })
+    setReplayId(null)
+    const raceText = text
+    void profile
+      .addRace({
+        wpm,
+        accuracy,
+        placement: place,
+        racerCount: bots.length + 1,
+        mode: 'solo',
+        replay: getReplay(),
+      })
+      .then((id) => {
+        // Ignore a save that lands after the player already started the next race.
+        if (recordedRaceRef.current === raceText) setReplayId(id)
+      })
   }, [
     finished,
     place,
@@ -344,43 +338,20 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     </div>
   )
 
-  const powerupDef = powerup
-    ? POWERUPS.find((p) => p.id === powerup)
-    : undefined
+  // Shown for the whole race, ready or spent, so the chip never pops in and out.
+  const equippedDef = POWERUPS.find((p) => p.id === profile.equippedPowerup)
+  const EquippedIcon = POWERUP_ICONS[profile.equippedPowerup]
 
   return (
     <Card className="rise-in flex flex-col overflow-hidden">
       <CardContent className="flex flex-col p-0">
-        <div className="relative flex-shrink-0">
-          <RaceTrack
-            racers={racers}
-            countdown={countdown}
-            phase={phase}
-            effect={activeEffect}
-          />
-          {/* A prominent, un-missable docked banner rather than a small corner pill — direct
-              feedback was that the old top-right chip was easy to miss mid-race since it sat
-              away from where the player's eyes actually are (the words/input below). Docked to
-              the track's own bottom edge, overlapping it, so it never shifts the words layout. */}
-          {!finished && powerup && powerupDef && (
-            <button
-              type="button"
-              onClick={usePowerup}
-              className="race-powerup-banner"
-              style={{ '--pu-c': POWERUP_COLORS[powerup] } as CSSProperties}
-            >
-              {(() => {
-                const Icon = POWERUP_ICONS[powerup]
-                return <Icon className="race-powerup-banner-icon" />
-              })()}
-              <span className="race-powerup-banner-text">
-                <strong>{powerupDef.label} ready</strong>
-                <span>{powerupDef.detail}</span>
-              </span>
-              <kbd className="race-powerup-banner-kbd">Tab</kbd>
-            </button>
-          )}
-        </div>
+        <RaceTrack
+          racers={racers}
+          countdown={countdown}
+          phase={phase}
+          effect={activeEffect}
+          className="flex-shrink-0"
+        />
 
         <TypingWords
           spans={spans}
@@ -395,7 +366,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
           overlay={
             <>
               {finished && (
-                <div className="countdown-overlay">
+                <div className="countdown-overlay gap-3">
                   <Button
                     onClick={reset}
                     size="lg"
@@ -404,6 +375,18 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
                     <RotateCcw />
                     Race Again
                   </Button>
+                  {replayId && (
+                    <Button
+                      asChild
+                      size="lg"
+                      className="pointer-events-auto"
+                    >
+                      <Link to="/replays/$replayId" params={{ replayId }}>
+                        <PlayCircle />
+                        Watch replay
+                      </Link>
+                    </Button>
+                  )}
                 </div>
               )}
               {!finished && lastEvent && (
@@ -416,7 +399,35 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
             </>
           }
         />
-        <QuoteCredit {...credit} className="px-1 pt-3" />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-3">
+          {equippedDef && !finished ? (
+            <button
+              type="button"
+              onClick={usePowerup}
+              disabled={!powerup || locked}
+              title={equippedDef.detail}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-opacity',
+                powerup ? 'hover:text-foreground' : 'opacity-40',
+              )}
+            >
+              <EquippedIcon
+                className="size-3.5"
+                style={{ color: POWERUP_COLORS[profile.equippedPowerup] }}
+              />
+              {equippedDef.label}
+              <span>{powerup ? '· once per race' : '· used'}</span>
+              {powerup && (
+                <kbd className="rounded border border-border px-1 font-mono text-[0.65rem]">
+                  Tab
+                </kbd>
+              )}
+            </button>
+          ) : (
+            <span />
+          )}
+          <QuoteCredit {...credit} />
+        </div>
       </CardContent>
 
       {finished && <div className="glass-divider" />}

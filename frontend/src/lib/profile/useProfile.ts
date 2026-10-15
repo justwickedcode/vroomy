@@ -403,10 +403,13 @@ export function useProfile() {
     [updateCosmetics],
   )
 
-  const addLocalRace = useCallback((race: NewRace) => {
+  // Returns the new record's id. Generated outside the state updater so the caller gets the
+  // same id the updater stores (an updater can run more than once).
+  const addLocalRace = useCallback((race: NewRace): string => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     setLocal((prev) => {
       const record: RaceRecord = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id,
         date: new Date().toISOString(),
         wpm: race.wpm,
         accuracy: race.accuracy,
@@ -431,14 +434,17 @@ export function useProfile() {
       writeProfile(next)
       return next
     })
+    return id
   }, [])
 
+  // Resolves to the id to open this race's replay with (/replays/$replayId), or null when the
+  // race has no replay — so a finish screen can offer "Watch replay" for the run just completed.
   const addRace = useCallback(
-    (race: NewRace) => {
+    (race: NewRace): Promise<string | null> => {
       const key = profileQueryKey(userId)
       if (!userId || !queryClient.getQueryData(key)) {
-        addLocalRace(race)
-        return
+        const id = addLocalRace(race)
+        return Promise.resolve(race.replay ? id : null)
       }
 
       // Optimistic: the race shows up in history and stats immediately, and the refetch after
@@ -463,7 +469,8 @@ export function useProfile() {
           : prev,
       )
 
-      postRaceFn({ data: raceInput(race) })
+      return postRaceFn({ data: raceInput(race) })
+        .then((saved) => (saved.hasReplay ? String(saved.id) : null))
         .catch((err: unknown) => {
           // Don't lose the race if api is unreachable — keep it as guest history, which gets
           // imported once api is back (the import flag is already set, so clear it).
@@ -473,7 +480,8 @@ export function useProfile() {
           } catch {
             // Nothing to clear.
           }
-          addLocalRace(race)
+          const id = addLocalRace(race)
+          return race.replay ? id : null
         })
         .finally(() => {
           void queryClient.invalidateQueries({ queryKey: key })

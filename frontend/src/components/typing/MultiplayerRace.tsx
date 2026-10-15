@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Check, Copy, Trophy, Users } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowLeft, Check, Copy, PlayCircle, Trophy, Users } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
@@ -222,17 +223,21 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   // server's figure, computed from its own word count and our elapsed time.
   const recordedQuoteRef = useRef<string | null>(null)
   const { myResult, getReplay } = mp
+  // This race's replay, once saved — for the "Watch replay" button on the results screen.
+  const [replayId, setReplayId] = useState<string | null>(null)
   useEffect(() => {
     if (!myResult || recordedQuoteRef.current === mp.text) return
     recordedQuoteRef.current = mp.text
-    profile.addRace({
-      wpm: Math.round(myResult.wpm),
-      accuracy: mp.accuracy,
-      placement: myResult.rank,
-      racerCount: Math.max(mp.racerCount, myResult.rank),
-      mode: 'multiplayer',
-      replay: getReplay(),
-    })
+    void profile
+      .addRace({
+        wpm: Math.round(myResult.wpm),
+        accuracy: mp.accuracy,
+        placement: myResult.rank,
+        racerCount: Math.max(mp.racerCount, myResult.rank),
+        mode: 'multiplayer',
+        replay: getReplay(),
+      })
+      .then(setReplayId)
   }, [
     myResult,
     mp.text,
@@ -375,7 +380,15 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 </div>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-3">
+                {replayId && (
+                  <Button asChild variant="outline">
+                    <Link to="/replays/$replayId" params={{ replayId }}>
+                      <PlayCircle />
+                      Watch replay
+                    </Link>
+                  </Button>
+                )}
                 <Button variant="outline" onClick={onLeave}>
                   <ArrowLeft />
                   Back to play
