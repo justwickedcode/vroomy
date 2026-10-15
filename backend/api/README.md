@@ -12,7 +12,7 @@ If a broader REST API (auth, other resources, a real API for the whole app) beco
 
 The crawler that fills the quotes corpus lives in its own repo (`quotes-crawler`, split out of this monorepo's former `backend/scraper`). The **only** coupling between the two is the shared Postgres database — this API needs nothing from the crawler beyond a `DATABASE_URL` and a couple of read queries. No Redis, no shared code.
 
-- **Database**: points at the _same_ Postgres instance quotes-crawler writes to (see `.env` — `DATABASE_URL`), not a separate one. Run quotes-crawler's own `docker-compose.yml` to get that database running locally.
+- **Database**: points at the _same_ Postgres instance quotes-crawler writes to (see `.env` — `DATABASE_URL`), not a separate one. Run quotes-crawler's own `docker-compose.dev.yml` to get that database running locally.
 - **Schema/migrations**: the `quotes` table is owned entirely by quotes-crawler (its `PRODUCTION.md` lists the columns Vroomy depends on). This API never migrates or writes it — run the crawler at least once against a fresh database before starting this API, so the `quotes` table (and its `word_count` column, which this API's filtering depends on) actually exists.
 - **`word_count`**: a column quotes-crawler's `db.SaveQuote` computes and stores on every quote at write time (indexed alongside `language`) — this API filters on it directly rather than re-splitting every candidate row's text on every request.
 

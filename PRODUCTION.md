@@ -78,7 +78,7 @@ SESSION_SECRET        — random, >=32 chars (e.g. `openssl rand -base64 48`) �
 `.env.example` documents the deploy-specific vars — copy it to `.env.prod` and fill in real values if
 deploying with plain `docker compose` rather than Dokploy (`.env.prod` is gitignored, never
 committed). **Never reuse dev placeholder values** here; quotes-crawler's own local-dev
-`docker-compose.yml` is a completely separate, unrelated Postgres instance from whatever you
+`docker-compose.dev.yml` is a completely separate, unrelated Postgres instance from whatever you
 point `DATABASE_URL` at here.
 
 ## 2. Bring up the stack (plain `docker compose`, no Dokploy)
