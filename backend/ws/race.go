@@ -129,6 +129,7 @@ func (r *Room) addClient(c *Client) {
 	r.mu.Lock()
 	r.players[c] = &playerState{client: c, connected: true}
 	count := len(r.players)
+	players := r.playerListLocked()
 	r.mu.Unlock()
 
 	r.broadcast(serverMessage{
@@ -137,6 +138,7 @@ func (r *Room) addClient(c *Client) {
 		PlayersInRoom: count,
 		MinPlayers:    raceMinPlayers,
 		MaxPlayers:    raceMaxPlayers,
+		Players:       players,
 	})
 	if c == r.host {
 		// Told apart from "waiting" (which every player in the room gets) so the frontend knows
@@ -178,6 +180,7 @@ func (r *Room) removeClient(c *Client) {
 		delete(r.players, c)
 	}
 	remaining := len(r.players)
+	players := r.playerListLocked()
 	allFinishedNow := wasRacing && r.allFinishedLocked()
 	r.mu.Unlock()
 
@@ -203,7 +206,19 @@ func (r *Room) removeClient(c *Client) {
 		PlayersInRoom: remaining,
 		MinPlayers:    raceMinPlayers,
 		MaxPlayers:    raceMaxPlayers,
+		Players:       players,
 	})
+}
+
+// playerListLocked lists every player in the room, ordered by id so every client gets the same
+// order. Caller must hold r.mu.
+func (r *Room) playerListLocked() []playerInfo {
+	list := make([]playerInfo, 0, len(r.players))
+	for c := range r.players {
+		list = append(list, playerInfo{PlayerID: c.id, Name: c.name})
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].PlayerID < list[j].PlayerID })
+	return list
 }
 
 // closeToNewJoiners stops this room from accepting more players (whether because it's about to
@@ -252,13 +267,15 @@ func (r *Room) startCountdown() {
 	r.mu.Lock()
 	r.quote = quote
 	r.wordCount = wordCount
+	players := r.playerListLocked()
 	r.mu.Unlock()
 
 	r.broadcast(serverMessage{
 		Type:       "race_start",
 		Quote:      &quote,
-		WordCount:  r.wordCount,
+		WordCount:  wordCount,
 		StartsInMs: raceCountdown.Milliseconds(),
+		Players:    players,
 	})
 
 	time.AfterFunc(raceCountdown, r.beginRacing)

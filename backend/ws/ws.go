@@ -87,7 +87,12 @@ func upgradeWS(w http.ResponseWriter, r *http.Request, conns *ipConnCounter, ass
 		return
 	}
 
-	client := &Client{id: newClientID(), conn: conn, send: make(chan []byte, sendBufferSize)}
+	client := &Client{
+		id:   newClientID(),
+		name: sanitizeName(r.URL.Query().Get("name")),
+		conn: conn,
+		send: make(chan []byte, sendBufferSize),
+	}
 	client.sendJSON(serverMessage{Type: "welcome", PlayerID: client.id})
 	assign(client)
 

@@ -34,6 +34,11 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 	// orchestrator healthcheck polls that every few seconds, and sharing a limiter with it
 	// would risk the healthcheck itself tripping the limit and reporting a false outage.
 	mux.Handle("GET /api/quotes/random", withRateLimit(handleRandomQuote(pool)))
+	mux.Handle("GET /api/quotes/daily", withRateLimit(handleDailyQuote(pool)))
+	// Readable without logging in (an anonymous visitor can browse the global board and watch a
+	// replay from it), so rate-limited like the quote endpoints.
+	mux.Handle("GET /api/leaderboards", withRateLimit(handleLeaderboard(pool)))
+	mux.Handle("GET /api/replays/{id}", withRateLimit(handleGetReplay(pool)))
 	mux.HandleFunc("GET /health", handleHealth(pool))
 	// No rate limit on these: unlike /api/quotes/random, every caller here already has to carry
 	// a verified identity (see withIdentity in users.go) — there's no anonymous-abuse surface
@@ -42,6 +47,13 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 	mux.HandleFunc("PUT /api/users/me/cosmetics", handlePutCosmetics(pool))
 	mux.HandleFunc("POST /api/users/me/races", handlePostRace(pool))
 	mux.HandleFunc("POST /api/users/me/races/import", handlePostRacesImport(pool))
+	mux.HandleFunc("GET /api/users/me/daily", handleGetMyDaily(pool))
+	mux.HandleFunc("POST /api/users/me/daily/import", handleImportDaily(pool))
+	mux.HandleFunc("GET /api/users/me/friends", handleGetFriends(pool))
+	mux.HandleFunc("POST /api/users/me/friends", handleAddFriend(pool))
+	mux.HandleFunc("POST /api/users/me/friends/{id}/accept", handleAcceptFriend(pool))
+	mux.HandleFunc("DELETE /api/users/me/friends/{id}", handleRemoveFriend(pool))
+	mux.HandleFunc("GET /api/users/search", handleSearchUsers(pool))
 	// CORS first: its OPTIONS preflight short-circuit must never consume a rate-limit token —
 	// a browser sends one before every real cross-origin request, so counting it would halve
 	// the effective limit for no reason.
@@ -51,7 +63,7 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 func withCORS(allowedOrigin string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

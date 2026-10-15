@@ -24,6 +24,10 @@ const (
 	maxWPM         = 500
 	maxRacerCount  = 64
 	maxImportBatch = 50 // mirrors the old client-side MAX_RACE_HISTORY cap (frontend/useProfile.ts)
+
+	// One race with a full replay is a few KB; this leaves generous headroom while still
+	// refusing to buffer an arbitrarily large body.
+	maxRaceBodyBytes = 256 << 10
 )
 
 // identity is the caller's verified Casdoor identity, forwarded by frontend's server as plain
@@ -68,11 +72,17 @@ func truncate(s string, max int) string {
 type RaceResult struct {
 	ID         int64  `json:"id"`
 	Date       string `json:"date"`
+	Mode       string `json:"mode"`
 	WPM        int    `json:"wpm"`
 	Accuracy   int    `json:"accuracy"`
 	Placement  int    `json:"placement"`
 	RacerCount int    `json:"racerCount"`
+	HasReplay  bool   `json:"hasReplay"`
 }
+
+// raceModes are the kinds of race the frontend records. An empty mode (an older client, or an
+// import from before modes existed) is stored as "solo".
+var raceModes = map[string]bool{"solo": true, "multiplayer": true, "daily": true}
 
 // ProfileStats mirrors frontend/src/lib/profile/useProfile.ts's ProfileStats shape exactly, so
 // the frontend can drop its own client-side computeStats once it reads this directly — computed
@@ -163,7 +173,7 @@ func computeStats(ctx context.Context, pool *pgxpool.Pool, userID string) (Profi
 // lifetime record computeStats reads from (see UserProfile's own doc comment).
 func listRecentRaces(ctx context.Context, pool *pgxpool.Pool, userID string, limit int) ([]RaceResult, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT id, wpm, accuracy, placement, racer_count, created_at
+		SELECT id, mode, wpm, accuracy, placement, racer_count, replay IS NOT NULL, created_at
 		FROM race_results
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -178,7 +188,7 @@ func listRecentRaces(ctx context.Context, pool *pgxpool.Pool, userID string, lim
 	for rows.Next() {
 		var r RaceResult
 		var createdAt time.Time
-		if err := rows.Scan(&r.ID, &r.WPM, &r.Accuracy, &r.Placement, &r.RacerCount, &createdAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Mode, &r.WPM, &r.Accuracy, &r.Placement, &r.RacerCount, &r.HasReplay, &createdAt); err != nil {
 			return nil, err
 		}
 		r.Date = createdAt.Format(time.RFC3339)
@@ -294,13 +304,48 @@ func handlePutCosmetics(pool *pgxpool.Pool) http.HandlerFunc {
 }
 
 type raceRequest struct {
-	WPM        int `json:"wpm"`
-	Accuracy   int `json:"accuracy"`
-	Placement  int `json:"placement"`
-	RacerCount int `json:"racerCount"`
+	WPM        int           `json:"wpm"`
+	Accuracy   int           `json:"accuracy"`
+	Placement  int           `json:"placement"`
+	RacerCount int           `json:"racerCount"`
+	Mode       string        `json:"mode"`
+	Passage    string        `json:"passage"`
+	Replay     []replayEvent `json:"replay"`
+	// DailyDate is the player's local date for a mode "daily" race (see daily.go's
+	// parseDailyDate) — the race then also counts toward that day's daily-challenge result.
+	DailyDate string `json:"dailyDate"`
+}
+
+// normalize fills in defaults before validation — kept separate from validate so validate stays
+// a pure check.
+func (req *raceRequest) normalize() {
+	if req.Mode == "" {
+		req.Mode = "solo"
+	}
+}
+
+// replayColumns returns the passage and replay values to store: both NULL unless the race came
+// with a replay, so a passage is never stored without the timeline that makes it useful.
+func (req raceRequest) replayColumns() (any, any, error) {
+	if len(req.Replay) == 0 {
+		return nil, nil, nil
+	}
+	raw, err := json.Marshal(req.Replay)
+	if err != nil {
+		return nil, nil, err
+	}
+	return req.Passage, raw, nil
 }
 
 func (req raceRequest) validate() string {
+	if !raceModes[req.Mode] {
+		return "unknown mode"
+	}
+	if len(req.Replay) > 0 {
+		if msg := validateReplay(req.Passage, req.Replay); msg != "" {
+			return msg
+		}
+	}
 	if req.WPM < 0 || req.WPM > maxWPM {
 		return "wpm out of range"
 	}
@@ -320,10 +365,11 @@ func (req raceRequest) validate() string {
 func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 	return withIdentity(func(w http.ResponseWriter, r *http.Request, id identity) {
 		var req raceRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRaceBodyBytes)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
+		req.normalize()
 		if msg := req.validate(); msg != "" {
 			writeError(w, http.StatusBadRequest, msg)
 			return
@@ -336,16 +382,52 @@ func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		passage, replay, err := req.replayColumns()
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid replay")
+			return
+		}
+
+		var dailyDay *time.Time
+		if req.Mode == "daily" && req.DailyDate != "" {
+			day, err := parseDailyDate(req.DailyDate, time.Now())
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid dailyDate")
+				return
+			}
+			dailyDay = &day
+		}
+
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			log.Printf("begin race tx failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit succeeds
+
 		var result RaceResult
 		var createdAt time.Time
-		err := pool.QueryRow(ctx, `
-			INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id, wpm, accuracy, placement, racer_count, created_at
-		`, id.id, req.WPM, req.Accuracy, req.Placement, req.RacerCount).
-			Scan(&result.ID, &result.WPM, &result.Accuracy, &result.Placement, &result.RacerCount, &createdAt)
+		err = tx.QueryRow(ctx, `
+			INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			RETURNING id, mode, wpm, accuracy, placement, racer_count, replay IS NOT NULL, created_at
+		`, id.id, req.WPM, req.Accuracy, req.Placement, req.RacerCount, req.Mode, passage, replay).
+			Scan(&result.ID, &result.Mode, &result.WPM, &result.Accuracy, &result.Placement, &result.RacerCount, &result.HasReplay, &createdAt)
 		if err != nil {
 			log.Printf("insert race_results failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if dailyDay != nil {
+			if err := upsertDailyResult(ctx, tx, id.id, *dailyDay, req.WPM, req.Accuracy, &result.ID); err != nil {
+				log.Printf("upsert daily_results failed: %s\n", err)
+				writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+		}
+		if err := tx.Commit(ctx); err != nil {
+			log.Printf("commit race tx failed: %s\n", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -368,13 +450,16 @@ type importRaceEntry struct {
 func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 	return withIdentity(func(w http.ResponseWriter, r *http.Request, id identity) {
 		var entries []importRaceEntry
-		if err := json.NewDecoder(r.Body).Decode(&entries); err != nil {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportBatch*maxRaceBodyBytes)).Decode(&entries); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
 		if len(entries) > maxImportBatch {
 			writeError(w, http.StatusBadRequest, "too many races in one import")
 			return
+		}
+		for i := range entries {
+			entries[i].normalize()
 		}
 		for _, e := range entries {
 			if msg := e.validate(); msg != "" {
@@ -405,10 +490,15 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 			if parsed, err := time.Parse(time.RFC3339, e.Date); err == nil {
 				createdAt = parsed
 			}
+			passage, replay, err := e.replayColumns()
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid replay")
+				return
+			}
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, created_at)
-				VALUES ($1, $2, $3, $4, $5, $6)
-			`, id.id, e.WPM, e.Accuracy, e.Placement, e.RacerCount, createdAt); err != nil {
+				INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			`, id.id, e.WPM, e.Accuracy, e.Placement, e.RacerCount, e.Mode, passage, replay, createdAt); err != nil {
 				log.Printf("insert imported race failed: %s\n", err)
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return

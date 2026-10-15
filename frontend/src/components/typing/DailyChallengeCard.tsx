@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import {
   CalendarDays,
   Flame,
@@ -14,7 +15,10 @@ import TypingWords from '#/components/typing/TypingWords'
 import Gauge from '#/components/typing/Gauge'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
-import { getDailySentence } from '#/lib/typing/sentences'
+import { getDailyQuote, todayKey } from '#/lib/typing/sentences'
+import { useLeaderboard } from '#/lib/social/useLeaderboard'
+import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import LeaderboardTable from '#/components/social/LeaderboardTable'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 
@@ -39,6 +43,14 @@ function formatHistoryDate(date: string): string {
 export default function DailyChallengeCard() {
   const { hydrated, result, complete, history, bestWpm, streak } =
     useDailyChallenge()
+  // useTypingRace only wants the passage text — the author is captured on the side here so the
+  // card can credit the quote without widening that hook's contract for one caller.
+  const [author, setAuthor] = useState<string | null>(null)
+  const loadDailyText = useCallback(async () => {
+    const quote = await getDailyQuote()
+    setAuthor(quote.author)
+    return quote.text
+  }, [])
   const {
     spans,
     typed,
@@ -49,7 +61,11 @@ export default function DailyChallengeCard() {
     handleInputChange,
     start,
     reset,
-  } = useTypingRace(getDailySentence)
+    getReplay,
+  } = useTypingRace(loadDailyText)
+  // Keyed on the local date, so the board rolls over at the same midnight the passage does.
+  const leaderboard = useLeaderboard({ board: 'daily', date: todayKey() })
+  const { user, loaded: userLoaded } = useCurrentUser()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const profile = useProfile()
@@ -97,8 +113,25 @@ export default function DailyChallengeCard() {
     recordedAttemptRef.current = attempt
     setNewBest(wpm > bestWpm)
     complete(wpm, accuracy)
-    profile.addRace({ wpm, accuracy, placement: 1, racerCount: 1 })
-  }, [finished, wpm, accuracy, complete, attempt, bestWpm, profile.addRace])
+    profile.addRace({
+      wpm,
+      accuracy,
+      placement: 1,
+      racerCount: 1,
+      mode: 'daily',
+      dailyDate: todayKey(),
+      replay: getReplay(),
+    })
+  }, [
+    finished,
+    wpm,
+    accuracy,
+    complete,
+    attempt,
+    bestWpm,
+    profile.addRace,
+    getReplay,
+  ])
 
   function handleStart() {
     setCountdown(COUNTDOWN_START)
@@ -149,7 +182,7 @@ export default function DailyChallengeCard() {
           locked={locked}
           onInputChange={handleInputChange}
           inputRef={inputRef}
-          className="mb-5"
+          className={author ? 'mb-2' : 'mb-5'}
           overlay={
             finished ? (
               <div className="countdown-overlay">
@@ -189,14 +222,20 @@ export default function DailyChallengeCard() {
           }
         />
 
+        {author && (
+          <p className="mb-5 text-right text-sm text-muted-foreground italic">
+            — {author}
+          </p>
+        )}
+
         {finished ? (
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4">
             <Trophy className="size-6 shrink-0 text-success" />
             <div className="flex flex-col gap-1">
               <p className="text-sm leading-none">
                 <strong>{wpm} wpm</strong> at <strong>{accuracy}%</strong>{' '}
-                accuracy. Same passage for everyone today — come back
-                tomorrow for a new one.
+                accuracy. Same passage for everyone today — come back tomorrow
+                for a new one.
               </p>
               {newBest && (
                 <Badge variant="success" className="w-fit gap-1">
@@ -214,6 +253,38 @@ export default function DailyChallengeCard() {
           </p>
         )}
       </CardContent>
+
+      {leaderboard.data && (
+        <>
+          <div className="glass-divider" />
+          <CardHeader className="flex-row items-center justify-between py-5">
+            <p className="kicker">Today's top racers</p>
+            <Link
+              to="/leaderboards"
+              search={{ board: 'daily' }}
+              className="text-xs font-semibold text-muted-foreground hover:text-primary"
+            >
+              Full board
+            </Link>
+          </CardHeader>
+          <CardContent className="pt-0 pb-6">
+            <LeaderboardTable
+              board={leaderboard.data}
+              compact
+              limit={5}
+              emptyText="Nobody has finished today's passage yet — be the first."
+            />
+            {userLoaded && !user && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                <a href="/login" className="font-semibold text-primary">
+                  Log in
+                </a>{' '}
+                to put your run on the board.
+              </p>
+            )}
+          </CardContent>
+        </>
+      )}
 
       {hydrated && history.length > 0 && (
         <>

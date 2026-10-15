@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getRandomQuoteText } from './sentences'
+import { useReplayRecorder } from '#/lib/replay/recorder'
 
 const TICK_MS = 100
 // Below this, elapsed time is too noisy to extrapolate into a per-minute
@@ -52,6 +53,7 @@ export function useTypingRace(
 
   const spans = useMemo(() => computeWordSpans(text), [text])
   const finished = finishedAt !== null
+  const recorder = useReplayRecorder()
 
   useEffect(() => {
     let cancelled = false
@@ -125,7 +127,8 @@ export function useTypingRace(
 
   function handleInputChange(value: string) {
     if (finished) return
-    if (!startedAt) setStartedAt(Date.now())
+    const raceStart = startedAt ?? Date.now()
+    if (!startedAt) setStartedAt(raceStart)
 
     const incoming = value.slice(0, text.length)
 
@@ -136,6 +139,7 @@ export function useTypingRace(
       const boundary = spans[activeWordIndex].start
       if (incoming.length < boundary) return
       setTyped(incoming)
+      recorder.record(raceStart, incoming.length, false)
       return
     }
 
@@ -174,6 +178,7 @@ export function useTypingRace(
 
     if (next.length === typed.length && newAttempts === 0) return
 
+    recorder.record(raceStart, next.length, newMistakes > 0)
     setTotalTyped((count) => count + newAttempts)
     setTotalMistakes((count) => count + newMistakes)
     if (newMistakes > 0) {
@@ -208,13 +213,14 @@ export function useTypingRace(
       const isLast = targetIndex >= spans.length - 1
       const committed = text.slice(0, word.end) + (isLast ? '' : ' ')
       setTyped(committed)
+      recorder.record(startedAt, committed.length, false)
       if (isLast) {
         setFinishedAt(Date.now())
       } else {
         setWordIndex(targetIndex + 1)
       }
     },
-    [finished, startedAt, spans, activeWordIndex, text],
+    [finished, startedAt, spans, activeWordIndex, text, recorder],
   )
 
   // Lets a countdown-driven UI (the solo race screen) kick the clock off at
@@ -240,12 +246,16 @@ export function useTypingRace(
     setStartedAt(null)
     setFinishedAt(null)
     setNow(null)
+    recorder.reset()
     // Cleared immediately, same as the initial mount, rather than left showing the just-
     // finished text until the next one resolves — reuses the exact same "waiting" handling
     // (see the text-keyed effect in TypingRace) instead of needing a second loading state.
     setText('')
     Promise.resolve(getTextRef.current(exclude)).then(setText)
   }
+
+  // The just-finished race as a replay (see useReplayRecorder), or null if there isn't one.
+  const getReplay = useCallback(() => recorder.snapshot(text), [recorder, text])
 
   return {
     text,
@@ -264,5 +274,6 @@ export function useTypingRace(
     skipWord,
     start,
     reset,
+    getReplay,
   }
 }

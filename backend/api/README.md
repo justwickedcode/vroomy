@@ -1,12 +1,14 @@
 # quotes-api
 
-A small read-only Go HTTP API serving quotes from the separate `quotes-crawler` project's Postgres database, currently used for one thing: feeding the frontend's typing-race game real passages instead of its static placeholder pool (see `frontend/src/lib/typing/sentences.ts`).
+Vroomy's REST API, in Go. It serves typing-race passages from the `quotes` table that the separate `quotes-crawler` project fills, and owns everything player-related: profiles and cosmetics, race history with keystroke replays, daily-challenge results, leaderboards, and friends.
 
 ## Why Go, not Elysia/Hono
 
-The original plan here (see git history) was a TypeScript API using Elysia or Hono. That changed once the actual use case became concrete: this API only needs to read quotes the scraper already collected, using a schema and word-count filtering logic the scraper's own Go code already defines. Rebuilding that in a second language/runtime — a new Postgres client, a new understanding of what makes a quote "typing-race-eligible" — would have been pure duplication for zero benefit, since this service does nothing beyond query and reshape data the scraper already owns.
+The original plan (see git history) was a TypeScript API using Elysia or Hono. It became Go once the first real job was clear: read quotes the crawler had already collected, using a schema and word-count rules the crawler's own Go code defines. Rebuilding that in a second runtime would have been duplication for no benefit, and the player features added since fit the same small `net/http` + `pgx` service without needing a framework.
 
-If a broader REST API (auth, other resources, a real API for the whole app) becomes needed later, that's a fair reason to revisit the stack — Elysia/Hono are still perfectly reasonable choices for that. This one just didn't need it.
+## Identity
+
+This API never sees a browser. It has no public domain (see the root `docker-compose.yml`); only the frontend's own server calls it, after verifying the player's session cookie, and it forwards who the player is as `X-Vroomy-User-Id` / `-Name` / `-Email` / `-Avatar` headers (see `frontend/src/lib/api/server.ts`). Endpoints under `/api/users/me` require `X-Vroomy-User-Id` and return `401` without it. User ids are the identity provider's `sub` claim.
 
 ## Relationship to quotes-crawler
 
@@ -24,13 +26,13 @@ go run .
 
 Reads `.env` for `DATABASE_URL`, `API_PORT` (default `8080`), and `CORS_ALLOWED_ORIGIN` (default `http://localhost:3000`, i.e. the frontend's dev server). `.env` is optional — if it's just not present (e.g. running in a container, where config comes from the environment directly), that's not an error; only a genuinely malformed `.env` file that does exist is fatal.
 
-For a production deployment (Docker, a reverse proxy for real HTTPS, backups of the shared database) see `../../PRODUCTION.md` at the repo root.
+For a production deployment see the "Deployment" section of the root `README.md` and the comments in `../../docker-compose.yml`.
 
 ## Rate limiting
 
-`GET /api/quotes/random` is limited to 30 requests/minute per IP (burst of 10) — see `ratelimit.go`. This API has no accounts or API keys (it's called directly from any visitor's browser), so per-IP limiting is the only practical abuse control available; it's sized generously for real gameplay (one new sentence per race, roughly every 10-60+ seconds) and exists to stop a script hammering the endpoint, not to throttle real players. `/health` is exempt, since an orchestrator's own healthcheck polling it every few seconds shouldn't be able to trip a limit meant for abuse.
+The endpoints a logged-out visitor can reach (`/api/quotes/random`, `/api/quotes/daily`, `/api/leaderboards`, `/api/replays/{id}`) are each limited to 30 requests/minute per IP (burst of 10) — see `ratelimit.go`. This API has no accounts or API keys (it's called directly from any visitor's browser), so per-IP limiting is the only practical abuse control available; it's sized generously for real gameplay (one new sentence per race, roughly every 10-60+ seconds) and exists to stop a script hammering the endpoint, not to throttle real players. `/health` is exempt, since an orchestrator's own healthcheck polling it every few seconds shouldn't be able to trip a limit meant for abuse.
 
-Prefers `X-Forwarded-For`'s first entry when present (set this correctly in your reverse proxy — see `PRODUCTION.md`), falling back to the direct connection's address for local dev where there's no proxy in front.
+Prefers `X-Forwarded-For`'s first entry when present (set this correctly in your reverse proxy), falling back to the direct connection's address for local dev where there's no proxy in front.
 
 ## Endpoints
 
@@ -59,6 +61,88 @@ Query params (all optional):
 `404` (`{"error": "no quote matches the requested filters"}`) if nothing matches — a real, expected outcome (an unusual word-count range, a language with a small corpus), not a server error. The frontend should fall back to its static placeholder pool in this case rather than treating it as broken.
 
 Text returned here has already been run through `MakeTypingSafe` — em/en dashes, curly quotes, and ellipsis characters are normalized to plain-ASCII equivalents (checked live: roughly a quarter of typing-eligible quotes contain one of these) so the game's exact character-match input handling doesn't punish a player for punctuation they have no reasonable way to type. Accented letters (names, borrowed words) are left as-is — typeable, just with an extra keystroke on some layouts, and not worth stripping legitimate content over.
+
+### `GET /api/quotes/daily`
+
+Returns the daily challenge passage: one quote per calendar day, identical for every player. The first request for a day picks a quote from the corpus (same filters as `/api/quotes/random`) and freezes it in the `daily_quotes` table, so the passage doesn't shift as the crawler adds rows; concurrent first requests resolve to the same row via `ON CONFLICT DO NOTHING`.
+
+| Param  | Default     | Notes                                                                                                                                      |
+| ------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `date` | today (UTC) | `YYYY-MM-DD`, the player's local date. Must be within one day of today in UTC (i.e. "today" somewhere on Earth); anything else is a `400`. |
+
+```json
+{
+  "text": "...",
+  "author": "Mark Twain",
+  "source": "wikiquote-en",
+  "language": "en",
+  "date": "2026-10-16"
+}
+```
+
+`404` if the corpus has no eligible quote at all. Shares the same per-IP rate limit settings as `/api/quotes/random` (its own bucket).
+
+### Profile and races
+
+| Endpoint                          | What it does                                                                                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/users/me`               | Creates the user row on first call, then returns identity, cosmetics, the 50 most recent races, and lifetime stats (`racesPlayed`, `bestWpm`, `avgWpm`, `avgAccuracy`, `wins`) |
+| `PUT /api/users/me/cosmetics`     | Saves car, underglow, trail and power-up                                                                                                                                       |
+| `POST /api/users/me/races`        | Records one finished race (see below)                                                                                                                                          |
+| `POST /api/users/me/races/import` | Bulk-uploads up to 50 races a guest played before logging in                                                                                                                   |
+| `GET /api/users/me/daily`         | The player's daily-challenge results for the last 60 days                                                                                                                      |
+| `POST /api/users/me/daily/import` | Bulk-uploads a guest's daily results (idempotent: keeps the best per day)                                                                                                      |
+
+A race body:
+
+```json
+{
+  "wpm": 82,
+  "accuracy": 97,
+  "placement": 1,
+  "racerCount": 5,
+  "mode": "solo",
+  "passage": "The text that was typed...",
+  "replay": [
+    [0, 1, 0],
+    [140, 1, 1],
+    [310, 4, 0],
+    [9120, 214, 0]
+  ],
+  "dailyDate": "2026-10-16"
+}
+```
+
+- `mode` is `solo`, `multiplayer` or `daily`.
+- `replay` is optional. Each event is `[msSinceStart, typedLength, rejected]`. The game only accepts correct characters, so what the player had typed at any moment is `passage[:typedLength]`, which keeps a whole race to a few KB. `rejected` is `1` for a keystroke the game refused (a typo). The server checks that timestamps never go backwards, lengths stay inside the passage, and the timeline ends on the last character (`replays.go`).
+- `dailyDate` (with `mode: "daily"`) also records the run as that day's daily-challenge result, in the same transaction, keeping only the player's best run per day.
+
+### `GET /api/leaderboards`
+
+| Param    | Values                     | Default     |
+| -------- | -------------------------- | ----------- |
+| `board`  | `speed`, `daily`           | `speed`     |
+| `period` | `day`, `week`, `all`       | `week`      |
+| `scope`  | `global`, `friends`        | `global`    |
+| `date`   | `YYYY-MM-DD` (daily board) | today (UTC) |
+
+`speed` ranks each player's single best race in a rolling window (24 hours, 7 days or all time); `daily` ranks one day's daily-challenge results. Tied players share a rank. The response has the top 50 `entries` plus `me`, the caller's own row when they're ranked below the cut. Each entry includes `replayId` when the run that earned it has a replay. `scope=friends` limits the board to the caller and their accepted friends and needs an identity.
+
+### Friends
+
+| Endpoint                                 | What it does                                                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `GET /api/users/me/friends`              | `{friends, incoming, outgoing}`, each with display name, car, best WPM and race count           |
+| `GET /api/users/search?q=`               | Up to 10 players whose name contains `q` (2–64 chars), each with its relationship to the caller |
+| `POST /api/users/me/friends`             | `{"userId": "..."}`: sends a request, or accepts one if that player already asked               |
+| `POST /api/users/me/friends/{id}/accept` | Accepts a pending request from `{id}`                                                           |
+| `DELETE /api/users/me/friends/{id}`      | Unfriends, declines, or cancels — whichever relationship exists                                 |
+
+Every mutation returns the updated `{friends, incoming, outgoing}`. A request is one directed row; a unique index on the unordered pair means two players sending each other requests at the same moment still end up with one relationship.
+
+### `GET /api/replays/{id}`
+
+A recorded race: `passage`, `events`, the race's stats, and the driver's display name, avatar and car. Public, so leaderboard rows can link to the run behind them. `404` for an unknown id or a race without a replay.
 
 ### `GET /health`
 

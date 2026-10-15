@@ -91,6 +91,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     skipWord,
     start,
     reset,
+    getReplay,
   } = useTypingRace()
 
   const profile = useProfile()
@@ -317,6 +318,8 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       accuracy,
       placement: place,
       racerCount: bots.length + 1,
+      mode: 'solo',
+      replay: getReplay(),
     })
   }, [
     finished,
@@ -326,6 +329,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     accuracy,
     bots.length,
     profile.addRace,
+    getReplay,
     profile.stats.bestWpm,
     profile.stats.racesPlayed,
   ])
@@ -338,7 +342,9 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     </div>
   )
 
-  const powerupDef = powerup ? POWERUPS.find((p) => p.id === powerup) : undefined
+  const powerupDef = powerup
+    ? POWERUPS.find((p) => p.id === powerup)
+    : undefined
 
   return (
     <Card className="rise-in flex flex-col overflow-hidden rounded-t-none">

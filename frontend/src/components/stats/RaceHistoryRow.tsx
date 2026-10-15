@@ -1,4 +1,5 @@
-import { Medal } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Medal, PlayCircle } from 'lucide-react'
 import { cn, ordinal } from '#/lib/utils'
 import type { RaceRecord } from '#/lib/profile/useProfile'
 
@@ -16,7 +17,7 @@ export default function RaceHistoryRow({
   lapNumber: number
 }) {
   return (
-    <div className="grid grid-cols-[2.75rem_1fr_auto_auto_auto] items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-accent/30">
+    <div className="grid grid-cols-[2.75rem_1fr_auto_auto_auto_1.25rem] items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-accent/30">
       <span className="stat-figure text-xs text-muted-foreground">
         {String(lapNumber).padStart(3, '0')}
       </span>
@@ -46,6 +47,19 @@ export default function RaceHistoryRow({
       >
         {ordinal(race.placement)} of {race.racerCount}
       </span>
+      {/* Optimistic rows (negative ids, see useProfile's addRace) have no replay to open yet. */}
+      {race.hasReplay && !race.id.startsWith('-') ? (
+        <Link
+          to="/replays/$replayId"
+          params={{ replayId: race.id }}
+          title="Watch replay"
+          className="text-muted-foreground hover:text-primary"
+        >
+          <PlayCircle className="size-4" />
+        </Link>
+      ) : (
+        <span />
+      )}
     </div>
   )
 }

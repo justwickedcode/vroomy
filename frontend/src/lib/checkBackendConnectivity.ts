@@ -10,7 +10,7 @@ import { createServerFn } from '@tanstack/react-start'
 // api has no public domain in production (see docker-compose.prod.yml) — only this frontend's
 // own server can reach it, over the compose network, so the check has to run server-side via a
 // server function (same reasoning as fetchRandomQuote in sentences.ts) rather than a direct
-// browser fetch like ws's below. ws still has a public domain for now (see PRODUCTION.md) — it
+// browser fetch like ws's below. ws still has a public domain for now (see docker-compose.yml) — it
 // isn't proxied yet, so its check stays a plain client-side fetch until that changes.
 interface HealthResult {
   ok: boolean

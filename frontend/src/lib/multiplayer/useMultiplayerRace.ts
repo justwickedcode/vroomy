@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { computeWordSpans } from '#/lib/typing/useTypingRace'
+import { useReplayRecorder } from '#/lib/replay/recorder'
+import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 
 // Talks to backend/ws (a separate Go service — see backend/ws/README.md) over a raw WebSocket,
 // not fetch/TanStack Query: this is a stateful, long-lived, server-pushed session (matchmaking,
@@ -60,6 +62,13 @@ interface ServerMessage {
   wpm?: number
   results?: Array<RaceResult>
   message?: string
+  players?: Array<{ playerId: string; name?: string }>
+}
+
+function namesFrom(
+  players: Array<{ playerId: string; name?: string }>,
+): Record<string, string | undefined> {
+  return Object.fromEntries(players.map((p) => [p.playerId, p.name]))
 }
 
 // useMultiplayerRace mirrors useTypingRace's word-lock input model (reject-wrong-chars,
@@ -70,6 +79,12 @@ interface ServerMessage {
 // arbitrarily long after mount (however long the lobby wait takes) — so text has to be a plain
 // reactive value this hook updates itself, not a lazy getter called once.
 export function useMultiplayerRace() {
+  // Sent as ?name= so opponents see who they're racing (see backend/ws's sanitizeName). Read at
+  // connect time through a ref; the route gates wait for the user to load before connecting.
+  const { user } = useCurrentUser()
+  const nameRef = useRef(user?.name)
+  nameRef.current = user?.name
+
   const [phase, setPhase] = useState<MultiplayerPhase>('connecting')
   const [myId, setMyId] = useState<string | null>(null)
   const [isHost, setIsHost] = useState(false)
@@ -87,6 +102,11 @@ export function useMultiplayerRace() {
     Record<string, Opponent | undefined>
   >({})
   const [results, setResults] = useState<Array<RaceResult> | null>(null)
+  // playerId → display name, for every player who connected with one.
+  const [names, setNames] = useState<Record<string, string | undefined>>({})
+  // How many players the race started with — the "of N" in a recorded placement. Fixed at
+  // race_start, unlike playersInRoom, so a mid-race disconnect doesn't change it.
+  const [racerCount, setRacerCount] = useState(0)
   // Set the instant our own player_finished arrives — before race_end, which waits for every
   // still-connected player to finish (or the 5-minute cap). Our own rank is already final the
   // moment we cross the line; there's no reason to make the UI sit blank until race_end just
@@ -106,6 +126,7 @@ export function useMultiplayerRace() {
 
   const spans = useMemo(() => computeWordSpans(text), [text])
   const finished = finishedAt !== null
+  const recorder = useReplayRecorder()
 
   useEffect(() => {
     if (!startedAt || finished) return
@@ -156,7 +177,8 @@ export function useMultiplayerRace() {
 
   function handleInputChange(value: string) {
     if (finished || phase !== 'racing') return
-    if (!startedAt) setStartedAt(Date.now())
+    const raceStart = startedAt ?? Date.now()
+    if (!startedAt) setStartedAt(raceStart)
 
     const incoming = value.slice(0, text.length)
 
@@ -164,6 +186,7 @@ export function useMultiplayerRace() {
       const boundary = spans[activeWordIndex].start
       if (incoming.length < boundary) return
       setTyped(incoming)
+      recorder.record(raceStart, incoming.length, false)
       return
     }
 
@@ -200,6 +223,7 @@ export function useMultiplayerRace() {
 
     if (next.length === typed.length && newAttempts === 0) return
 
+    recorder.record(raceStart, next.length, newMistakes > 0)
     setTotalTyped((count) => count + newAttempts)
     setTotalMistakes((count) => count + newMistakes)
     if (newMistakes > 0) {
@@ -239,6 +263,8 @@ export function useMultiplayerRace() {
     setWordCount(0)
     setStartsInMs(0)
     setOpponents({})
+    setNames({})
+    setRacerCount(0)
     setResults(null)
     setMyResult(null)
     setErrorMessage(null)
@@ -251,7 +277,8 @@ export function useMultiplayerRace() {
     setStartedAt(null)
     setFinishedAt(null)
     setNow(null)
-  }, [])
+    recorder.reset()
+  }, [recorder])
 
   const connect = useCallback(
     (path: string) => {
@@ -259,7 +286,9 @@ export function useMultiplayerRace() {
       resetRoomState()
       setPhase('connecting')
 
-      const url = `${WS_URL}${path}`
+      const target = new URL(`${WS_URL}${path}`)
+      if (nameRef.current) target.searchParams.set('name', nameRef.current)
+      const url = target.toString()
       const ws = new WebSocket(url)
       socketRef.current = ws
 
@@ -304,12 +333,17 @@ export function useMultiplayerRace() {
             setIsHost(true)
             break
           case 'waiting':
+            if (msg.players) setNames(namesFrom(msg.players))
             setCode(msg.code || null)
             setPlayersInRoom(msg.playersInRoom ?? 0)
             setMinPlayers(msg.minPlayers ?? 2)
             setMaxPlayers(msg.maxPlayers ?? 6)
             break
           case 'race_start':
+            if (msg.players) {
+              setNames(namesFrom(msg.players))
+              setRacerCount(msg.players.length)
+            }
             if (msg.quote) setQuote(msg.quote)
             setWordCount(msg.wordCount ?? 0)
             setStartsInMs(msg.startsInMs ?? 0)
@@ -439,6 +473,8 @@ export function useMultiplayerRace() {
     }
   }, [])
 
+  const getReplay = useCallback(() => recorder.snapshot(text), [recorder, text])
+
   return {
     phase,
     myId,
@@ -455,6 +491,8 @@ export function useMultiplayerRace() {
     ),
     results,
     myResult,
+    names,
+    racerCount,
     errorMessage,
     quickMatch,
     createRoom,
@@ -473,5 +511,6 @@ export function useMultiplayerRace() {
     progress,
     errorSeq,
     handleInputChange,
+    getReplay,
   }
 }

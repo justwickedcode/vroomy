@@ -1,10 +1,9 @@
 import { createServerFn } from '@tanstack/react-start'
-import { getRequestHeader } from '@tanstack/react-start/server'
+import { apiFetch } from '#/lib/api/server'
 
-// Fallback pool for when backend/api is unreachable (see getRandomQuoteText below) and for the
-// daily challenge (see getDailySentence), which needs a small fixed set to deterministically
-// hash into rather than an ever-growing live corpus. No longer the primary solo-race source —
-// that's now the real scraped corpus, served live over the API.
+// Fallback pool for when backend/api is unreachable (see getRandomQuoteText and getDailyQuote
+// below). No longer the primary source for anything — solo races and the daily challenge both
+// come from the real scraped corpus, served live over the API.
 //
 // Kept deliberately long (~35-45 words): a short sentence finishes in a
 // couple of seconds even for an average typist, and extrapolating a
@@ -28,31 +27,14 @@ export function getRandomSentence(exclude?: string): string {
   return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
-// backend/api has no public domain in production (see docker-compose.prod.yml) — it's reachable
-// only from inside other containers on the same compose network, never directly from a browser.
-// So the actual request has to happen server-side, inside this handler, which is the one thing
-// createServerFn guarantees: its body is stripped from the client bundle entirely and only ever
-// runs on the frontend's own Nitro/Bun server, which IS on that network. API_INTERNAL_URL is a
-// plain runtime env var (deliberately not VITE_-prefixed — that prefix means Vite inlines it
-// into the client bundle, which would defeat the point), read fresh from process.env on every
-// request, no build-time baking needed at all.
+// Quotes come from backend/api through the frontend's own server (see apiFetch in
+// #/lib/api/server for why api is never called from the browser directly).
 const fetchRandomQuote = createServerFn({ method: 'GET' })
   .validator((data?: { exclude?: string }) => data)
   .handler(async ({ data }) => {
-    const apiUrl = process.env.API_INTERNAL_URL ?? 'http://localhost:8080'
-    const url = new URL('/api/quotes/random', apiUrl)
-    if (data?.exclude) url.searchParams.set('exclude', data.exclude)
-    // Without this, every player's request would arrive at api from this one container's own
-    // address, collapsing api's per-visitor rate limit (see backend/api/ratelimit.go's
-    // clientIP, which already prefers X-Forwarded-For's first entry) into a single shared
-    // bucket for the whole site. Forwarding the header this request itself arrived with keeps
-    // the original visitor's IP as that first entry, exactly as if api were still public.
-    const forwardedFor = getRequestHeader('x-forwarded-for')
-    const res = await fetch(url, {
-      headers: forwardedFor ? { 'X-Forwarded-For': forwardedFor } : undefined,
+    const quote = await apiFetch<{ text: string }>('/api/quotes/random', {
+      search: { exclude: data?.exclude },
     })
-    if (!res.ok) throw new Error(`quotes API returned ${res.status}`)
-    const quote: { text: string } = await res.json()
     return quote.text ? quote.text : null
   })
 
@@ -95,11 +77,50 @@ export function todayKey(): string {
   return dateKey(new Date())
 }
 
-export function getDailySentence(): string {
+// Offline fallback only (see getDailyQuote): same passage for everyone on the same calendar
+// day, hashed from the local date so it's stable across a reload.
+function getDailyFallbackSentence(): string {
   const key = todayKey()
   let hash = 0
   for (let i = 0; i < key.length; i++) {
     hash = (hash * 31 + key.charCodeAt(i)) >>> 0
   }
   return SENTENCE_POOL[hash % SENTENCE_POOL.length]
+}
+
+export interface DailyQuote {
+  text: string
+  author: string | null
+}
+
+// date is the player's own local calendar date, so the challenge rolls over at their midnight —
+// api accepts any date that's currently "today" in some timezone (see backend/api/daily.go's
+// parseDailyDate).
+const fetchDailyQuote = createServerFn({ method: 'GET' })
+  .validator((data: { date: string }) => data)
+  .handler(async ({ data }) => {
+    const quote = await apiFetch<{ text: string; author: string }>(
+      '/api/quotes/daily',
+      { search: { date: data.date } },
+    )
+    return quote.text
+      ? { text: quote.text, author: quote.author || null }
+      : null
+  })
+
+// getDailyQuote is the daily challenge's passage: one real quote from the corpus per day,
+// picked and frozen server-side (backend/api's daily_quotes table) so every player types the
+// identical passage all day. Falls back to the local pool if the API is unavailable, same as
+// getRandomQuoteText.
+export async function getDailyQuote(): Promise<DailyQuote> {
+  try {
+    const quote = await fetchDailyQuote({ data: { date: todayKey() } })
+    if (quote) return quote
+  } catch (err) {
+    console.warn(
+      'getDailyQuote: falling back to the local sentence pool — quotes API unavailable:',
+      err,
+    )
+  }
+  return { text: getDailyFallbackSentence(), author: null }
 }
