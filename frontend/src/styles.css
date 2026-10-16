@@ -901,6 +901,46 @@ body::before {
 
 /* ── Curbs ───────────────────────────────────────────────────────── */
 
+/* Epic (dashboard title-screen) track: taller lanes, bigger cars, and white speed streaks
+   rushing past toward the left. */
+.race-track-panel--epic {
+  padding-top: 0;
+}
+
+.race-track-panel--epic .race-lane {
+  height: 66px;
+}
+
+.race-track-panel--epic .race-car-svg {
+  width: 6.5rem;
+}
+
+.race-speedlines {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.race-speedlines span {
+  position: absolute;
+  right: -30%;
+  width: 22%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 55%));
+  animation: race-speedline linear infinite;
+}
+
+@keyframes race-speedline {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-560%);
+  }
+}
+
 .race-curb {
   position: relative;
   z-index: 3; /* above finish band at z-index:2 */

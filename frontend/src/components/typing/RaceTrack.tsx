@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
+import PixelSkyline from '#/components/typing/PixelSkyline'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
 import type { TrailVariant } from '#/lib/trails'
@@ -31,6 +32,17 @@ export interface RaceEffect {
   targetId?: string
   key: number
 }
+
+// Fixed streaks for the epic track's speed lines: lane height %, stagger and speed.
+const SPEEDLINES = [
+  { top: 8, delay: 0, duration: 700 },
+  { top: 22, delay: 260, duration: 900 },
+  { top: 37, delay: 520, duration: 650 },
+  { top: 51, delay: 130, duration: 800 },
+  { top: 66, delay: 410, duration: 720 },
+  { top: 80, delay: 610, duration: 880 },
+  { top: 93, delay: 340, duration: 680 },
+]
 
 // Cars start at 12% and stop at 92% (finish band position)
 const CAR_START = 12
@@ -236,6 +248,7 @@ export default function RaceTrack({
   phase,
   effect,
   finishLine = true,
+  epic = false,
   className,
 }: {
   racers: Array<Racer>
@@ -244,6 +257,9 @@ export default function RaceTrack({
   effect?: RaceEffect | null
   // false for an endless drill with nothing to finish: no flag, and the road never brakes.
   finishLine?: boolean
+  // The dashboard's title-screen version: a pixel city skyline above the track, speed lines
+  // streaking past, and bigger cars on taller lanes.
+  epic?: boolean
   className?: string
 }) {
   const player = racers.find((r) => r.isYou) ?? racers[0]
@@ -301,7 +317,15 @@ export default function RaceTrack({
   }, [showFinish])
 
   return (
-    <div className={cn('race-track-panel', className)} ref={trackRef}>
+    <div
+      className={cn(
+        'race-track-panel',
+        epic && 'race-track-panel--epic',
+        className,
+      )}
+      ref={trackRef}
+    >
+      {epic && <PixelSkyline />}
       <div className="race-lanes-area">
         <div className="race-curb" aria-hidden="true" />
         {racers.map((racer, index) => {
@@ -318,6 +342,20 @@ export default function RaceTrack({
           )
         })}
         <div className="race-curb" aria-hidden="true" />
+        {epic && (
+          <div className="race-speedlines" aria-hidden="true">
+            {SPEEDLINES.map((line) => (
+              <span
+                key={line.top}
+                style={{
+                  top: `${line.top}%`,
+                  animationDelay: `${line.delay}ms`,
+                  animationDuration: `${line.duration}ms`,
+                }}
+              />
+            ))}
+          </div>
+        )}
         {finishLine && (
           <span
             className="race-finish-band"

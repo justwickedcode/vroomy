@@ -10,14 +10,11 @@ import Coins from '#/components/ui/Coins'
 import PixelMeter from '#/components/ui/PixelMeter'
 import RaceTrack from '#/components/typing/RaceTrack'
 import RaceHistoryRow from '#/components/stats/RaceHistoryRow'
-import LeaderboardTable from '#/components/social/LeaderboardTable'
-import { useLeaderboard } from '#/lib/social/useLeaderboard'
 import { ACHIEVEMENTS, achievementReward } from '#/lib/achievements'
 import { useProfile } from '#/lib/profile/useProfile'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 import { cn } from '#/lib/utils'
 import type { ReactNode } from 'react'
-import type { RaceRecord } from '#/lib/profile/useProfile'
 
 export const Route = createFileRoute('/')({ component: Dashboard })
 
@@ -62,33 +59,26 @@ function StatCell({
   )
 }
 
-// How many recent races the speed chart shows.
-const TREND_RACES = 20
+// The title-screen lineup: four cars from a hand-picked set of the coolest rides, in a fixed
+// staggered formation around the player's car. Picked by the date, so the grid changes once a
+// day but stays put while you're looking at it.
+const SHOWCASE_CARS = [
+  { model: 'lambo', name: 'Lambo' },
+  { model: 'super', name: 'Super' },
+  { model: 'pixel-racer-blue', name: 'Blue Racer' },
+  { model: 'drift', name: 'Drift' },
+  { model: 'police', name: 'Police' },
+  { model: 'pixel-racer-red', name: 'Red Racer' },
+]
+// Where each lane's car sits along the track, top to bottom; the player is the middle lane.
+// You always lead — the middle lane is furthest ahead, everyone else trails behind.
+const FORMATION = [0.38, 0.5, 0.72, 0.56, 0.32]
+const SHOWCASE_LEAD = [0.78, 0.88, 1, 0.92, 0.72]
 
-// Recent races as pixel bars, oldest on the left; the best one is highlighted.
-function SpeedBars({ races }: { races: Array<RaceRecord> }) {
-  const recent = races.slice(0, TREND_RACES).reverse()
-  const max = Math.max(...recent.map((r) => r.wpm), 1)
-  const best = Math.max(...recent.map((r) => r.wpm))
-  return (
-    <div className="flex h-full min-h-32 items-end gap-[3px]">
-      {recent.map((race) => (
-        <div
-          key={race.id}
-          title={`${race.wpm} wpm`}
-          className="flex-1"
-          style={{
-            height: `${Math.max(6, (race.wpm / max) * 100)}%`,
-            background:
-              race.wpm === best
-                ? 'var(--color-signal)'
-                : 'color-mix(in oklab, var(--color-foreground) 55%, transparent)',
-            boxShadow: 'inset 0 -3px 0 rgb(0 0 0 / 25%)',
-          }}
-        />
-      ))}
-    </div>
-  )
+function showcaseLineup(playerModel: string) {
+  const day = Math.floor(Date.now() / 86_400_000)
+  const pool = SHOWCASE_CARS.filter((c) => c.model !== playerModel)
+  return Array.from({ length: 4 }, (_, i) => pool[(day + i * 2) % pool.length])
 }
 
 function Dashboard() {
@@ -104,7 +94,6 @@ function Dashboard() {
     trail,
   } = useProfile()
   const { user } = useCurrentUser()
-  const weekly = useLeaderboard({ board: 'speed', period: 'week' })
   const hasRaced = hydrated && stats.racesPlayed > 0
   const unlocked = hydrated ? achievements : []
   // The next achievements to go for, in the catalog's own easiest-first order.
@@ -118,25 +107,38 @@ function Dashboard() {
       <div className="page-wrap flex flex-1 flex-col">
         {/* Fills the screen: the last two rows stretch to the bottom instead of leaving empty
             space under the panel. */}
-        <div className="rise-in px-corners grid flex-1 grid-rows-[auto_auto_auto_1fr_1fr] gap-[2px] border-2 border-border bg-border">
+        <div className="rise-in px-corners grid flex-1 grid-rows-[auto_auto_auto_1fr] gap-[2px] border-2 border-border bg-border">
           {/* Hero: your own car cruising, like a game's title screen. */}
           <div className={CELL}>
             <RaceTrack
-              racers={[
-                {
+              racers={(() => {
+                const youWpm = hasRaced ? Math.max(stats.avgWpm, 40) : 40
+                const lanes = showcaseLineup(carModel).map((car, i) => {
+                  const lane = i < 2 ? i : i + 1
+                  return {
+                    id: `showcase-${i}`,
+                    name: car.name,
+                    progress: FORMATION[lane],
+                    wpm: Math.round(youWpm * SHOWCASE_LEAD[lane]),
+                    model: car.model,
+                  }
+                })
+                const you = {
                   id: 'you',
                   name: user?.name ?? 'You',
-                  progress: 0.45,
-                  wpm: hasRaced ? stats.avgWpm : 40,
+                  progress: FORMATION[2],
+                  wpm: youWpm,
                   isYou: true,
                   model: carModel,
                   underglow,
                   underglowColor,
                   trail,
-                },
-              ]}
+                }
+                return [...lanes.slice(0, 2), you, ...lanes.slice(2)]
+              })()}
               phase="ready"
               finishLine={false}
+              epic
             />
             <h1 className="p-5 text-3xl font-extrabold tracking-tight sm:text-4xl">
               Ready when you are.
@@ -204,40 +206,6 @@ function Dashboard() {
                 />
               </>
             )}
-          </div>
-
-          <div className="grid grid-cols-1 gap-[2px] lg:grid-cols-3">
-            <section
-              className={cn(CELL, 'flex flex-col gap-3 p-5 lg:col-span-2')}
-            >
-              <p className="kicker">Speed · last {TREND_RACES} races</p>
-              {hasRaced ? (
-                <div className="flex-1">
-                  <SpeedBars races={races} />
-                </div>
-              ) : (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  No races yet
-                </p>
-              )}
-            </section>
-
-            <section className={cn(CELL, 'flex flex-col gap-3 p-5')}>
-              <div className="flex items-center justify-between">
-                <p className="kicker">Top this week</p>
-                <Link
-                  to="/leaderboards"
-                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  Leaderboards
-                </Link>
-              </div>
-              {weekly.data ? (
-                <LeaderboardTable board={weekly.data} compact limit={5} />
-              ) : (
-                <div className="h-24 animate-pulse bg-secondary/40" />
-              )}
-            </section>
           </div>
 
           <div className="grid grid-cols-1 gap-[2px] lg:grid-cols-3">
