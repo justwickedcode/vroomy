@@ -104,6 +104,7 @@ export default function ReplayPlayer({
           },
         ]}
         phase="ready"
+        epic
         className="flex-shrink-0"
       />
 
@@ -140,16 +141,16 @@ export default function ReplayPlayer({
               {playing ? <Pause /> : done ? <RotateCcw /> : <Play />}
               {playing ? 'Pause' : done ? 'Replay' : 'Play'}
             </Button>
-            <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+            <div className="flex border-2 border-border">
               {SPEEDS.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setSpeed(s)}
                   className={cn(
-                    'rounded-md px-2 py-1 text-xs font-semibold tabular-nums',
+                    'px-2.5 py-1 text-xs font-semibold tabular-nums',
                     speed === s
-                      ? 'bg-background text-foreground shadow-sm'
+                      ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >

@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, PlayCircle } from '#/components/ui/icons'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import {
+  ArrowLeft,
+  CalendarDays,
+  Flag,
+  PlayCircle,
+  Users,
+} from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
 import ReplayPlayer from '#/components/replay/ReplayPlayer'
 import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
 import PlayerAvatar from '#/components/social/PlayerAvatar'
@@ -36,9 +40,15 @@ interface LoadedReplay {
 }
 
 const MODE_LABELS: Record<RaceMode, string> = {
-  solo: 'Solo race',
-  multiplayer: 'Multiplayer race',
-  daily: 'Daily challenge',
+  solo: 'Solo',
+  multiplayer: 'Multiplayer',
+  daily: 'Daily',
+}
+
+const MODE_ICONS: Record<RaceMode, typeof Flag> = {
+  solo: Flag,
+  multiplayer: Users,
+  daily: CalendarDays,
 }
 
 // Server replays have numeric ids (race_results.id); a guest's local ones don't (see
@@ -117,54 +127,71 @@ function ReplayPage() {
 
   if (isDesktop === false) return <DesktopOnlyRace />
   if (isDesktop === null) return null
+  const ModeIcon = data ? MODE_ICONS[data.mode] : Flag
 
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-6">
-      <div className="page-wrap flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/replays">
-              <ArrowLeft /> All replays
-            </Link>
-          </Button>
-          {data && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <PlayerAvatar name={data.driverName} avatarUrl={data.avatarUrl} />
-              <span className="font-semibold">
-                {data.mine ? 'Your run' : `${data.driverName}'s run`}
-              </span>
-              <Badge variant="outline">{MODE_LABELS[data.mode]}</Badge>
-              <span className="text-muted-foreground">
-                {data.wpm} wpm · {data.accuracy}%
-                {data.racerCount > 1 &&
-                  ` · ${ordinal(data.placement)} of ${data.racerCount}`}{' '}
-                ·{' '}
-                {new Date(data.date).toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </span>
-            </div>
-          )}
-        </div>
+      <div className="page-wrap">
+        {/* One connected panel: a header strip with whose run it is, then the player. */}
+        <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-card p-3">
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/replays">
+                <ArrowLeft /> Replays
+              </Link>
+            </Button>
+            {data && (
+              <>
+                <span className="flex items-center gap-2">
+                  <PlayerAvatar
+                    name={data.driverName}
+                    avatarUrl={data.avatarUrl}
+                  />
+                  <span className="font-semibold">
+                    {data.mine ? 'Your run' : `${data.driverName}'s run`}
+                  </span>
+                </span>
+                <span className="flex items-center gap-1.5 text-sm">
+                  <ModeIcon className="size-5" />
+                  {MODE_LABELS[data.mode]}
+                </span>
+                <span className="ml-auto flex items-baseline gap-4 font-mono text-xs text-muted-foreground">
+                  <span className="font-display text-2xl text-foreground">
+                    {data.wpm}
+                    <span className="ml-1 text-sm text-muted-foreground">
+                      wpm
+                    </span>
+                  </span>
+                  <span>{data.accuracy}%</span>
+                  {data.racerCount > 1 && (
+                    <span>
+                      {ordinal(data.placement)}/{data.racerCount}
+                    </span>
+                  )}
+                  <span>
+                    {new Date(data.date).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
+                </span>
+              </>
+            )}
+          </div>
 
-        <Card className="rise-in flex flex-col overflow-hidden">
-          {isError ? (
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              Couldn't load this replay. Try again in a moment.
-            </CardContent>
-          ) : data === undefined ? (
-            <CardContent className="flex flex-col gap-3 py-6">
-              <div className="h-40 animate-pulse rounded-lg bg-secondary/40" />
-              <div className="h-24 animate-pulse rounded-lg bg-secondary/40" />
-            </CardContent>
-          ) : data === null ? (
-            <CardHeader className="items-center py-10 text-center">
-              <PlayCircle className="mb-2 size-8 text-muted-foreground" />
-              <p className="font-semibold">Replay not found</p>
-            </CardHeader>
-          ) : (
-            <CardContent className="p-0">
+          <div className="bg-card">
+            {isError ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                Couldn't load this replay. Try again in a moment.
+              </p>
+            ) : data === undefined ? (
+              <div className="h-72 animate-pulse bg-secondary/30" />
+            ) : data === null ? (
+              <div className="flex flex-col items-center gap-3 py-12">
+                <PlayCircle className="size-12" />
+                <p className="font-display text-2xl uppercase">Not found</p>
+              </div>
+            ) : (
               <ReplayPlayer
                 key={replayId}
                 replay={data.replay}
@@ -172,9 +199,9 @@ function ReplayPage() {
                 carModel={data.carModel}
                 finalAccuracy={data.accuracy}
               />
-            </CardContent>
-          )}
-        </Card>
+            )}
+          </div>
+        </div>
       </div>
     </main>
   )
