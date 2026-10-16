@@ -7,6 +7,8 @@ import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
 import QuoteCredit from '#/components/typing/QuoteCredit'
+import PixelIcon from '#/components/ui/PixelIcon'
+import { POWERUPS } from '#/lib/powerups'
 import Coins from '#/components/ui/Coins'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
@@ -14,7 +16,7 @@ import { CAR_MODELS } from '#/components/typing/CarIcon'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
-import type { Racer } from '#/components/typing/RaceTrack'
+import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
 
 const WPM_GAUGE_MAX = 130
 
@@ -78,7 +80,8 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         <Card className="rise-in overflow-hidden">
           <CardContent className="flex flex-col gap-5 pt-6">
             <Badge variant="outline" className="w-fit">
-              {mp.code ? 'Private room' : 'Quick match'} · waiting
+              {mp.code ? 'Private room' : 'Quick match'}
+              {mp.mode === 'powerups' ? ' · power-ups' : ' · classic'} · waiting
             </Badge>
 
             {mp.code && (
@@ -259,6 +262,64 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     }
   }, [mp.phase])
 
+  // ── Powerups (powerup lobbies only) ────────────────────────────────
+  const powerupsOn = mp.mode === 'powerups'
+  const { equippedPowerup } = profile
+  const equippedDef = POWERUPS.find((p) => p.id === equippedPowerup)
+  const canFire =
+    powerupsOn && !mp.powerupUsed && mp.phase === 'racing' && !mp.finished
+  const { firePowerup } = mp
+
+  // Tab fires the powerup, same as solo. Swallowed during any race so it never moves focus off
+  // the hidden typing input.
+  useEffect(() => {
+    if (mp.phase !== 'racing' || mp.finished) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Tab') return
+      event.preventDefault()
+      if (canFire) firePowerup(equippedPowerup)
+      inputRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mp.phase, mp.finished, canFire, firePowerup, equippedPowerup])
+
+  // Plays each announced powerup on the track: a burst on our own car for boost/nitro, a hit on
+  // the target's lane for shell/magnet, and a full-track flash for EMP/nuke.
+  const [effect, setEffect] = useState<RaceEffect | null>(null)
+  const [eventText, setEventText] = useState<string | null>(null)
+  const { lastPowerup, myId, names } = mp
+  useEffect(() => {
+    if (!lastPowerup) return
+    const { powerup, playerId, targets, key } = lastPowerup
+    const mine = playerId === myId
+    const selfOnly = powerup === 'boost' || powerup === 'nitro'
+    if (!selfOnly || mine) {
+      setEffect({
+        kind: powerup,
+        targetId:
+          powerup === 'shell' || powerup === 'magnet' ? targets[0] : undefined,
+        key,
+      })
+    }
+    const label = POWERUPS.find((p) => p.id === powerup)?.label ?? powerup
+    const by = mine ? 'You' : shortName(playerId, myId, names)
+    const hitMe = myId !== null && targets.includes(myId)
+    setEventText(
+      hitMe
+        ? `${by} hit you with ${label}!`
+        : mine
+          ? `${label}!`
+          : `${by} used ${label}`,
+    )
+    const clearEffect = setTimeout(() => setEffect(null), 650)
+    const clearText = setTimeout(() => setEventText(null), 2200)
+    return () => {
+      clearTimeout(clearEffect)
+      clearTimeout(clearText)
+    }
+  }, [lastPowerup, myId, names])
+
   const racers: Array<Racer> = [
     {
       id: mp.myId ?? 'you',
@@ -297,6 +358,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               racers={racers}
               countdown={countdown}
               phase={mp.phase === 'countdown' ? 'counting' : 'ready'}
+              effect={effect}
               className="flex-shrink-0"
             />
 
@@ -316,26 +378,65 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 // to do with OUR rank: the server already told us that the instant we crossed
                 // the line (player_finished), so there's no reason to leave the screen blank
                 // while someone else is still typing.
-                mp.myResult &&
-                mp.phase === 'racing' && (
-                  <div className="countdown-overlay">
-                    <div className="text-center">
-                      <p className="text-lg font-bold">
-                        Finished #{mp.myResult.rank} · {mp.myResult.wpm} wpm
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Waiting for other racers to finish…
-                      </p>
+                <>
+                  {mp.myResult && mp.phase === 'racing' && (
+                    <div className="countdown-overlay">
+                      <div className="text-center">
+                        <p className="text-lg font-bold">
+                          Finished #{mp.myResult.rank} · {mp.myResult.wpm} wpm
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          Waiting for other racers to finish…
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )
+                  )}
+                  {(mp.frozen || eventText) && !mp.finished && (
+                    <div className="pointer-events-none absolute top-3 right-3 z-10">
+                      <span
+                        className={cn(
+                          'rounded-full px-3 py-1 text-[0.7rem] font-semibold',
+                          mp.frozen
+                            ? 'bg-sky-500/90 text-white'
+                            : 'bg-secondary/80 text-muted-foreground',
+                        )}
+                      >
+                        {mp.frozen ? `Frozen! ${eventText ?? ''}` : eventText}
+                      </span>
+                    </div>
+                  )}
+                </>
               }
             />
-            <QuoteCredit
-              author={mp.quote?.author}
-              sourceUrl={mp.quote?.sourceUrl}
-              className="px-4 pt-3"
-            />
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3">
+              {powerupsOn && equippedDef && !mp.finished ? (
+                <button
+                  type="button"
+                  onClick={() => firePowerup(equippedPowerup)}
+                  disabled={!canFire}
+                  title={equippedDef.detail}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-opacity',
+                    canFire ? 'hover:text-foreground' : 'opacity-40',
+                  )}
+                >
+                  <PixelIcon name={equippedPowerup} />
+                  {equippedDef.label}
+                  <span>{mp.powerupUsed ? '· used' : '· once per race'}</span>
+                  {!mp.powerupUsed && (
+                    <kbd className="rounded border border-border px-1 font-mono text-[0.65rem]">
+                      Tab
+                    </kbd>
+                  )}
+                </button>
+              ) : (
+                <span />
+              )}
+              <QuoteCredit
+                author={mp.quote?.author}
+                sourceUrl={mp.quote?.sourceUrl}
+              />
+            </div>
           </CardContent>
 
           {mp.phase === 'finished' && <div className="glass-divider" />}

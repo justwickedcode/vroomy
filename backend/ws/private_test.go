@@ -9,7 +9,7 @@ func TestPrivateRooms_CreateThenJoin(t *testing.T) {
 	pr := newPrivateRooms(nil)
 	host := testClient("host")
 
-	room, code := pr.create(host)
+	room, code := pr.create(host, modeClassic)
 	if len(code) != codeLength {
 		t.Fatalf("code %q has length %d, want %d", code, len(code), codeLength)
 	}
@@ -37,7 +37,7 @@ func TestPrivateRooms_JoinUnknownCode(t *testing.T) {
 func TestPrivateRooms_CodeFreedOnceRoomStarts(t *testing.T) {
 	pr := newPrivateRooms(nil)
 	host := testClient("host")
-	room, code := pr.create(host)
+	room, code := pr.create(host, modeClassic)
 	room.selectQuote = func(ctx context.Context) (TypingQuote, error) {
 		return TypingQuote{Text: "one two three"}, nil
 	}
@@ -57,7 +57,7 @@ func TestPrivateRooms_CreateReturnsUniqueCodes(t *testing.T) {
 	pr := newPrivateRooms(nil)
 	seen := make(map[string]bool)
 	for i := 0; i < 200; i++ {
-		_, code := pr.create(testClient("host"))
+		_, code := pr.create(testClient("host"), modeClassic)
 		if seen[code] {
 			t.Fatalf("duplicate code %q returned by create", code)
 		}

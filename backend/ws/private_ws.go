@@ -6,12 +6,13 @@ import (
 )
 
 // handleCreatePrivateRoom upgrades GET /ws/private/create to a WebSocket, reserves a fresh
-// private room and share code, and joins the caller to it as host — the only client later
+// private room and share code (of the lobby mode in ?mode=), and joins the caller to it as host — the only client later
 // allowed to send "start" (see Room.handleStart).
 func handleCreatePrivateRoom(pr *privateRooms, conns *ipConnCounter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		mode := parseLobbyMode(r.URL.Query().Get("mode"))
 		upgradeWS(w, r, conns, func(c *Client) {
-			room, _ := pr.create(c)
+			room, _ := pr.create(c, mode)
 			c.room = room
 			room.addClient(c)
 		})

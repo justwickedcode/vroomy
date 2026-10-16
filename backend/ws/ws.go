@@ -104,9 +104,11 @@ func upgradeWS(w http.ResponseWriter, r *http.Request, conns *ipConnCounter, ass
 }
 
 // handleRaceWebSocket upgrades GET /ws/race to a WebSocket and hands the resulting connection
-// to mm, which places it into the current public auto-matchmaking lobby.
+// to mm, which places it into the current public auto-matchmaking lobby for ?mode= (classic
+// unless it says powerups).
 func handleRaceWebSocket(mm *Matchmaker, conns *ipConnCounter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		upgradeWS(w, r, conns, func(c *Client) { mm.join(c) })
+		mode := parseLobbyMode(r.URL.Query().Get("mode"))
+		upgradeWS(w, r, conns, func(c *Client) { mm.join(c, mode) })
 	}
 }

@@ -1,12 +1,23 @@
 import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
+import LobbyModePicker from '#/components/multiplayer/LobbyModePicker'
+import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 import MultiplayerRace from '#/components/typing/MultiplayerRace'
 import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
 import { useIsDesktopViewport } from '#/lib/layout/useIsDesktopViewport'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 
+// ?mode= picks the lobby; without it the page asks first. Kept in the URL so "race again" and
+// a refresh go straight back into the same kind of lobby.
 export const Route = createFileRoute('/race/multiplayer')({
+  validateSearch: (search: Record<string, unknown>): { mode?: LobbyMode } => ({
+    mode:
+      search.mode === 'classic' || search.mode === 'powerups'
+        ? search.mode
+        : undefined,
+  }),
   component: QuickMatchGate,
 })
 
@@ -20,10 +31,42 @@ function QuickMatchGate() {
   if (isDesktop === false) return <DesktopOnlyRace />
   if (isDesktop === null || !loaded) return null
 
-  return <QuickMatchPage />
+  return <QuickMatch />
 }
 
-function QuickMatchPage() {
+function QuickMatch() {
+  const { mode } = Route.useSearch()
+  const navigate = useNavigate()
+
+  if (!mode) {
+    return (
+      <main className="flex flex-1 flex-col justify-center px-4 py-8">
+        <div className="page-wrap max-w-xl">
+          <Card className="rise-in overflow-hidden">
+            <CardHeader className="py-5">
+              <p className="kicker">Pick a lobby</p>
+            </CardHeader>
+            <CardContent className="pt-0 pb-6">
+              <LobbyModePicker
+                onSelect={(picked) =>
+                  void navigate({
+                    to: '/race/multiplayer',
+                    search: { mode: picked },
+                  })
+                }
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    )
+  }
+
+  // Keyed by mode so switching lobby types is a fresh connection, not a reused one.
+  return <QuickMatchPage key={mode} mode={mode} />
+}
+
+function QuickMatchPage({ mode }: { mode: LobbyMode }) {
   const navigate = useNavigate()
   const mp = useMultiplayerRace()
 
@@ -35,7 +78,7 @@ function QuickMatchPage() {
   // the wrong fix: it'd suppress the real reconnect and leave the app stuck on the first
   // socket, which is exactly the bug this comment used to have.
   useEffect(() => {
-    mp.quickMatch()
+    mp.quickMatch(mode)
   }, [])
 
   return <MultiplayerRace mp={mp} onLeave={() => navigate({ to: '/' })} />

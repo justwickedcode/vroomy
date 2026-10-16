@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Link2 } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import LobbyModePicker from '#/components/multiplayer/LobbyModePicker'
+import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 import { Button } from '#/components/ui/button'
 import type { FormEvent } from 'react'
 
@@ -12,13 +14,18 @@ export const Route = createFileRoute('/race/friends')({
 function FriendsPage() {
   const navigate = useNavigate()
   const [joinCode, setJoinCode] = useState('')
+  const [mode, setMode] = useState<LobbyMode>('classic')
 
   function handleCreate() {
     // "new" is a reserved sentinel — /race/$roomCode recognizes it and asks backend/ws to mint
     // a real room + code (see private.go), then swaps the URL to that code once it arrives.
     // Only the server can hand out a code that actually resolves to a room, so there's nothing
     // to generate client-side here.
-    navigate({ to: '/race/$roomCode', params: { roomCode: 'new' } })
+    navigate({
+      to: '/race/$roomCode',
+      params: { roomCode: 'new' },
+      search: { mode },
+    })
   }
 
   function handleJoin(event: FormEvent) {
@@ -35,8 +42,9 @@ function FriendsPage() {
           <CardHeader className="py-5">
             <p className="kicker">Create a room</p>
           </CardHeader>
-          <CardContent className="pt-0 pb-6">
-            <Button onClick={handleCreate}>
+          <CardContent className="flex flex-col gap-4 pt-0 pb-6">
+            <LobbyModePicker value={mode} onSelect={setMode} />
+            <Button onClick={handleCreate} className="self-start">
               <Link2 />
               Create room
             </Button>

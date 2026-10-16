@@ -70,6 +70,9 @@ type playerState struct {
 	elapsedMs int64
 	wpm       float64
 	rank      int
+	// usedPowerup is set once this player fires their powerup — one per race (see
+	// handlePowerup).
+	usedPowerup bool
 }
 
 // Room is one race: a fixed set of players racing the same quote from the same start signal.
@@ -77,6 +80,8 @@ type playerState struct {
 // their own goroutines at any time relative to the room's own timers firing.
 type Room struct {
 	id string
+	// mode is fixed at creation: classic, or powerups (see lobbyMode).
+	mode lobbyMode
 	// selectQuote is a field, not a direct call to RandomTypingQuote, purely for testability —
 	// race_test.go injects a fake one so the room lifecycle (join, countdown, race, results)
 	// can be exercised without a real Postgres connection.
@@ -111,9 +116,10 @@ type Room struct {
 	host *Client
 }
 
-func newRoom(id string, pool *pgxpool.Pool) *Room {
+func newRoom(id string, mode lobbyMode, pool *pgxpool.Pool) *Room {
 	return &Room{
-		id: id,
+		id:   id,
+		mode: mode,
 		selectQuote: func(ctx context.Context) (TypingQuote, error) {
 			return RandomTypingQuote(ctx, pool, raceLanguage, raceMinWords, raceMaxWords, "")
 		},
@@ -135,6 +141,7 @@ func (r *Room) addClient(c *Client) {
 	r.broadcast(serverMessage{
 		Type:          "waiting",
 		Code:          r.code,
+		Mode:          string(r.mode),
 		PlayersInRoom: count,
 		MinPlayers:    raceMinPlayers,
 		MaxPlayers:    raceMaxPlayers,
@@ -203,6 +210,7 @@ func (r *Room) removeClient(c *Client) {
 	r.broadcast(serverMessage{
 		Type:          "waiting",
 		Code:          r.code,
+		Mode:          string(r.mode),
 		PlayersInRoom: remaining,
 		MinPlayers:    raceMinPlayers,
 		MaxPlayers:    raceMaxPlayers,
@@ -272,6 +280,7 @@ func (r *Room) startCountdown() {
 
 	r.broadcast(serverMessage{
 		Type:       "race_start",
+		Mode:       string(r.mode),
 		Quote:      &quote,
 		WordCount:  wordCount,
 		StartsInMs: raceCountdown.Milliseconds(),
@@ -307,6 +316,8 @@ func (r *Room) handleMessage(c *Client, msg clientMessage) {
 		r.handleFinish(c, msg.ElapsedMs)
 	case "start":
 		r.handleStart(c)
+	case "powerup":
+		r.handlePowerup(c, msg.Powerup)
 	}
 }
 

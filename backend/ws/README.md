@@ -32,18 +32,19 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 
 ### Server → client messages
 
-| `type`            | Fields                                                         | When                                                                                                                      |
-| ----------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `welcome`         | `playerId`                                                     | Immediately after the WebSocket upgrade completes                                                                         |
-| `host_assigned`   | —                                                              | Sent once, only to the client that created a private room — the only client whose `start` message has any effect          |
-| `waiting`         | `code`, `playersInRoom`, `minPlayers`, `maxPlayers`, `players` | On join, and whenever the room's player count changes while waiting (`code` empty for a public room)                      |
-| `race_start`      | `quote`, `wordCount`, `startsInMs`, `players`                  | Once the room has enough players and stops accepting new joiners                                                          |
-| `go`              | —                                                              | `startsInMs` after `race_start` — the race actually begins                                                                |
-| `player_progress` | `playerId`, `wordIndex`                                        | An opponent's live progress (never echoed back to that player)                                                            |
-| `player_finished` | `playerId`, `rank`, `elapsedMs`, `wpm`                         | A player finishes typing the quote                                                                                        |
-| `player_left`     | `playerId`                                                     | A player disconnects mid-race                                                                                             |
-| `race_end`        | `results` (`[{playerId, rank, elapsedMs, wpm}]`)               | Every connected player has finished, or `raceMaxDuration` elapses                                                         |
-| `error`           | `message`                                                      | The room couldn't start (e.g. no eligible quote found), or a private-room join failed (e.g. unknown/already-started code) |
+| `type`            | Fields                                                         | When                                                                                                                        |
+| ----------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`         | `playerId`                                                     | Immediately after the WebSocket upgrade completes                                                                           |
+| `host_assigned`   | —                                                              | Sent once, only to the client that created a private room — the only client whose `start` message has any effect            |
+| `waiting`         | `code`, `playersInRoom`, `minPlayers`, `maxPlayers`, `players` | On join, and whenever the room's player count changes while waiting (`code` empty for a public room)                        |
+| `race_start`      | `quote`, `wordCount`, `startsInMs`, `players`                  | Once the room has enough players and stops accepting new joiners                                                            |
+| `go`              | —                                                              | `startsInMs` after `race_start` — the race actually begins                                                                  |
+| `player_progress` | `playerId`, `wordIndex`                                        | An opponent's live progress (never echoed back to that player)                                                              |
+| `player_finished` | `playerId`, `rank`, `elapsedMs`, `wpm`                         | A player finishes typing the quote                                                                                          |
+| `player_left`     | `playerId`                                                     | A player disconnects mid-race                                                                                               |
+| `powerup_used`    | `playerId`, `powerup`, `targets`, `freezeMs`                   | Powerup rooms: someone fired their powerup — sent to everyone, including the user. Targets' keyboards freeze for `freezeMs` |
+| `race_end`        | `results` (`[{playerId, rank, elapsedMs, wpm}]`)               | Every connected player has finished, or `raceMaxDuration` elapses                                                           |
+| `error`           | `message`                                                      | The room couldn't start (e.g. no eligible quote found), or a private-room join failed (e.g. unknown/already-started code)   |
 
 ### Client → server messages
 
@@ -52,8 +53,15 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 | `progress` | `wordIndex` | "I'm now at word N" — purely cosmetic, for opponents' UI                                                                                                                       |
 | `finish`   | `elapsedMs` | "I finished the quote in this many milliseconds"                                                                                                                               |
 | `start`    | —           | Private-room host only: skip the wait and start now (requires at least `minPlayers` already joined; ignored from anyone else, on a public room, or before `minPlayers` is met) |
+| `powerup`  | `powerup`   | Powerup rooms only: fire your powerup (`boost`, `nitro`, `shell`, `magnet`, `emp`, `nuke`), once per race. The server picks targets from its own view of progress              |
 
 `wpm` is always computed server-side from the room's own authoritative word count and the client-reported `elapsedMs` — never trusted as a value the client sends directly.
+
+## Lobby modes
+
+`/ws/race` and `/ws/private/create` take `?mode=classic` (the default) or `?mode=powerups`. The matchmaker keeps a separate waiting room per mode, so classic and powerup players are never matched together; joining a private room by code gets whatever mode its host chose. `waiting` and `race_start` include `mode`.
+
+In powerup rooms each player may send one `powerup` message per race. Boost and nitro skip the user's own words (applied client-side when `powerup_used` comes back). The rest freeze opponents' keyboards instead of knocking words back, since deleting a real person's typed text would feel awful: shell freezes the leader and magnet whoever is directly ahead (1.5s each), EMP everyone else (1s), nuke everyone else (3s). Which powerup a player fires isn't checked against their purchases — ws has no login to look that up with.
 
 ## Matchmaking rules
 

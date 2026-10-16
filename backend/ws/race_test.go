@@ -47,7 +47,7 @@ func lastOfType(msgs []serverMessage, typ string) (serverMessage, bool) {
 }
 
 func fakeRoom(quote TypingQuote) *Room {
-	r := newRoom("test-room", nil)
+	r := newRoom("test-room", modeClassic, nil)
 	r.selectQuote = func(ctx context.Context) (TypingQuote, error) { return quote, nil }
 	return r
 }
@@ -220,12 +220,15 @@ func TestRoom_DisconnectDuringRaceCountsAsUnfinished(t *testing.T) {
 // that's already moved past accepting players — the real bug this would need to catch is the
 // matchmaker handing out a stale room reference after it fills/starts.
 func TestMatchmaker_FreshRoomAfterPreviousStarts(t *testing.T) {
-	mm := &Matchmaker{newRoom: func(id string) *Room { return fakeRoom(TypingQuote{Text: "one two three"}) }}
+	mm := &Matchmaker{
+		newRoom:      func(id string, mode lobbyMode) *Room { return fakeRoom(TypingQuote{Text: "one two three"}) },
+		waitingRooms: make(map[lobbyMode]*Room),
+	}
 
 	a := testClient("a")
 	b := testClient("b")
-	mm.join(a)
-	mm.join(b)
+	mm.join(a, modeClassic)
+	mm.join(b, modeClassic)
 	if a.room != b.room {
 		t.Fatal("two joiners with no full room yet should land in the same room")
 	}
@@ -234,13 +237,13 @@ func TestMatchmaker_FreshRoomAfterPreviousStarts(t *testing.T) {
 	// Filling the room to raceMaxPlayers should close it to new joiners (see
 	// Room.closeToNewJoiners), so the matchmaker must hand the next joiner a different room.
 	for i := 0; i < raceMaxPlayers-2; i++ {
-		mm.join(testClient(string(rune('c' + i))))
+		mm.join(testClient(string(rune('c'+i))), modeClassic)
 	}
 
 	waitFor(t, func() bool { return first.playerCount() == raceMaxPlayers })
 
 	next := testClient("z")
-	mm.join(next)
+	mm.join(next, modeClassic)
 	if next.room == first {
 		t.Fatal("matchmaker handed a new joiner a room that already started")
 	}

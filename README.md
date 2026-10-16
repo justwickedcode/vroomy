@@ -35,8 +35,10 @@ Postgres.
 - **Garage shop.** Every finished race pays coins (more for speed and podiums); spend them on
   29 cars, trails, underglow and power-ups. For logged-in players the server awards the coins and
   prices every purchase, so balances can't be edited from the browser.
-- **Power-ups.** One per solo race, fired with Tab whenever you choose: Boost, Nitro, Shell,
-  Magnet, EMP, or the Nuke, which throws every other racer three words back.
+- **Power-ups.** One per race, fired with Tab whenever you choose: Boost, Nitro, Shell,
+  Magnet, EMP, or the Nuke. Solo races always have them; for multiplayer and friends rooms you
+  pick a Classic or Power-ups lobby, and against real people attacks freeze the target's
+  keyboard briefly instead of deleting their typing.
 - **Achievements.** Milestones for speed, accuracy, streaks and podiums.
 - **Typing guide.** Drills with an on-screen keyboard for practicing technique.
 

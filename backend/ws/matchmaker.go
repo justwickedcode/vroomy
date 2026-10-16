@@ -15,41 +15,46 @@ type Matchmaker struct {
 	// newRoom is a field, not a direct call to the package-level newRoom, purely for
 	// testability — race_test.go injects a factory that builds rooms with a fake selectQuote,
 	// so matchmaking behavior can be exercised without a real Postgres connection.
-	newRoom func(id string) *Room
+	newRoom func(id string, mode lobbyMode) *Room
 
-	mu          sync.Mutex
-	waitingRoom *Room
-	nextRoomID  int
+	mu sync.Mutex
+	// One waiting room per lobby mode, so classic and powerup players never get matched
+	// together.
+	waitingRooms map[lobbyMode]*Room
+	nextRoomID   int
 }
 
 func newMatchmaker(pool *pgxpool.Pool) *Matchmaker {
-	return &Matchmaker{newRoom: func(id string) *Room { return newRoom(id, pool) }}
+	return &Matchmaker{
+		newRoom:      func(id string, mode lobbyMode) *Room { return newRoom(id, mode, pool) },
+		waitingRooms: make(map[lobbyMode]*Room),
+	}
 }
 
-// join assigns c to a room and adds it there. Safe to call concurrently from many connections'
-// handler goroutines at once.
-func (m *Matchmaker) join(c *Client) {
-	room := m.roomForNewJoiner()
+// join assigns c to a room of the given mode and adds it there. Safe to call concurrently from
+// many connections' handler goroutines at once.
+func (m *Matchmaker) join(c *Client, mode lobbyMode) {
+	room := m.roomForNewJoiner(mode)
 	c.room = room
 	room.addClient(c)
 }
 
-// roomForNewJoiner returns the current waiting room, creating one if none exists. The returned
-// room's onClosed hook is how it tells the matchmaker to stop handing it out once it's full,
-// started, or emptied back out — see Room.closeToNewJoiners.
-func (m *Matchmaker) roomForNewJoiner() *Room {
+// roomForNewJoiner returns the current waiting room for mode, creating one if none exists. The
+// returned room's onClosed hook is how it tells the matchmaker to stop handing it out once it's
+// full, started, or emptied back out — see Room.closeToNewJoiners.
+func (m *Matchmaker) roomForNewJoiner(mode lobbyMode) *Room {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.waitingRoom != nil {
-		return m.waitingRoom
+	if room := m.waitingRooms[mode]; room != nil {
+		return room
 	}
 
 	m.nextRoomID++
 	id := "r_" + strconv.Itoa(m.nextRoomID)
-	room := m.newRoom(id)
-	room.onClosed = func() { m.clearIfCurrent(room) }
-	m.waitingRoom = room
+	room := m.newRoom(id, mode)
+	room.onClosed = func() { m.clearIfCurrent(mode, room) }
+	m.waitingRooms[mode] = room
 	return room
 }
 
@@ -57,10 +62,10 @@ func (m *Matchmaker) roomForNewJoiner() *Room {
 // joiners — a no-op if a newer room has already taken its place, which can't actually happen
 // given a room only ever closes once (see Room.closeToNewJoiners), but guarding it anyway costs
 // nothing and removes any doubt about ordering.
-func (m *Matchmaker) clearIfCurrent(room *Room) {
+func (m *Matchmaker) clearIfCurrent(mode lobbyMode, room *Room) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.waitingRoom == room {
-		m.waitingRoom = nil
+	if m.waitingRooms[mode] == room {
+		delete(m.waitingRooms, mode)
 	}
 }
