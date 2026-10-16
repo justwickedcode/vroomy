@@ -89,7 +89,7 @@ export default function LeaderboardTable({
   board,
   compact = false,
   limit,
-  emptyText = 'Nobody on the board yet — be the first.',
+  emptyText = 'No races yet',
 }: {
   board: Leaderboard
   compact?: boolean

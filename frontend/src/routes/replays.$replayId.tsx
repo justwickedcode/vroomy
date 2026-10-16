@@ -162,9 +162,6 @@ function ReplayPage() {
             <CardHeader className="items-center py-10 text-center">
               <PlayCircle className="mb-2 size-8 text-muted-foreground" />
               <p className="font-semibold">Replay not found</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                It may have been from a guest session in another browser.
-              </p>
             </CardHeader>
           ) : (
             <CardContent className="p-0">

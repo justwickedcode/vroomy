@@ -75,7 +75,7 @@ function NotFound() {
     <main className="flex min-h-[60vh] items-center justify-center px-4 py-16">
       <Card className="rise-in w-full max-w-md overflow-hidden text-center">
         <CardHeader className="items-center py-8">
-          <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
+          <span className="flex size-12 items-center justify-center px-corners bg-accent text-accent-foreground">
             <Flag className="size-5" />
           </span>
           <p className="kicker mt-3">404</p>
@@ -98,7 +98,7 @@ function RouteError({ error }: ErrorComponentProps) {
     <main className="flex min-h-[60vh] items-center justify-center px-4 py-16">
       <Card className="rise-in w-full max-w-md overflow-hidden text-center">
         <CardHeader className="items-center py-8">
-          <span className="flex size-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+          <span className="flex size-12 items-center justify-center px-corners bg-destructive/15 text-destructive">
             <Flag className="size-5" />
           </span>
           <p className="kicker mt-3 text-destructive">Crashed out</p>

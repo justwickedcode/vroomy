@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ArrowRight, Minus, Plus, SlidersHorizontal } from '#/components/ui/icons'
+import {
+  ArrowRight,
+  Minus,
+  Plus,
+  SlidersHorizontal,
+} from '#/components/ui/icons'
 import { Card, CardContent } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
@@ -27,24 +32,15 @@ const MIN_WPM = 10
 const MAX_WPM = SPEED_RANGES[SPEED_RANGES.length - 1].wpm[1]
 const CUSTOM_STEP = 5
 
-function SpeedPresetTile({
-  range,
-  index,
-}: {
-  range: SpeedRange
-  index: number
-}) {
+function SpeedPresetTile({ range }: { range: SpeedRange }) {
   return (
     <Link
       to="/race/solo/$speed"
       params={{ speed: range.id }}
       onMouseMove={handleTiltMove}
       onMouseLeave={handleTiltLeave}
-      className="tilt-card glass-chip flex aspect-square flex-col justify-between rounded-xl p-5 text-left transition-colors hover:border-primary/50"
+      className="tilt-card glass-chip flex aspect-square flex-col justify-end gap-3 p-5 text-left transition-colors hover:border-primary/50"
     >
-      <span className="font-mono text-xs text-muted-foreground">
-        0{index + 1}
-      </span>
       <div>
         <span className="block text-lg font-bold">{range.label}</span>
         <span className="mt-1 block font-mono text-xs text-muted-foreground tabular-nums">
@@ -58,7 +54,7 @@ function SpeedPresetTile({
           return (
             <span
               key={bar}
-              className="flex-1 rounded-full"
+              className="flex-1 px-corners"
               style={{
                 background: lit
                   ? 'var(--color-primary)'
@@ -79,14 +75,11 @@ function CustomPaceTile({ onOpen }: { onOpen: () => void }) {
       onClick={onOpen}
       onMouseMove={handleTiltMove}
       onMouseLeave={handleTiltLeave}
-      className="tilt-card flex aspect-square flex-col justify-between rounded-xl border border-dashed border-border p-5 text-left transition-colors hover:border-primary/60 hover:bg-secondary/30"
+      className="tilt-card flex aspect-square flex-col justify-between px-corners border-2 border-dashed border-border p-5 text-left transition-colors hover:border-primary/60 hover:bg-secondary/30"
     >
       <SlidersHorizontal className="size-5 text-primary" strokeWidth={2.5} />
       <div>
         <span className="block text-lg font-bold">Choose yourself</span>
-        <span className="mt-1 block font-mono text-xs text-muted-foreground">
-          Drag or type an exact number
-        </span>
       </div>
     </button>
   )
@@ -201,8 +194,8 @@ function SoloSetup() {
       <div className="page-wrap flex flex-col gap-8">
         <Card className="rise-in w-full overflow-hidden">
           <CardContent className="grid grid-cols-2 gap-3 pt-6 sm:grid-cols-4">
-            {SPEED_RANGES.map((range, i) => (
-              <SpeedPresetTile key={range.id} range={range} index={i} />
+            {SPEED_RANGES.map((range) => (
+              <SpeedPresetTile key={range.id} range={range} />
             ))}
             <CustomPaceTile onOpen={() => setCustomOpen(true)} />
           </CardContent>

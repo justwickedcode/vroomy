@@ -42,7 +42,7 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
   if (points.length < 2) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
-        Run a few more races to see your WPM trend.
+        Not enough races yet
       </p>
     )
   }

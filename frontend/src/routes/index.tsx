@@ -20,32 +20,27 @@ export const Route = createFileRoute('/')({ component: Dashboard })
 
 const WPM_GAUGE_MAX = 130
 
-// Used to live on its own /play page — folded onto the dashboard so there's one landing page
-// instead of two, since this was the very next thing anyone hit after "Start racing" anyway.
+// The four ways to play, as tiles on the dashboard.
 const MODES = [
   {
     to: '/race/solo',
     icon: Flag,
     title: 'Solo',
-    detail: 'Race the clock against AI bots at your speed.',
   },
   {
     to: '/race/multiplayer',
     icon: Users,
     title: 'Multiplayer',
-    detail: 'Get matched against real players.',
   },
   {
     to: '/race/friends',
     icon: Link2,
     title: 'With friends',
-    detail: 'Create a room and send the link.',
   },
   {
     to: '/daily-challenge',
     icon: CalendarDays,
     title: 'Daily challenge',
-    detail: 'One passage, same for everyone today.',
   },
 ] as const
 
@@ -83,25 +78,14 @@ function Dashboard() {
         <Card className="rise-in overflow-hidden">
           <CardContent className="flex flex-col items-start gap-6 pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="kicker mb-2">Vroomy</p>
               <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
                 Ready when you are.
               </h1>
-              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                Race real quotes against AI bots and watch your car cross the
-                line first.
-              </p>
               {hasRaced ? (
-                <p className="mt-5 text-sm text-muted-foreground">
-                  Best run:{' '}
-                  <span className="font-bold text-foreground">
-                    {stats.bestWpm} wpm
-                  </span>{' '}
-                  across{' '}
-                  <span className="font-bold text-foreground">
-                    {stats.racesPlayed}
-                  </span>{' '}
-                  races. Pick a mode below to beat it.
+                <p className="pixel-text mt-3 text-sm text-muted-foreground">
+                  Best{' '}
+                  <span className="text-foreground">{stats.bestWpm} wpm</span> ·{' '}
+                  {stats.racesPlayed} races
                 </p>
               ) : (
                 <Button size="lg" className="mt-5" asChild>
@@ -129,36 +113,24 @@ function Dashboard() {
         </Card>
 
         <div>
-          <p className="kicker mb-3">Play</p>
           {/* gap-px + bg-border, not divide-x/y: with 4 tiles wrapping from 1 to 2 to 4
               columns across breakpoints, Tailwind's divide utilities can't express "a line
               between every adjacent cell" once the grid wraps to more than one row — this
               collapsed-border trick (border-colored gap behind solid tiles) gives the same
               thin dividing lines regardless of how many rows the grid wraps to. */}
-          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
-            {MODES.map(({ to, icon: Icon, title, detail }, i) => (
+          <div className="px-corners grid grid-cols-1 gap-[2px] overflow-hidden border-2 border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+            {MODES.map(({ to, icon: Icon, title }) => (
               <Link
                 key={to}
                 to={to}
                 onMouseMove={handleTiltMove}
                 onMouseLeave={handleTiltLeave}
-                className="ignition group relative flex min-h-56 flex-col overflow-hidden bg-background p-6 transition-colors hover:bg-accent/40"
+                className="ignition group relative flex min-h-36 flex-col overflow-hidden bg-background p-5 transition-colors hover:bg-accent/40"
               >
-                <span className="font-mono text-[0.65rem] font-medium tracking-[0.2em] text-muted-foreground uppercase">
-                  Bay 0{i + 1}
-                </span>
-                <Icon
-                  className="pointer-events-none absolute -right-6 -bottom-8 size-40 text-foreground/[0.05] transition-transform duration-500 ease-out group-hover:scale-110 group-hover:text-foreground/[0.07]"
-                  mono
-                />
-                <div className="relative mt-auto">
-                  <p className="font-display text-2xl font-extrabold tracking-tight uppercase sm:text-3xl">
-                    {title}
-                  </p>
-                  <p className="mt-2 max-w-64 text-sm text-muted-foreground">
-                    {detail}
-                  </p>
-                </div>
+                <Icon className="size-8 transition-transform duration-300 group-hover:scale-110" />
+                <p className="mt-auto font-display text-2xl font-extrabold tracking-tight uppercase">
+                  {title}
+                </p>
               </Link>
             ))}
           </div>
@@ -267,7 +239,7 @@ function Dashboard() {
               </div>
             ) : (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                No races yet — your first run shows up here.
+                No races yet
               </p>
             )}
           </CardContent>

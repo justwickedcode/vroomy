@@ -1,15 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @theme {
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  /* Pixel faces, matching the pixel-art cars and icons: Pixelify Sans for headlines, buttons and
-     big numbers (pixel-shaped but still easy to read), Silkscreen for tiny all-caps labels
-     (kickers, badges). Body copy and the passage you type stay in IBM Plex for readability. */
+  --font-code: var(--font-mono);
+  /* The pixel face is for headlines only, where it's big enough to read easily. Every small
+     label, button, badge and number stays in IBM Plex — pixel fonts at small sizes are hard to
+     read (direct feedback). The pixel look comes from shapes, corners and icons instead. */
   --font-display: 'Pixelify Sans', 'IBM Plex Mono', monospace;
-  --font-pixel: 'Silkscreen', 'IBM Plex Mono', monospace;
+  --font-pixel: var(--font-mono);
   /* No rounded corners anywhere — pixel art doesn't have them. Shapes get stepped "pixel"
      corners instead (see .px-corners). */
   --radius-xs: 0px;
@@ -137,8 +138,64 @@ h2 {
 /* Pixel type for UI text that should feel part of the game (buttons, numbers) — readable at
    body sizes, unlike the tiny-caps --font-pixel. */
 .pixel-text {
-  font-family: var(--font-display);
-  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+/* Pixel sliders: a flat 4px track and a square thumb with a hard bottom lip. */
+input[type='range'] {
+  appearance: none;
+  height: 16px;
+  background: transparent;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--color-border);
+}
+
+input[type='range']::-moz-range-track {
+  height: 4px;
+  background: var(--color-border);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 16px;
+  margin-top: -6px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-signal);
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 30%);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 16px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-signal);
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 30%);
+}
+
+/* Square, chunky scrollbars to match. */
+* {
+  scrollbar-color: var(--color-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* Square, hard-edged focus outline instead of a soft ring. */
@@ -156,19 +213,11 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image:
-    radial-gradient(
-      900px 500px at 15% -10%,
-      color-mix(in oklab, var(--color-primary) 7%, transparent),
-      transparent 65%
-    ),
-    /* A faint 8px pixel grid, like graph paper for sprites. */
-    linear-gradient(rgb(255 255 255 / 2.5%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(255 255 255 / 2.5%) 1px, transparent 1px);
-  background-size:
-    auto,
-    8px 8px,
-    8px 8px;
+  background-image: radial-gradient(
+    900px 500px at 15% -10%,
+    color-mix(in oklab, var(--color-primary) 7%, transparent),
+    transparent 65%
+  );
 }
 
 .page-wrap {
@@ -219,9 +268,9 @@ body::before {
   align-items: center;
   gap: 0.5em;
   font-family: var(--font-pixel);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-weight: 400;
+  font-weight: 600;
   font-size: 0.7rem;
   color: var(--color-muted-foreground);
 }
@@ -354,7 +403,7 @@ body::before {
    for the primary readout wherever a stat is the point of the row (not
    every incidental number on a page). */
 .stat-figure {
-  font-family: var(--font-display);
+  font-family: var(--font-mono);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -432,8 +481,8 @@ body::before {
   box-shadow: inset 0 -1px 0 rgb(0 0 0 / 25%);
 }
 
-/* An automotive semi-circle dial (needle, ticks, a three-zone arc), not a full progress ring —
-   see Gauge.tsx for why: it's reserved for numbers with a real ceiling, so the needle position
+/* A pixel speedometer arc (see Gauge.tsx), not a full progress ring — reserved for numbers with
+   a real ceiling, so how far the arc lights up
    itself carries meaning (calm/working/redline), the way an actual tachometer's does. */
 .gauge {
   display: flex;
@@ -461,56 +510,28 @@ body::before {
   display: block;
 }
 
-.gauge-track {
-  fill: none;
-  stroke: color-mix(in oklab, white 8%, transparent);
-  stroke-width: 8;
-  stroke-linecap: round;
+/* Pixel gauge blocks (see Gauge.tsx): unlit track, then calm / working / redline bands. */
+.gauge-px--off {
+  fill: color-mix(in oklab, white 9%, transparent);
 }
 
-.gauge-zone {
-  fill: none;
-  stroke-width: 8;
+.gauge-px--calm {
+  fill: color-mix(in oklab, var(--color-foreground) 70%, transparent);
 }
 
-.gauge-zone-calm {
-  stroke: var(--color-accent);
+.gauge-px--working {
+  fill: color-mix(in oklab, var(--color-signal) 70%, var(--color-foreground));
 }
 
-.gauge-zone-working {
-  stroke: color-mix(in oklab, var(--color-signal) 55%, var(--color-accent));
-}
-
-.gauge-zone-redline {
-  stroke: var(--color-signal);
-}
-
-.gauge-tick {
-  stroke: var(--color-muted-foreground);
-}
-
-.gauge-needle {
-  stroke: var(--color-foreground);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  transition:
-    x2 150ms ease,
-    y2 150ms ease;
-}
-
-.gauge-hub {
-  fill: var(--color-foreground);
-}
-
-.gauge-hub-center {
-  fill: var(--color-background);
+.gauge-px--redline {
+  fill: var(--color-signal);
 }
 
 .gauge-readout {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: -0.15rem;
+  margin-top: 0.25rem;
 }
 
 .gauge-value {
@@ -570,7 +591,7 @@ body::before {
 }
 
 .license-plate-tab {
-  font-family: var(--font-mono);
+  font-family: var(--font-pixel);
   font-size: 0.6rem;
   font-weight: 500;
   letter-spacing: 0.06em;
@@ -588,7 +609,8 @@ body::before {
   border: 1px solid var(--color-border);
   background: var(--color-border);
   overflow: hidden;
-  border-radius: var(--radius);
+  border-radius: 0;
+  clip-path: var(--px-clip);
 }
 
 .starting-grid-slot {
@@ -614,7 +636,7 @@ body::before {
 .starting-grid-dot {
   width: 0.6rem;
   height: 0.6rem;
-  border-radius: 50%;
+  border-radius: 0;
   background: var(--color-border);
 }
 
@@ -646,7 +668,7 @@ body::before {
 }
 
 .starting-grid-state {
-  font-family: var(--font-mono);
+  font-family: var(--font-pixel);
   font-size: 0.66rem;
   font-weight: 500;
   letter-spacing: 0.08em;
@@ -660,8 +682,9 @@ body::before {
 
 .standings {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: 0;
   overflow: hidden;
+  clip-path: var(--px-clip);
 }
 
 .standings-head,
@@ -674,7 +697,7 @@ body::before {
 }
 
 .standings-head {
-  font-family: var(--font-mono);
+  font-family: var(--font-pixel);
   font-size: 0.62rem;
   font-weight: 500;
   letter-spacing: 0.1em;
@@ -731,14 +754,15 @@ body::before {
   align-items: center;
   gap: 1.1rem;
   padding: 0.6rem 1.1rem;
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   background: color-mix(in oklab, black 30%, var(--color-secondary));
   border: 1px solid var(--color-border);
   box-shadow: inset 0 1px 2px rgb(0 0 0 / 40%);
+  clip-path: var(--px-clip);
 }
 
 .speed-option {
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   padding: 0.85rem 1rem;
   cursor: pointer;
   transition:
@@ -746,6 +770,7 @@ body::before {
     background-color 150ms ease,
     transform 150ms ease,
     box-shadow 150ms ease;
+  clip-path: var(--px-clip);
 }
 
 .speed-option:hover {
@@ -762,7 +787,7 @@ body::before {
 .race-track {
   position: relative;
   height: 6.75rem;
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   border: 1px solid #000;
   background:
     repeating-linear-gradient(
@@ -772,6 +797,7 @@ body::before {
     ),
     linear-gradient(180deg, #1c1f27, #08090c);
   box-shadow: inset 0 1px 3px rgb(0 0 0 / 50%);
+  clip-path: var(--px-clip);
 }
 
 .race-track-inner {
@@ -838,7 +864,7 @@ body::before {
     transparent 270deg
   );
   background-size: 7px 7px;
-  border-radius: 2px;
+  border-radius: 0;
   box-shadow:
     0 0 0 1px rgb(255 255 255 / 20%),
     0 0 10px rgb(255 255 255 / 25%);
@@ -853,7 +879,7 @@ body::before {
   bottom: -3px;
   width: 2px;
   background: #cbd5e1;
-  border-radius: 1px;
+  border-radius: 0;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -955,7 +981,7 @@ body::before {
   align-items: center;
   white-space: nowrap;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(10, 12, 22, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 8.5px;
@@ -965,6 +991,7 @@ body::before {
   color: #c9cdd8;
   backdrop-filter: blur(4px);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  clip-path: var(--px-clip);
 }
 
 .race-name-tag--you {
@@ -1646,7 +1673,7 @@ body::before {
     inset 6px 0 30px oklch(0.62 0.2 232 / 0.07),
     inset -6px 0 30px oklch(0.62 0.2 232 / 0.07);
   color: oklch(0.22 0.015 264);
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   font-size: 1.5rem;
   line-height: 1.9;
   padding: 1.75rem 2.5rem;
@@ -1668,7 +1695,7 @@ body::before {
 .race-word {
   display: inline-block;
   margin: 0 0 0.35rem 0;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
 /* WordStream (the /guide practice drill) renders its queue directly inside .race-words, which
@@ -1717,7 +1744,7 @@ body::before {
 .race-char-current {
   color: #fff;
   background: oklch(0.58 0.2 232);
-  border-radius: 3px;
+  border-radius: 0;
   /* No padding: the keycap would be wider than every other character, so as it moved along
      each keystroke the rest of the line shifted with it and words near a wrap jumped between
      lines. The first shadow (a 2px spread in the keycap's own color) draws that extra edge
@@ -1754,7 +1781,7 @@ body::before {
 .race-char-incorrect {
   color: var(--color-destructive-foreground);
   background: var(--color-destructive);
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 [data-caret-marker] {
@@ -1772,7 +1799,7 @@ body::before {
   left: -1px;
   width: 2px;
   height: 100%;
-  border-radius: 1px;
+  border-radius: 0;
   background: oklch(0.58 0.2 232);
   box-shadow: 0 0 10px 2px oklch(0.58 0.2 232 / 0.7);
   animation: race-caret-blink 1s step-end infinite;

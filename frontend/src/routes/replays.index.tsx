@@ -16,7 +16,7 @@ const MODE_LABELS: Record<RaceMode, string> = {
 }
 
 function ReplaysPage() {
-  const { hydrated, races, synced } = useProfile()
+  const { hydrated, races } = useProfile()
   // Optimistic rows (negative ids, see useProfile's addRace) have no replay to open yet.
   const withReplays = races.filter((r) => r.hasReplay && !r.id.startsWith('-'))
 
@@ -39,9 +39,6 @@ function ReplaysPage() {
             <CardHeader className="items-center py-10">
               <PlayCircle className="mb-2 size-8 text-muted-foreground" />
               <p className="font-semibold">No replays yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Finish a race and it shows up here.
-              </p>
             </CardHeader>
             <CardContent className="pb-10">
               <Button asChild>
@@ -89,16 +86,6 @@ function ReplaysPage() {
               ))}
             </CardContent>
           </Card>
-        )}
-
-        {hydrated && !synced && withReplays.length > 0 && (
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            Guest replays are kept in this browser (the last 20).{' '}
-            <a href="/login" className="font-semibold text-primary">
-              Log in
-            </a>{' '}
-            to keep them for good.
-          </p>
         )}
       </div>
     </main>

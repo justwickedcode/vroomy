@@ -156,10 +156,6 @@ function FriendsPage() {
             <CardHeader className="items-center py-10">
               <Users className="mb-2 size-8 text-muted-foreground" />
               <p className="font-semibold">Log in to add friends</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Find other racers, compare best times on the friends
-                leaderboard, and challenge them to a private race.
-              </p>
             </CardHeader>
             <CardContent className="pb-10">
               <Button asChild>
@@ -256,7 +252,7 @@ function FriendsPage() {
                 <div className="h-12 animate-pulse rounded-md bg-secondary/40" />
               ) : query.data.friends.length === 0 ? (
                 <p className="py-2 text-sm text-muted-foreground">
-                  No friends yet — search for someone above.
+                  No friends yet
                 </p>
               ) : (
                 <div className="flex flex-col gap-0.5">
@@ -279,19 +275,6 @@ function FriendsPage() {
                     />
                   ))}
                 </div>
-              )}
-              {query.data && query.data.friends.length > 0 && (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  See how you stack up on the{' '}
-                  <Link
-                    to="/leaderboards"
-                    search={{ scope: 'friends' }}
-                    className="font-semibold text-primary"
-                  >
-                    friends leaderboard
-                  </Link>
-                  .
-                </p>
               )}
             </Section>
 

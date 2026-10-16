@@ -42,9 +42,6 @@ function StatsPage() {
             <CardHeader className="items-center py-10">
               <Trophy className="mb-2 size-8 text-muted-foreground" />
               <p className="font-semibold">No races yet</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Run your first race to start tracking history.
-              </p>
             </CardHeader>
             <CardContent className="pb-10">
               <Button asChild>

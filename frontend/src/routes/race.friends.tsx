@@ -62,7 +62,7 @@ function FriendsPage() {
                 onChange={(event) => setJoinCode(event.target.value)}
                 placeholder="Room code"
                 maxLength={6}
-                className="flex-1 rounded-lg border border-border bg-secondary/40 px-3 py-2 text-sm font-mono tracking-widest uppercase outline-none focus-visible:border-primary"
+                className="px-corners flex-1 border-2 border-border bg-secondary/40 px-3 py-2 text-sm font-[family-name:var(--font-code)] tracking-widest uppercase outline-none focus-visible:border-primary"
               />
               <Button
                 type="submit"

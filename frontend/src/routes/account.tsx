@@ -15,7 +15,7 @@ function AccountPage() {
         {!loaded ? (
           <Card className="rise-in overflow-hidden">
             <CardContent className="flex items-center gap-4 pt-6 pb-6">
-              <div className="size-16 animate-pulse rounded-full bg-secondary/40" />
+              <div className="size-16 animate-pulse px-corners bg-secondary/40" />
               <div className="flex-1 space-y-2">
                 <div className="h-4 w-32 animate-pulse rounded bg-secondary/40" />
                 <div className="h-3 w-48 animate-pulse rounded bg-secondary/40" />
@@ -29,10 +29,10 @@ function AccountPage() {
                 <img
                   src={user.avatarUrl}
                   alt=""
-                  className="size-16 shrink-0 rounded-full"
+                  className="size-16 shrink-0 px-corners"
                 />
               ) : (
-                <span className="flex size-16 shrink-0 items-center justify-center rounded-full bg-secondary text-xl font-semibold">
+                <span className="flex size-16 shrink-0 items-center justify-center px-corners bg-secondary text-xl font-semibold">
                   {(user.name ?? '?').charAt(0).toUpperCase()}
                 </span>
               )}
@@ -64,10 +64,6 @@ function AccountPage() {
             <CardHeader className="items-center py-10">
               <UserRound className="mb-2 size-8 text-muted-foreground" />
               <p className="font-semibold">Not logged in</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Log in to keep your stats, cosmetics, and race history tied to
-                your account.
-              </p>
             </CardHeader>
             <CardContent className="pb-10">
               <Button asChild>

@@ -83,7 +83,7 @@ function Practice() {
         />
 
         <div className="mt-6 mb-6 flex items-center justify-between">
-          <p className="kicker">Type the highlighted key</p>
+          <span />
           <Button variant="outline" size="sm" onClick={handleReset}>
             <RotateCcw />
             Restart

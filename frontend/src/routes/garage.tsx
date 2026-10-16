@@ -172,13 +172,7 @@ function GaragePage() {
       <div className="page-wrap max-w-2xl">
         <Card className="rise-in overflow-hidden">
           <CardContent className="pt-6">
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-              <Coins amount={shop.coins} className="text-lg text-signal" />
-              <p className="text-xs text-muted-foreground">
-                Earn coins by finishing races — faster and higher placings pay
-                more.
-              </p>
-            </div>
+            <Coins amount={shop.coins} className="mb-6 text-lg text-signal" />
             <div className="race-track mb-8">
               <div className="race-track-inner">
                 <div className="race-track-fill" style={{ width: '38%' }} />
@@ -245,9 +239,6 @@ function GaragePage() {
                 />
                 <span className="flex-1">
                   <p className="text-sm font-bold">Neon underglow</p>
-                  <p className="text-xs text-muted-foreground">
-                    Pick any color below.
-                  </p>
                 </span>
                 {underglow && (
                   <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
@@ -271,9 +262,6 @@ function GaragePage() {
                 />
                 <span className="flex-1">
                   <p className="text-sm font-bold">Neon underglow</p>
-                  <p className="text-xs text-muted-foreground">
-                    A glow under your car, in any color.
-                  </p>
                 </span>
               </ShopTile>
             )}

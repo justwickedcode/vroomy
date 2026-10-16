@@ -65,7 +65,7 @@ export default function DailyChallengeCard() {
   } = useTypingRace(getDailyQuote)
   // Keyed on the local date, so the board rolls over at the same midnight the passage does.
   const leaderboard = useLeaderboard({ board: 'daily', date: todayKey() })
-  const { user, loaded: userLoaded } = useCurrentUser()
+  const { user } = useCurrentUser()
 
   const inputRef = useRef<HTMLInputElement>(null)
   const profile = useProfile()
@@ -201,12 +201,11 @@ export default function DailyChallengeCard() {
         />
 
         {hydrated && bestWpm > 0 && !finished && (
-          <div className="mb-5 flex items-center gap-2 rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
-            <Trophy className="size-4 shrink-0 text-primary" />
-            Your best daily run:{' '}
-            <strong className="text-foreground">{bestWpm} wpm</strong>.
-            {result && ` Today so far: ${result.wpm} wpm.`} Beat it below.
-          </div>
+          <p className="pixel-text mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+            <Trophy className="size-4 shrink-0" />
+            Best <span className="text-foreground">{bestWpm} wpm</span>
+            {result && <> · today {result.wpm} wpm</>}
+          </p>
         )}
 
         <TypingWords
@@ -271,10 +270,8 @@ export default function DailyChallengeCard() {
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4">
             <Trophy className="size-6 shrink-0 text-success" />
             <div className="flex flex-col gap-1">
-              <p className="text-sm leading-none">
-                <strong>{wpm} wpm</strong> at <strong>{accuracy}%</strong>{' '}
-                accuracy. Same passage for everyone today — come back tomorrow
-                for a new one.
+              <p className="pixel-text text-sm leading-none">
+                {wpm} wpm · {accuracy}%
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 {coinsEarned !== null && (
@@ -294,13 +291,7 @@ export default function DailyChallengeCard() {
               <AchievementUnlocks unlocked={unlocks} />
             </div>
           </div>
-        ) : (
-          <p className="kicker">
-            {phase === 'idle'
-              ? "Hit start when you're ready"
-              : 'Type the passage above'}
-          </p>
-        )}
+        ) : null}
       </CardContent>
 
       {leaderboard.data && (
@@ -321,16 +312,8 @@ export default function DailyChallengeCard() {
               board={leaderboard.data}
               compact
               limit={5}
-              emptyText="Nobody has finished today's passage yet — be the first."
+              emptyText="No runs yet"
             />
-            {userLoaded && !user && (
-              <p className="mt-3 text-xs text-muted-foreground">
-                <a href="/login" className="font-semibold text-primary">
-                  Log in
-                </a>{' '}
-                to put your run on the board.
-              </p>
-            )}
           </CardContent>
         </>
       )}

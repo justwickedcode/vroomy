@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { LogIn } from '#/components/ui/icons'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
@@ -151,9 +151,7 @@ function LeaderboardsPage() {
               <LeaderboardTable
                 board={leaderboard.data}
                 emptyText={
-                  scope === 'friends'
-                    ? 'No races from you or your friends in this window yet.'
-                    : 'Nobody on the board yet — be the first.'
+                  scope === 'friends' ? 'No races yet' : 'No races yet'
                 }
               />
             )}
@@ -164,8 +162,7 @@ function LeaderboardsPage() {
           <Card className="rise-in mt-4 overflow-hidden">
             <CardContent className="flex flex-col items-center gap-3 py-6 text-center sm:flex-row sm:text-left">
               <p className="flex-1 text-sm text-muted-foreground">
-                Races only count toward the leaderboard when you're logged in.
-                Anything you've already played as a guest comes with you.
+                Log in to get ranked.
               </p>
               <Button asChild size="sm">
                 <a href="/login">
@@ -175,16 +172,6 @@ function LeaderboardsPage() {
               </Button>
             </CardContent>
           </Card>
-        )}
-
-        {user && scope === 'friends' && (
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Racing alone?{' '}
-            <Link to="/friends" className="font-semibold text-primary">
-              Add some friends
-            </Link>
-            .
-          </p>
         )}
       </div>
     </main>

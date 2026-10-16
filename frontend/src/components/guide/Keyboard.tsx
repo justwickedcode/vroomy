@@ -89,7 +89,7 @@ const ROWS: Array<Array<KeyDef>> = [
 
 export default function Keyboard({ activeKey }: { activeKey: string | null }) {
   return (
-    <div className="flex flex-col gap-1.5 rounded-xl bg-black/25 p-3">
+    <div className="px-corners flex flex-col gap-1.5 bg-black/25 p-3">
       {ROWS.map((row, r) => (
         <div key={r} className="flex gap-1.5">
           {row.map((k, i) => {
@@ -107,7 +107,7 @@ export default function Keyboard({ activeKey }: { activeKey: string | null }) {
                     : FINGER_COLOR[k.finger],
                 }}
                 className={cn(
-                  'flex h-8 items-center justify-center rounded-md border border-b-2 font-mono text-[0.65rem] uppercase transition-colors duration-150 sm:h-9',
+                  'px-corners flex h-8 items-center justify-center border-2 border-b-4 font-mono text-[0.65rem] uppercase transition-colors duration-150 sm:h-9',
                   active
                     ? 'border-primary bg-primary text-primary-foreground shadow-[0_0_12px_-2px_var(--color-primary)]'
                     : 'border-border/70 bg-secondary/50 text-muted-foreground',
