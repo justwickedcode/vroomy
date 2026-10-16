@@ -11,10 +11,11 @@ import {
   Users,
   X,
 } from '#/components/ui/icons'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import { cn } from '#/lib/utils'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
 import CarIcon from '#/components/typing/CarIcon'
+import PixelSkyline from '#/components/typing/PixelSkyline'
 import PlayerAvatar from '#/components/social/PlayerAvatar'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 import { useFriends, useUserSearch } from '#/lib/social/useFriends'
@@ -40,7 +41,7 @@ function FriendRow({
   actions: ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent/30">
+    <div className="flex items-center gap-3 px-2 py-2 hover:bg-accent/30">
       <PlayerAvatar
         name={friend.displayName}
         avatarUrl={friend.avatarUrl}
@@ -62,26 +63,34 @@ function FriendRow({
   )
 }
 
+// One connected panel, like the dashboard: each section is a cell, neighbours share a line.
+const PANEL =
+  'rise-in px-corners flex flex-1 flex-col gap-[2px] border-2 border-border bg-border'
+const CELL = 'bg-card'
+
 function Section({
   title,
   count,
   children,
+  className,
 }: {
   title: string
   count?: number
   children: ReactNode
+  className?: string
 }) {
   return (
-    <>
-      <div className="glass-divider" />
-      <CardHeader className="py-5">
-        <p className="kicker">
-          {title}
-          {count !== undefined && count > 0 ? ` · ${count}` : ''}
-        </p>
-      </CardHeader>
-      <CardContent className="pt-0 pb-6">{children}</CardContent>
-    </>
+    <section className={cn(CELL, 'p-5', className)}>
+      <div className="mb-3 flex items-baseline justify-between">
+        <p className="kicker">{title}</p>
+        {count !== undefined && count > 0 && (
+          <span className="font-mono text-xs text-muted-foreground">
+            {count}
+          </span>
+        )}
+      </div>
+      {children}
+    </section>
   )
 }
 
@@ -138,37 +147,39 @@ function FriendsPage() {
   }
 
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-2xl">
+    <main className="flex flex-1 flex-col px-4 py-8 sm:py-10">
+      <div className="page-wrap flex flex-1 flex-col">
         {!loaded ? (
-          <Card className="rise-in overflow-hidden">
-            <CardContent className="flex flex-col gap-2 py-6">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="h-12 animate-pulse rounded-md bg-secondary/40"
-                />
-              ))}
-            </CardContent>
-          </Card>
+          <div className={PANEL}>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className={cn(CELL, 'h-16 animate-pulse last:flex-1')}
+              />
+            ))}
+          </div>
         ) : !user ? (
-          <Card className="rise-in overflow-hidden text-center">
-            <CardHeader className="items-center py-10">
-              <Users className="mb-2 size-8 text-muted-foreground" />
-              <p className="font-semibold">Log in to add friends</p>
-            </CardHeader>
-            <CardContent className="pb-10">
+          <div className={PANEL}>
+            <PixelSkyline className="h-40 sm:h-56" />
+            <div
+              className={cn(
+                CELL,
+                'flex flex-1 flex-col items-center justify-center gap-4 py-12',
+              )}
+            >
+              <Users className="size-12" />
+              <p className="font-display text-2xl uppercase">Friends</p>
               <Button asChild>
                 <a href="/login">
                   <LogIn className="size-4" />
                   Log in
                 </a>
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ) : (
-          <Card className="rise-in overflow-hidden">
-            <CardContent className="flex flex-col gap-3 pt-6 pb-6 sm:flex-row">
+          <div className={PANEL}>
+            <div className={cn(CELL, 'flex flex-col gap-3 p-4 sm:flex-row')}>
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -184,7 +195,7 @@ function FriendsPage() {
                   <Flag /> Race friends
                 </Link>
               </Button>
-            </CardContent>
+            </div>
 
             {debouncedSearch.trim().length >= 2 && (
               <Section title="Search results">
@@ -243,13 +254,17 @@ function FriendsPage() {
               </Section>
             )}
 
-            <Section title="Your friends" count={query.data?.friends.length}>
+            <Section
+              title="Your friends"
+              count={query.data?.friends.length}
+              className="flex-1"
+            >
               {query.isError ? (
                 <p className="py-2 text-sm text-muted-foreground">
                   Couldn't load your friends. Try again in a moment.
                 </p>
               ) : !query.data ? (
-                <div className="h-12 animate-pulse rounded-md bg-secondary/40" />
+                <div className="h-12 animate-pulse bg-secondary/40" />
               ) : query.data.friends.length === 0 ? (
                 <p className="py-2 text-sm text-muted-foreground">
                   No friends yet
@@ -302,11 +317,11 @@ function FriendsPage() {
             )}
 
             {(add.isError || accept.isError || remove.isError) && (
-              <p className="px-6 pb-6 text-sm text-destructive">
+              <p className={cn(CELL, 'p-4 text-sm text-destructive')}>
                 That didn't go through. Try again in a moment.
               </p>
             )}
-          </Card>
+          </div>
         )}
       </div>
     </main>
