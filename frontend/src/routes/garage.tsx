@@ -193,6 +193,7 @@ function GaragePage() {
                 phase="ready"
                 finishLine={false}
                 epic
+                showcase
               />
               <div className="flex flex-col gap-4 p-5">
                 <Coins amount={shop.coins} className="text-2xl text-signal" />

@@ -72,7 +72,8 @@ function Practice() {
           ]}
           phase="ready"
           finishLine={false}
-          className="mb-4 overflow-hidden rounded-lg"
+          epic
+          className="mb-4 overflow-hidden"
         />
 
         <WordStream

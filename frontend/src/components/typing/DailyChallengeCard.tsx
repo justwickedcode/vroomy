@@ -197,7 +197,8 @@ export default function DailyChallengeCard() {
             },
           ]}
           phase="ready"
-          className="mb-5 overflow-hidden rounded-lg"
+          epic
+          className="mb-5 overflow-hidden"
         />
 
         {hydrated && bestWpm > 0 && !finished && (

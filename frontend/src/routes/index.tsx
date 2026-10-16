@@ -168,6 +168,7 @@ function Dashboard() {
               phase="ready"
               finishLine={false}
               epic
+              showcase
             />
             {/* The title sits in the sky like a game's title screen, with a hard pixel shadow. */}
             <h1 className="pointer-events-none absolute top-4 left-5 text-3xl font-extrabold tracking-tight [text-shadow:3px_3px_0_#1a0b2e] sm:top-5 sm:text-4xl">

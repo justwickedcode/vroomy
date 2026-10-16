@@ -369,6 +369,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               racers={racers}
               countdown={countdown}
               phase={mp.phase === 'countdown' ? 'counting' : 'ready'}
+              epic
               effect={effect}
               className="flex-shrink-0"
             />

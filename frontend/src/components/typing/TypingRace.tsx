@@ -1,40 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import {
-  Medal,
-  PlayCircle,
-  RotateCcw,
-  Sparkles,
-  Trophy,
-} from '#/components/ui/icons'
+import { PlayCircle, RotateCcw } from '#/components/ui/icons'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
-import { Card, CardContent } from '#/components/ui/card'
-import { cn, ordinal } from '#/lib/utils'
 import { POWERUPS } from '#/lib/powerups'
 import RaceTrack from '#/components/typing/RaceTrack'
-import Gauge from '#/components/typing/Gauge'
-import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
-import QuoteCredit from '#/components/typing/QuoteCredit'
-import PixelIcon from '#/components/ui/PixelIcon'
-import Coins from '#/components/ui/Coins'
-import AchievementUnlocks from '#/components/ui/AchievementUnlocks'
+import RaceConsole from '#/components/typing/RaceConsole'
+import RaceResults from '#/components/typing/RaceResults'
 import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
 import type { PowerupKind } from '#/lib/powerups'
-
-const MEDAL_COLORS: Record<number, string> = {
-  1: '#facc15',
-  2: '#cbd5e1',
-  3: '#c2703d',
-}
-
-const WPM_GAUGE_MAX = 130
 
 // How far the Nuke throws every bot back — the strongest powerup, priced to match (see shop).
 const NUKE_WORDS = 3
@@ -42,13 +21,6 @@ const NUKE_WORDS = 3
 // Solo vs AI has nobody else to wait on, so the countdown just needs to be
 // long enough to get fingers on the keys — not a real multiplayer-room wait.
 const RACE_COUNTDOWN_START = 3
-
-function formatTime(ms: number) {
-  const totalSeconds = ms / 1000
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = (totalSeconds % 60).toFixed(1).padStart(4, '0')
-  return `${minutes}:${seconds}`
-}
 
 export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   const {
@@ -327,24 +299,18 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     profile.stats.racesPlayed,
   ])
 
-  const analytics = (
-    <div className="flex items-center gap-4">
-      <Gauge label="wpm" value={wpm} max={WPM_GAUGE_MAX} size="lg" />
-      <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
-      <DigitalReadout label="time" value={formatTime(elapsedMs)} />
-    </div>
-  )
-
   // Shown for the whole race, ready or spent, so the chip never pops in and out.
   const equippedDef = POWERUPS.find((p) => p.id === profile.equippedPowerup)
 
   return (
-    <Card className="rise-in flex flex-col overflow-hidden">
-      <CardContent className="flex flex-col p-0">
+    // One connected panel: the track, the words, a slim status bar, then the results.
+    <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+      <div className="flex flex-col">
         <RaceTrack
           racers={racers}
           countdown={countdown}
           phase={phase}
+          epic
           effect={activeEffect}
           className="flex-shrink-0"
         />
@@ -362,24 +328,30 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
           overlay={
             <>
               {finished && (
-                <div className="countdown-overlay gap-3">
-                  <Button
-                    onClick={reset}
-                    size="lg"
-                    className="pointer-events-auto"
-                  >
-                    <RotateCcw />
-                    Race Again
-                  </Button>
-                  {replayId && (
-                    <Button asChild size="lg" className="pointer-events-auto">
-                      <Link to="/replays/$replayId" params={{ replayId }}>
-                        <PlayCircle />
-                        Watch replay
-                      </Link>
-                    </Button>
-                  )}
-                </div>
+                <RaceResults
+                  place={place ?? null}
+                  racerCount={bots.length + 1}
+                  elapsedMs={elapsedMs}
+                  coinsEarned={coinsEarned}
+                  newBest={newBest}
+                  unlocks={unlocks}
+                  actions={
+                    <>
+                      <Button onClick={reset}>
+                        <RotateCcw />
+                        Race again
+                      </Button>
+                      {replayId && (
+                        <Button asChild variant="outline">
+                          <Link to="/replays/$replayId" params={{ replayId }}>
+                            <PlayCircle />
+                            Replay
+                          </Link>
+                        </Button>
+                      )}
+                    </>
+                  }
+                />
               )}
               {!finished && lastEvent && (
                 <div className="pointer-events-none absolute top-3 right-3 z-10">
@@ -391,73 +363,23 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
             </>
           }
         />
-        <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-3">
-          {equippedDef && !finished ? (
-            <button
-              type="button"
-              onClick={usePowerup}
-              disabled={!powerup || locked}
-              title={equippedDef.detail}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-opacity',
-                powerup ? 'hover:text-foreground' : 'opacity-40',
-              )}
-            >
-              <PixelIcon name={profile.equippedPowerup} />
-              {equippedDef.label}
-              <span>{powerup ? '· once per race' : '· used'}</span>
-              {powerup && (
-                <kbd className="rounded border border-border px-1 font-mono text-[0.65rem]">
-                  Tab
-                </kbd>
-              )}
-            </button>
-          ) : (
-            <span />
-          )}
-          <QuoteCredit {...credit} />
-        </div>
-      </CardContent>
-
-      {finished && <div className="glass-divider" />}
-
-      {finished ? (
-        <div className="flex flex-wrap items-center justify-between gap-5 bg-success/10 p-6">
-          <div className="flex flex-wrap items-center gap-3">
-            {place && place <= 3 ? (
-              <Medal
-                className="size-6 shrink-0"
-                style={{ color: MEDAL_COLORS[place] }}
-              />
-            ) : (
-              <Trophy className="size-6 shrink-0 text-success" />
-            )}
-            <div className="flex flex-col gap-1">
-              <p className="text-base leading-none">
-                Finished <strong>{place && ordinal(place)}</strong> of{' '}
-                {bots.length + 1} in <strong>{formatTime(elapsedMs)}</strong>
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                {coinsEarned !== null && (
-                  <Coins
-                    amount={coinsEarned}
-                    prefix="+"
-                    className="text-sm text-signal"
-                  />
-                )}
-                {newBest && (
-                  <Badge variant="success" className="w-fit gap-1">
-                    <Sparkles className="size-3" />
-                    New personal best
-                  </Badge>
-                )}
-              </div>
-              <AchievementUnlocks unlocked={unlocks} />
-            </div>
-          </div>
-          <div className="race-footer-controls">{analytics}</div>
-        </div>
-      ) : null}
-    </Card>
+      </div>
+      <RaceConsole
+        wpm={wpm}
+        accuracy={accuracy}
+        elapsedMs={elapsedMs}
+        powerup={
+          equippedDef && {
+            kind: profile.equippedPowerup,
+            label: equippedDef.label,
+            detail: equippedDef.detail,
+            ready: Boolean(powerup),
+            canFire: Boolean(powerup) && !locked && !finished,
+            onFire: usePowerup,
+          }
+        }
+        {...credit}
+      />
+    </div>
   )
 }
