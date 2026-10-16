@@ -59,55 +59,22 @@ function StatCell({
   )
 }
 
-// The title-screen scene: a police chase. You lead your supercar crew out front; two police
-// cruisers with flashing lights chase from the back. The crew is two of the big, detailed
-// supercar sprites (picked by the date, skipping whatever you drive), so it changes once a day
-// but never on refresh.
-const CREW = [
-  { model: 'lambo', name: 'Viper' },
-  { model: 'coupe-gt', name: 'Razor' },
-  { model: 'roadster', name: 'Phantom' },
-  { model: 'convertible', name: 'Inferno' },
-  { model: 'coupe-white', name: 'Ghost' },
-]
-
+// The title-screen scene: a police chase — you out front, four cruisers on your tail.
 interface ShowcaseRacer {
   id: string
   name: string
   progress: number
   // Fraction of your speed shown on their WPM readout.
   pace: number
-  model: string
-  siren?: boolean
 }
 
 // Lanes top to bottom; the player takes the middle one (see Dashboard).
-function chaseLineup(playerModel: string): Array<ShowcaseRacer> {
-  const day = Math.floor(Date.now() / 86_400_000)
-  const pool = CREW.filter((c) => c.model !== playerModel)
-  const a = pool[day % pool.length]
-  const b = pool[(day + 2) % pool.length]
-  return [
-    { id: 'crew-a', ...a, progress: 0.66, pace: 0.95 },
-    {
-      id: 'cop-1',
-      model: 'police',
-      name: 'Interceptor',
-      progress: 0.3,
-      pace: 0.85,
-      siren: true,
-    },
-    { id: 'crew-b', ...b, progress: 0.7, pace: 0.97 },
-    {
-      id: 'cop-2',
-      model: 'police',
-      name: 'Pursuit',
-      progress: 0.22,
-      pace: 0.82,
-      siren: true,
-    },
-  ]
-}
+const CHASERS: Array<ShowcaseRacer> = [
+  { id: 'cop-1', name: 'Interceptor', progress: 0.5, pace: 0.92 },
+  { id: 'cop-2', name: 'Pursuit', progress: 0.36, pace: 0.86 },
+  { id: 'cop-3', name: 'Hunter', progress: 0.44, pace: 0.9 },
+  { id: 'cop-4', name: 'Patrol', progress: 0.28, pace: 0.83 },
+]
 
 // Your car's position: far ahead of the pack.
 const LEAD_PROGRESS = 0.86
@@ -144,12 +111,11 @@ function Dashboard() {
             <RaceTrack
               racers={(() => {
                 const youWpm = hasRaced ? Math.max(stats.avgWpm, 40) : 40
-                const others = chaseLineup(carModel).map(
-                  ({ pace, ...racer }) => ({
-                    ...racer,
-                    wpm: Math.round(youWpm * pace),
-                  }),
-                )
+                const others = CHASERS.map(({ pace, ...racer }) => ({
+                  ...racer,
+                  model: 'police',
+                  wpm: Math.round(youWpm * pace),
+                }))
                 const you = {
                   id: 'you',
                   name: user?.name ?? 'You',

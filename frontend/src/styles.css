@@ -956,32 +956,6 @@ body::before {
     inset 0 -2px 0 rgb(0 0 0 / 45%);
 }
 
-/* Police lights: a glow around the car that alternates red and blue. */
-.race-siren {
-  position: absolute;
-  inset: -30% -15%;
-  z-index: -1;
-  pointer-events: none;
-  animation: race-siren 0.6s steps(1) infinite;
-}
-
-@keyframes race-siren {
-  0% {
-    background: radial-gradient(
-      ellipse at 30% 50%,
-      rgb(239 68 68 / 75%),
-      transparent 65%
-    );
-  }
-  50% {
-    background: radial-gradient(
-      ellipse at 70% 50%,
-      rgb(59 130 246 / 75%),
-      transparent 65%
-    );
-  }
-}
-
 @keyframes race-speedline {
   from {
     transform: translateX(0);
