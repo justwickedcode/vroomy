@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Check, Lock } from '#/components/ui/icons'
 import PixelIcon from '#/components/ui/PixelIcon'
 import Coins from '#/components/ui/Coins'
+import PixelMeter from '#/components/ui/PixelMeter'
 import { Button } from '#/components/ui/button'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import { CardContent, CardHeader } from '#/components/ui/card'
 import CarIcon, { VEHICLES } from '#/components/typing/CarIcon'
-import { Trail } from '#/components/typing/RaceTrack'
+import RaceTrack, { Trail } from '#/components/typing/RaceTrack'
 import { CAR_COLORS, useProfile } from '#/lib/profile/useProfile'
 import { TRAILS } from '#/lib/trails'
 import { POWERUPS } from '#/lib/powerups'
@@ -95,9 +96,9 @@ function ShopTile({
   return (
     <div
       className={cn(
-        'glass-chip relative flex flex-col rounded-xl transition-colors',
-        selected && 'border-primary bg-primary/12',
-        !owned && 'border-dashed',
+        'relative flex flex-col bg-card transition-colors hover:bg-accent',
+        selected &&
+          'bg-primary/10 shadow-[inset_0_0_0_2px_var(--color-primary)]',
       )}
     >
       <button
@@ -168,204 +169,296 @@ function GaragePage() {
   const ownsUnderglow = shop.owns(UNDERGLOW_ITEM)
 
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-2xl">
-        <Card className="rise-in overflow-hidden">
-          <CardContent className="pt-6">
-            <Coins amount={shop.coins} className="mb-6 text-lg text-signal" />
-            <div className="race-track mb-8">
-              <div className="race-track-inner">
-                <div className="race-track-fill" style={{ width: '38%' }} />
-                <div className="race-track-start" />
+    <main className="flex flex-1 flex-col px-4 py-8 sm:py-10">
+      <div className="page-wrap flex flex-1 flex-col">
+        {/* One connected panel like the dashboard: the showroom on the left stays in view while
+            you browse the shop on the right. */}
+        <div className="rise-in px-corners grid flex-1 gap-[2px] border-2 border-border bg-border lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          <aside className="bg-card">
+            <div className="flex flex-col lg:sticky lg:top-0">
+              <RaceTrack
+                racers={[
+                  {
+                    id: 'you',
+                    name: 'You',
+                    progress: 0.5,
+                    wpm: 60,
+                    isYou: true,
+                    model: carModel,
+                    underglow,
+                    underglowColor,
+                    trail,
+                  },
+                ]}
+                phase="ready"
+                finishLine={false}
+                epic
+              />
+              <div className="flex flex-col gap-4 p-5">
+                <Coins amount={shop.coins} className="text-2xl text-signal" />
+                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                  <dt className="kicker">Car</dt>
+                  <dd className="font-semibold">
+                    {VEHICLES.find((v) => v.id === carModel)?.label ?? carModel}
+                  </dd>
+                  <dt className="kicker">Trail</dt>
+                  <dd className="font-semibold">
+                    {TRAILS.find((t) => t.id === trail)?.label}
+                  </dd>
+                  <dt className="kicker">Power-up</dt>
+                  <dd className="flex items-center gap-1.5 font-semibold">
+                    <PixelIcon name={equippedPowerup} />
+                    {POWERUPS.find((p) => p.id === equippedPowerup)?.label}
+                  </dd>
+                  <dt className="kicker">Underglow</dt>
+                  <dd className="flex items-center gap-1.5 font-semibold">
+                    {underglow ? (
+                      <>
+                        <span
+                          className="px-corners size-3"
+                          style={{ background: underglowColor }}
+                        />
+                        On
+                      </>
+                    ) : (
+                      'Off'
+                    )}
+                  </dd>
+                </dl>
+                {shop.error && (
+                  <p className="text-sm text-destructive">{shop.error}</p>
+                )}
+                <div className="glass-divider" />
+                {/* How much of the shop you own, per category and overall. */}
+                {(() => {
+                  const groups = [
+                    {
+                      label: 'Cars',
+                      ids: SORTED_CARS.map((v) => carItem(v.id)),
+                    },
+                    {
+                      label: 'Trails',
+                      ids: SORTED_TRAILS.map((t) => trailItem(t.id)),
+                    },
+                    {
+                      label: 'Power-ups',
+                      ids: SORTED_POWERUPS.map((p) => powerupItem(p.id)),
+                    },
+                  ]
+                  const all = [...groups.flatMap((g) => g.ids), UNDERGLOW_ITEM]
+                  const ownedCount = all.filter((id) => shop.owns(id)).length
+                  return (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-baseline justify-between">
+                        <p className="kicker">Collection</p>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {ownedCount}/{all.length}
+                        </span>
+                      </div>
+                      <PixelMeter
+                        frac={ownedCount / all.length}
+                        segments={20}
+                        className="gap-[2px]"
+                      />
+                      <dl className="grid grid-cols-[1fr_auto] gap-y-1 text-sm">
+                        {groups.map((g) => (
+                          <Fragment key={g.label}>
+                            <dt className="text-muted-foreground">{g.label}</dt>
+                            <dd className="font-mono text-xs">
+                              {g.ids.filter((id) => shop.owns(id)).length}/
+                              {g.ids.length}
+                            </dd>
+                          </Fragment>
+                        ))}
+                      </dl>
+                    </div>
+                  )
+                })()}
               </div>
-              <div className="race-car-wrap" style={{ left: '38%' }}>
-                <Trail variant={trail} />
-                <CarIcon
-                  model={carModel}
-                  underglow={underglow}
-                  underglowColor={underglowColor}
-                  className="race-car-svg race-car-bob w-36 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]"
-                />
-              </div>
-              <span className="race-flag-checkered" aria-hidden="true" />
             </div>
-            {shop.error && (
-              <p className="mb-2 text-sm text-destructive">{shop.error}</p>
-            )}
-          </CardContent>
+          </aside>
 
-          <div className="glass-divider" />
-          <CardHeader className="py-5">
-            <p className="kicker">Cars</p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8 sm:grid-cols-3 lg:grid-cols-4">
-            {SORTED_CARS.map((vehicle) => (
-              <ShopTile
-                key={vehicle.id}
-                shop={shop}
-                itemId={carItem(vehicle.id)}
-                selected={vehicle.id === carModel}
-                onEquip={() => setCarModel(vehicle.id)}
-                className="speed-option items-center gap-2 pt-4 pb-1"
-              >
-                {/* Fixed-height slot so every label lines up, whatever the sprite's shape. */}
-                <span className="flex h-14 items-center self-center">
-                  <CarIcon model={vehicle.id} className="w-24" />
-                </span>
-                <span className="text-sm font-bold">{vehicle.label}</span>
-              </ShopTile>
-            ))}
-          </CardContent>
-
-          <div className="glass-divider" />
-
-          <CardHeader className="py-5">
-            <p className="kicker">Underglow</p>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4 pt-0 pb-8">
-            {ownsUnderglow ? (
-              <button
-                type="button"
-                onClick={() => setUnderglow(!underglow)}
-                className={cn(
-                  'glass-chip flex w-full items-center gap-4 rounded-xl p-4 text-left transition-colors',
-                  underglow && 'border-primary bg-primary/12',
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className="px-corners size-8 shrink-0 border-2 border-border"
-                  style={{ backgroundColor: underglowColor }}
-                />
-                <span className="flex-1">
-                  <p className="text-sm font-bold">Neon underglow</p>
-                </span>
-                {underglow && (
-                  <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
-                    <Check className="size-3.5" />
-                    On
-                  </span>
-                )}
-              </button>
-            ) : (
-              <ShopTile
-                shop={shop}
-                itemId={UNDERGLOW_ITEM}
-                selected={false}
-                onEquip={() => setUnderglow(true)}
-                className="flex-row items-center gap-4 p-4 text-left"
-              >
-                <span
-                  aria-hidden="true"
-                  className="px-corners size-8 shrink-0 border-2 border-border"
-                  style={{ backgroundColor: underglowColor }}
-                />
-                <span className="flex-1">
-                  <p className="text-sm font-bold">Neon underglow</p>
-                </span>
-              </ShopTile>
-            )}
-            {ownsUnderglow && underglow && (
-              <div className="flex flex-wrap items-center gap-3 pl-1">
-                {CAR_COLORS.map((swatch) => (
-                  <button
-                    key={swatch.id}
-                    type="button"
-                    aria-label={`${swatch.id} underglow`}
-                    onClick={() => setUnderglowColor(swatch.value)}
-                    className={cn(
-                      'px-corners flex size-9 items-center justify-center border-2 transition-transform hover:scale-110',
-                      swatch.value === underglowColor
-                        ? 'border-foreground'
-                        : 'border-transparent',
-                    )}
-                    style={{ backgroundColor: swatch.value }}
+          <div className="bg-card">
+            <CardHeader className="py-5">
+              <p className="kicker">Cars</p>
+            </CardHeader>
+            <CardContent className="pt-0 pb-8">
+              <div className="px-corners grid border-2 border-border [&>*]:shadow-[0_0_0_1px_var(--color-border)] grid-cols-2 sm:grid-cols-3 xl:grid-cols-4">
+                {SORTED_CARS.map((vehicle) => (
+                  <ShopTile
+                    key={vehicle.id}
+                    shop={shop}
+                    itemId={carItem(vehicle.id)}
+                    selected={vehicle.id === carModel}
+                    onEquip={() => setCarModel(vehicle.id)}
+                    className="speed-option items-center gap-2 pt-4 pb-1"
                   >
-                    {swatch.value === underglowColor && (
-                      <Check className="size-3.5 text-white drop-shadow" />
-                    )}
-                  </button>
+                    {/* Fixed-height slot so every label lines up, whatever the sprite's shape. */}
+                    <span className="flex h-14 items-center self-center">
+                      <CarIcon model={vehicle.id} className="w-24" />
+                    </span>
+                    <span className="text-sm font-bold">{vehicle.label}</span>
+                  </ShopTile>
                 ))}
-                {/* A native color input, not another swatch row — the 8 presets above cover
-                    "pick a nice color fast", this covers "no really, this exact hex". */}
-                <label
-                  className="px-corners relative flex size-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden border-2 border-dashed border-muted-foreground"
-                  title="Custom color"
+              </div>
+            </CardContent>
+
+            <div className="glass-divider" />
+
+            <CardHeader className="py-5">
+              <p className="kicker">Underglow</p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 pt-0 pb-8">
+              {ownsUnderglow ? (
+                <button
+                  type="button"
+                  onClick={() => setUnderglow(!underglow)}
+                  className={cn(
+                    'glass-chip flex w-full items-center gap-4 rounded-xl p-4 text-left transition-colors',
+                    underglow && 'border-primary bg-primary/12',
+                  )}
                 >
-                  <input
-                    type="color"
-                    value={underglowColor}
-                    onChange={(event) => setUnderglowColor(event.target.value)}
-                    className="absolute -inset-2 cursor-pointer opacity-0"
-                    aria-label="Custom underglow color"
-                  />
                   <span
                     aria-hidden="true"
-                    className="size-full"
-                    style={{
-                      background:
-                        'conic-gradient(from 0deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
-                    }}
+                    className="px-corners size-8 shrink-0 border-2 border-border"
+                    style={{ backgroundColor: underglowColor }}
                   />
-                </label>
-              </div>
-            )}
-          </CardContent>
+                  <span className="flex-1">
+                    <p className="text-sm font-bold">Neon underglow</p>
+                  </span>
+                  {underglow && (
+                    <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
+                      <Check className="size-3.5" />
+                      On
+                    </span>
+                  )}
+                </button>
+              ) : (
+                <ShopTile
+                  shop={shop}
+                  itemId={UNDERGLOW_ITEM}
+                  selected={false}
+                  onEquip={() => setUnderglow(true)}
+                  className="flex-row items-center gap-4 p-4 text-left"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="px-corners size-8 shrink-0 border-2 border-border"
+                    style={{ backgroundColor: underglowColor }}
+                  />
+                  <span className="flex-1">
+                    <p className="text-sm font-bold">Neon underglow</p>
+                  </span>
+                </ShopTile>
+              )}
+              {ownsUnderglow && underglow && (
+                <div className="flex flex-wrap items-center gap-3 pl-1">
+                  {CAR_COLORS.map((swatch) => (
+                    <button
+                      key={swatch.id}
+                      type="button"
+                      aria-label={`${swatch.id} underglow`}
+                      onClick={() => setUnderglowColor(swatch.value)}
+                      className={cn(
+                        'px-corners flex size-9 items-center justify-center border-2 transition-transform hover:scale-110',
+                        swatch.value === underglowColor
+                          ? 'border-foreground'
+                          : 'border-transparent',
+                      )}
+                      style={{ backgroundColor: swatch.value }}
+                    >
+                      {swatch.value === underglowColor && (
+                        <Check className="size-3.5 text-white drop-shadow" />
+                      )}
+                    </button>
+                  ))}
+                  {/* A native color input, not another swatch row — the 8 presets above cover
+                    "pick a nice color fast", this covers "no really, this exact hex". */}
+                  <label
+                    className="px-corners relative flex size-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden border-2 border-dashed border-muted-foreground"
+                    title="Custom color"
+                  >
+                    <input
+                      type="color"
+                      value={underglowColor}
+                      onChange={(event) =>
+                        setUnderglowColor(event.target.value)
+                      }
+                      className="absolute -inset-2 cursor-pointer opacity-0"
+                      aria-label="Custom underglow color"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="size-full"
+                      style={{
+                        background:
+                          'conic-gradient(from 0deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+            </CardContent>
 
-          <div className="glass-divider" />
+            <div className="glass-divider" />
 
-          <CardHeader className="py-5">
-            <p className="kicker">Trail</p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8 sm:grid-cols-3">
-            {SORTED_TRAILS.map((option) => (
-              <ShopTile
-                key={option.id}
-                shop={shop}
-                itemId={trailItem(option.id)}
-                selected={option.id === trail}
-                onEquip={() => setTrail(option.id)}
-                className="items-center gap-2 px-4 pt-4 pb-1 text-center"
-              >
-                {/* Live preview, not just a name — the trail is rendered exactly like it is
+            <CardHeader className="py-5">
+              <p className="kicker">Trail</p>
+            </CardHeader>
+            <CardContent className="pt-0 pb-8">
+              <div className="px-corners grid border-2 border-border [&>*]:shadow-[0_0_0_1px_var(--color-border)] grid-cols-2 sm:grid-cols-3">
+                {SORTED_TRAILS.map((option) => (
+                  <ShopTile
+                    key={option.id}
+                    shop={shop}
+                    itemId={trailItem(option.id)}
+                    selected={option.id === trail}
+                    onEquip={() => setTrail(option.id)}
+                    className="items-center gap-2 px-4 pt-4 pb-1 text-center"
+                  >
+                    {/* Live preview, not just a name — the trail is rendered exactly like it is
                     mid-race (see RaceTrack's Trail), anchored to a small dot standing in for
                     the car so the effect has something to trail off of. */}
-                <div className="flex h-7 w-16 items-center justify-end self-center">
-                  <span className="relative inline-block size-2 shrink-0 bg-foreground/70">
-                    <Trail variant={option.id} />
-                  </span>
-                </div>
-                <p className="text-sm font-bold">{option.label}</p>
-              </ShopTile>
-            ))}
-          </CardContent>
+                    <div className="flex h-7 w-16 items-center justify-end self-center">
+                      <span className="relative inline-block size-2 shrink-0 bg-foreground/70">
+                        <Trail variant={option.id} />
+                      </span>
+                    </div>
+                    <p className="text-sm font-bold">{option.label}</p>
+                  </ShopTile>
+                ))}
+              </div>
+            </CardContent>
 
-          <div className="glass-divider" />
+            <div className="glass-divider" />
 
-          <CardHeader className="py-5">
-            <p className="kicker">Powerups</p>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3 pt-0 pb-8 sm:grid-cols-2">
-            {SORTED_POWERUPS.map((option) => (
-              <ShopTile
-                key={option.id}
-                shop={shop}
-                itemId={powerupItem(option.id)}
-                selected={option.id === equippedPowerup}
-                onEquip={() => setEquippedPowerup(option.id)}
-                className="flex-row items-center gap-3 px-4 pt-4 pb-1 text-left"
-              >
-                <PixelIcon name={option.id} className="size-8" />
-                <span className="flex-1">
-                  <p className="text-sm font-bold">{option.label}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {option.detail}
-                  </p>
-                </span>
-              </ShopTile>
-            ))}
-          </CardContent>
-        </Card>
+            <CardHeader className="py-5">
+              <p className="kicker">Powerups</p>
+            </CardHeader>
+            <CardContent className="pt-0 pb-8">
+              <div className="px-corners grid border-2 border-border [&>*]:shadow-[0_0_0_1px_var(--color-border)] grid-cols-1 sm:grid-cols-2">
+                {SORTED_POWERUPS.map((option) => (
+                  <ShopTile
+                    key={option.id}
+                    shop={shop}
+                    itemId={powerupItem(option.id)}
+                    selected={option.id === equippedPowerup}
+                    onEquip={() => setEquippedPowerup(option.id)}
+                    className="flex-row items-center gap-3 px-4 pt-4 pb-1 text-left"
+                  >
+                    <PixelIcon name={option.id} className="size-8" />
+                    <span className="flex-1">
+                      <p className="text-sm font-bold">{option.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {option.detail}
+                      </p>
+                    </span>
+                  </ShopTile>
+                ))}
+              </div>
+            </CardContent>
+          </div>
+        </div>
       </div>
     </main>
   )
