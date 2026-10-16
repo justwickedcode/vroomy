@@ -10,6 +10,7 @@ import Coins from '#/components/ui/Coins'
 import PixelMeter from '#/components/ui/PixelMeter'
 import RaceTrack from '#/components/typing/RaceTrack'
 import RaceHistoryRow from '#/components/stats/RaceHistoryRow'
+import WpmTrend from '#/components/stats/WpmTrend'
 import { ACHIEVEMENTS, achievementReward } from '#/lib/achievements'
 import { useProfile } from '#/lib/profile/useProfile'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
@@ -27,6 +28,10 @@ const MODES = [
   { to: '/race/friends', icon: Link2, title: 'Friends' },
   { to: '/daily-challenge', icon: CalendarDays, title: 'Daily' },
 ] as const
+
+// How many races the WPM trend chart and the recent-races list show.
+const TREND_RACES = 20
+const RECENT_RACES = 10
 
 // How many still-locked achievements the "Next up" list shows.
 const NEXT_UP_COUNT = 3
@@ -70,14 +75,14 @@ interface ShowcaseRacer {
 
 // Lanes top to bottom; the player takes the middle one (see Dashboard).
 const CHASERS: Array<ShowcaseRacer> = [
-  { id: 'cop-1', name: 'Interceptor', progress: 0.5, pace: 0.92 },
-  { id: 'cop-2', name: 'Pursuit', progress: 0.36, pace: 0.86 },
-  { id: 'cop-3', name: 'Hunter', progress: 0.44, pace: 0.9 },
-  { id: 'cop-4', name: 'Patrol', progress: 0.28, pace: 0.83 },
+  { id: 'cop-1', name: 'Interceptor', progress: 0.36, pace: 0.92 },
+  { id: 'cop-2', name: 'Pursuit', progress: 0.22, pace: 0.86 },
+  { id: 'cop-3', name: 'Hunter', progress: 0.3, pace: 0.9 },
+  { id: 'cop-4', name: 'Patrol', progress: 0.14, pace: 0.83 },
 ]
 
 // Your car's position: far ahead of the pack.
-const LEAD_PROGRESS = 0.86
+const LEAD_PROGRESS = 0.66
 
 function Dashboard() {
   const {
@@ -105,7 +110,7 @@ function Dashboard() {
       <div className="page-wrap flex flex-1 flex-col">
         {/* Fills the screen: the last two rows stretch to the bottom instead of leaving empty
             space under the panel. */}
-        <div className="rise-in px-corners grid flex-1 grid-rows-[auto_auto_auto_1fr] gap-[2px] border-2 border-border bg-border">
+        <div className="rise-in px-corners grid flex-1 grid-rows-[auto_auto_auto_auto_1fr] gap-[2px] border-2 border-border bg-border">
           {/* Hero: your own car cruising, like a game's title screen. */}
           <div className={CELL}>
             <RaceTrack
@@ -114,6 +119,10 @@ function Dashboard() {
                 const others = CHASERS.map(({ pace, ...racer }) => ({
                   ...racer,
                   model: 'police',
+                  // Cruisers: smoke only, with a blue neon underglow.
+                  trail: 'smoke' as const,
+                  underglow: true,
+                  underglowColor: '#3b82f6',
                   wpm: Math.round(youWpm * pace),
                 }))
                 const you = {
@@ -201,22 +210,24 @@ function Dashboard() {
             )}
           </div>
 
+          {/* Your WPM over recent races (what used to be the separate Stats page). */}
+          <section className={cn(CELL, 'p-5')}>
+            <p className="kicker mb-3">WPM trend</p>
+            {!hydrated ? (
+              <div className="h-40 animate-pulse bg-secondary/40" />
+            ) : (
+              <WpmTrend races={races.slice(0, TREND_RACES)} />
+            )}
+          </section>
+
           <div className="grid grid-cols-1 gap-[2px] lg:grid-cols-3">
             <section className={cn(CELL, 'p-5 lg:col-span-2')}>
-              <div className="mb-3 flex items-center justify-between">
-                <p className="kicker">Recent races</p>
-                <Link
-                  to="/stats"
-                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  All stats
-                </Link>
-              </div>
+              <p className="kicker mb-3">Recent races</p>
               {!hydrated ? (
                 <div className="h-24 animate-pulse bg-secondary/40" />
               ) : hasRaced ? (
                 <div className="flex flex-col gap-1">
-                  {races.slice(0, 5).map((race, i) => (
+                  {races.slice(0, RECENT_RACES).map((race, i) => (
                     <RaceHistoryRow
                       key={race.id}
                       race={race}

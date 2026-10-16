@@ -29,8 +29,14 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
     return { x, y, point }
   })
 
+  // A stepped line (across, then up/down) rather than diagonals — the pixel-art way to draw a
+  // chart, matching the rest of the UI.
   const linePath = coords
-    .map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`)
+    .map((c, i) =>
+      i === 0
+        ? `M${c.x.toFixed(0)},${c.y.toFixed(0)}`
+        : `H${c.x.toFixed(0)} V${c.y.toFixed(0)}`,
+    )
     .join(' ')
   const areaPath =
     coords.length > 0
@@ -51,6 +57,7 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
     <div className="relative">
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        shapeRendering="crispEdges"
         className="w-full"
         role="img"
         aria-label="Words per minute over your recent races"
@@ -80,6 +87,7 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
             y2={PAD_Y + innerHeight * frac}
             stroke="var(--color-border)"
             strokeWidth="1"
+            strokeDasharray="4 4"
           />
         ))}
 
@@ -88,9 +96,9 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
           d={linePath}
           fill="none"
           stroke="var(--color-signal)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          strokeWidth="3"
+          strokeLinecap="square"
+          strokeLinejoin="miter"
         />
 
         {coords.map((c, i) => {
@@ -105,15 +113,20 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
                 fill="transparent"
                 onMouseEnter={() => setHoverIndex(i)}
               />
-              <circle
-                cx={c.x}
-                cy={c.y}
-                r={i === hoverIndex ? 5 : isLast ? 4 : 2.5}
-                fill="var(--color-signal)"
-                stroke="var(--color-card)"
-                strokeWidth="1.5"
-                className="transition-[r]"
-              />
+              {(() => {
+                const size = i === hoverIndex ? 10 : isLast ? 8 : 6
+                return (
+                  <rect
+                    x={c.x - size / 2}
+                    y={c.y - size / 2}
+                    width={size}
+                    height={size}
+                    fill="var(--color-signal)"
+                    stroke="var(--color-card)"
+                    strokeWidth="2"
+                  />
+                )
+              })()}
             </g>
           )
         })}
@@ -121,7 +134,7 @@ export default function WpmTrend({ races }: { races: Array<RaceRecord> }) {
 
       {hovered && (
         <div
-          className="glass-chip pointer-events-none absolute -translate-x-1/2 -translate-y-full rounded-md px-2.5 py-1.5 text-xs whitespace-nowrap"
+          className="glass-chip pointer-events-none absolute -translate-x-1/2 -translate-y-full px-2.5 py-1.5 text-xs whitespace-nowrap"
           style={{
             left: `${(hovered.x / WIDTH) * 100}%`,
             top: `${(hovered.y / HEIGHT) * 100}%`,

@@ -15,8 +15,8 @@ export interface Racer {
   isYou?: boolean
   finished?: boolean
   model?: CarModel
-  // Only ever set for the player's own racer entry — bots/opponents stay in their stock look
-  // (see BOT_TRAILS below for theirs).
+  // Cosmetics: set for the player, and for scripted racers like the dashboard's police; race
+  // bots leave them unset and get a BOT_TRAILS trail.
   underglow?: boolean
   underglowColor?: string
   trail?: TrailVariant
@@ -329,9 +329,11 @@ export default function RaceTrack({
       <div className="race-lanes-area">
         <div className="race-curb" aria-hidden="true" />
         {racers.map((racer, index) => {
-          const trailVariant: TrailVariant = racer.isYou
-            ? (racer.trail ?? 'nitro')
-            : BOT_TRAILS[index % BOT_TRAILS.length]
+          // A racer can bring its own trail (you, or the dashboard's police); bots without one
+          // cycle through BOT_TRAILS.
+          const trailVariant: TrailVariant =
+            racer.trail ??
+            (racer.isYou ? 'nitro' : BOT_TRAILS[index % BOT_TRAILS.length])
           return (
             <Lane
               key={racer.id}

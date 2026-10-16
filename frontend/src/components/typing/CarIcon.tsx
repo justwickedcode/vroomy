@@ -222,7 +222,7 @@ export default function CarIcon({
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: '-18%',
+            inset: '-28%',
             borderRadius: '9999px',
             background: `radial-gradient(ellipse at center, ${underglowColor}88 0%, transparent 70%)`,
           }}

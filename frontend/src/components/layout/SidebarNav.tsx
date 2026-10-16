@@ -16,7 +16,6 @@ export const NAV_GROUPS = [
     label: 'Improve',
     items: [
       { to: '/guide', label: 'Type faster', icon: 'keyboard' },
-      { to: '/stats', label: 'Stats', icon: 'stats' },
       { to: '/achievements', label: 'Achievements', icon: 'achievements' },
     ],
   },

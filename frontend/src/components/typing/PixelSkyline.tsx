@@ -5,6 +5,12 @@
 
 const W = 320
 const H = 64
+// Street level at the bottom: a dark sidewalk the buildings and streetlights stand on, in the
+// same colour as the track's barrier right below it, so the city and the road share one ground.
+const GROUND = 5
+const STREET = '#15101f'
+// One streetlight every this many pixels along the sidewalk.
+const LIGHT_SPACING = 40
 
 // Small deterministic PRNG (mulberry32) so the skyline is identical on server and client.
 function rng(seed: number) {
@@ -74,6 +80,8 @@ const SUN: Array<[number, number, number]> = []
 
 export default function PixelSkyline() {
   const band = H / SKY.length
+  // Buildings stand on the sidewalk, not the bottom edge.
+  const lift = GROUND
   return (
     <svg
       viewBox={`0 0 ${W} ${H}`}
@@ -99,7 +107,7 @@ export default function PixelSkyline() {
         <rect
           key={`f${b.x}`}
           x={b.x}
-          y={H - b.h}
+          y={H - lift - b.h}
           width={b.w}
           height={b.h}
           fill="#2a1240"
@@ -107,12 +115,18 @@ export default function PixelSkyline() {
       ))}
       {NEAR.map((b) => (
         <g key={`n${b.x}`}>
-          <rect x={b.x} y={H - b.h} width={b.w} height={b.h} fill="#12081f" />
+          <rect
+            x={b.x}
+            y={H - lift - b.h}
+            width={b.w}
+            height={b.h}
+            fill="#12081f"
+          />
           {b.windows.map(([wx, wy]) => (
             <rect
               key={`${wx},${wy}`}
               x={wx}
-              y={wy}
+              y={wy - lift}
               width={1}
               height={1}
               fill="#ffcf5a"
@@ -120,6 +134,36 @@ export default function PixelSkyline() {
           ))}
         </g>
       ))}
+      {/* Sidewalk with a neon kerb glow along its edge. */}
+      <rect x={0} y={H - GROUND} width={W} height={GROUND} fill={STREET} />
+      <rect
+        x={0}
+        y={H - GROUND}
+        width={W}
+        height={1}
+        fill="#ff2fb4"
+        fillOpacity={0.55}
+      />
+      {/* Streetlights: a pole, an arm over the road and a cyan lamp with a soft pool of light. */}
+      {Array.from({ length: Math.ceil(W / LIGHT_SPACING) }, (_, i) => {
+        const x = 18 + i * LIGHT_SPACING
+        const top = H - GROUND - 14
+        return (
+          <g key={x}>
+            <rect x={x} y={top} width={1} height={14} fill="#3a2a4f" />
+            <rect x={x} y={top} width={4} height={1} fill="#3a2a4f" />
+            <rect
+              x={x + 2}
+              y={top - 1}
+              width={3}
+              height={3}
+              fill="#22d3ee"
+              fillOpacity={0.25}
+            />
+            <rect x={x + 3} y={top + 1} width={1} height={1} fill="#a5f3fc" />
+          </g>
+        )
+      })}
     </svg>
   )
 }
