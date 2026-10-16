@@ -512,19 +512,19 @@ body::before {
 
 /* Pixel gauge blocks (see Gauge.tsx): unlit track, then calm / working / redline bands. */
 .gauge-px--off {
-  fill: color-mix(in oklab, white 9%, transparent);
+  fill: color-mix(in oklab, white 16%, transparent);
 }
 
 .gauge-px--calm {
-  fill: color-mix(in oklab, var(--color-foreground) 70%, transparent);
+  fill: var(--color-success);
 }
 
 .gauge-px--working {
-  fill: color-mix(in oklab, var(--color-signal) 70%, var(--color-foreground));
+  fill: var(--color-signal);
 }
 
 .gauge-px--redline {
-  fill: var(--color-signal);
+  fill: var(--color-destructive);
 }
 
 .gauge-readout {
@@ -535,8 +535,8 @@ body::before {
 }
 
 .gauge-value {
-  font-family: var(--font-mono);
-  font-size: 1.15rem;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;

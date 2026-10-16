@@ -9,7 +9,7 @@ const H = 17
 const CX = 16
 const CY = 16.5
 const R_OUTER = 15.5
-const R_INNER = 12.5
+const R_INNER = 11.5
 const SWEEP = 200
 
 interface Cell {

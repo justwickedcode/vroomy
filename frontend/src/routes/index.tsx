@@ -6,244 +6,314 @@ import {
   Link2,
   Users,
 } from '#/components/ui/icons'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
-import { Button } from '#/components/ui/button'
-import Gauge from '#/components/typing/Gauge'
-import DigitalReadout from '#/components/typing/DigitalReadout'
+import Coins from '#/components/ui/Coins'
+import PixelMeter from '#/components/ui/PixelMeter'
+import RaceTrack from '#/components/typing/RaceTrack'
 import RaceHistoryRow from '#/components/stats/RaceHistoryRow'
-import CarIcon from '#/components/typing/CarIcon'
-import { ACHIEVEMENTS } from '#/lib/achievements'
+import LeaderboardTable from '#/components/social/LeaderboardTable'
+import { useLeaderboard } from '#/lib/social/useLeaderboard'
+import { ACHIEVEMENTS, achievementReward } from '#/lib/achievements'
 import { useProfile } from '#/lib/profile/useProfile'
-import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
+import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import { cn } from '#/lib/utils'
+import type { ReactNode } from 'react'
+import type { RaceRecord } from '#/lib/profile/useProfile'
 
 export const Route = createFileRoute('/')({ component: Dashboard })
 
-const WPM_GAUGE_MAX = 130
+// Where the WPM meters top out — a strong typist sits near the top, nobody is pinned at full.
+const WPM_METER_MAX = 130
 
-// The four ways to play, as tiles on the dashboard.
 const MODES = [
-  {
-    to: '/race/solo',
-    icon: Flag,
-    title: 'Solo',
-  },
-  {
-    to: '/race/multiplayer',
-    icon: Users,
-    title: 'Multiplayer',
-  },
-  {
-    to: '/race/friends',
-    icon: Link2,
-    title: 'With friends',
-  },
-  {
-    to: '/daily-challenge',
-    icon: CalendarDays,
-    title: 'Daily challenge',
-  },
+  { to: '/race/solo', icon: Flag, title: 'Solo' },
+  { to: '/race/multiplayer', icon: Users, title: 'Multiplayer' },
+  { to: '/race/friends', icon: Link2, title: 'Friends' },
+  { to: '/daily-challenge', icon: CalendarDays, title: 'Daily' },
 ] as const
 
-// How many achievement chips the dashboard teaser shows — the full list lives on /achievements
-// (grouped by category); this is just a taste, capped so it can't grow the dashboard card
-// unbounded as more achievements are added over time.
-const TEASER_COUNT = 6
+// How many still-locked achievements the "Next up" list shows.
+const NEXT_UP_COUNT = 3
+
+// The dashboard is one connected panel, like a game HUD: every section is a cell in a grid whose
+// 2px gaps show the border color behind them, so neighbors share a single dividing line and
+// there's no empty space between blocks. A grid that can leave a cell empty on narrow screens
+// spans its last item instead, so no gap ever shows as a stray block.
+const CELL = 'bg-card'
+
+function StatCell({
+  label,
+  value,
+  meter,
+  color,
+  className,
+}: {
+  label: string
+  value: ReactNode
+  meter?: number
+  color?: string
+  className?: string
+}) {
+  return (
+    <div className={cn(CELL, 'flex flex-col gap-2 p-4', className)}>
+      <p className="kicker">{label}</p>
+      <p className="font-display text-3xl leading-none">{value}</p>
+      {meter !== undefined && <PixelMeter frac={meter} color={color} />}
+    </div>
+  )
+}
+
+// How many recent races the speed chart shows.
+const TREND_RACES = 20
+
+// Recent races as pixel bars, oldest on the left; the best one is highlighted.
+function SpeedBars({ races }: { races: Array<RaceRecord> }) {
+  const recent = races.slice(0, TREND_RACES).reverse()
+  const max = Math.max(...recent.map((r) => r.wpm), 1)
+  const best = Math.max(...recent.map((r) => r.wpm))
+  return (
+    <div className="flex h-full min-h-32 items-end gap-[3px]">
+      {recent.map((race) => (
+        <div
+          key={race.id}
+          title={`${race.wpm} wpm`}
+          className="flex-1"
+          style={{
+            height: `${Math.max(6, (race.wpm / max) * 100)}%`,
+            background:
+              race.wpm === best
+                ? 'var(--color-signal)'
+                : 'color-mix(in oklab, var(--color-foreground) 55%, transparent)',
+            boxShadow: 'inset 0 -3px 0 rgb(0 0 0 / 25%)',
+          }}
+        />
+      ))}
+    </div>
+  )
+}
 
 function Dashboard() {
   const {
     hydrated,
     stats,
     races,
+    coins,
     achievements,
     carModel,
     underglow,
     underglowColor,
+    trail,
   } = useProfile()
+  const { user } = useCurrentUser()
+  const weekly = useLeaderboard({ board: 'speed', period: 'week' })
   const hasRaced = hydrated && stats.racesPlayed > 0
-  const unlockedCount = hydrated ? achievements.length : 0
-  // Earned badges first (so a returning player sees what they've already got), then whatever's
-  // still locked, each group in its original declaration order — Array#sort is stable, so this
-  // reorder doesn't scramble either group's own ordering.
-  const teaserAchievements = [...ACHIEVEMENTS]
-    .sort((a, b) => {
-      const aDone = hydrated && achievements.includes(a.id)
-      const bDone = hydrated && achievements.includes(b.id)
-      return aDone === bDone ? 0 : aDone ? -1 : 1
-    })
-    .slice(0, TEASER_COUNT)
+  const unlocked = hydrated ? achievements : []
+  // The next achievements to go for, in the catalog's own easiest-first order.
+  const nextUp = ACHIEVEMENTS.filter((a) => !unlocked.includes(a.id)).slice(
+    0,
+    NEXT_UP_COUNT,
+  )
 
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap flex flex-col gap-6">
-        <Card className="rise-in overflow-hidden">
-          <CardContent className="flex flex-col items-start gap-6 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-                Ready when you are.
-              </h1>
-              {hasRaced ? (
-                <p className="pixel-text mt-3 text-sm text-muted-foreground">
-                  Best{' '}
-                  <span className="text-foreground">{stats.bestWpm} wpm</span> ·{' '}
-                  {stats.racesPlayed} races
-                </p>
-              ) : (
-                <Button size="lg" className="mt-5" asChild>
-                  <Link to="/race/solo">Start racing</Link>
-                </Button>
-              )}
-            </div>
+    <main className="flex flex-1 flex-col px-4 py-8 sm:py-10">
+      <div className="page-wrap flex flex-1 flex-col">
+        {/* Fills the screen: the last two rows stretch to the bottom instead of leaving empty
+            space under the panel. */}
+        <div className="rise-in px-corners grid flex-1 grid-rows-[auto_auto_auto_1fr_1fr] gap-[2px] border-2 border-border bg-border">
+          {/* Hero: your own car cruising, like a game's title screen. */}
+          <div className={CELL}>
+            <RaceTrack
+              racers={[
+                {
+                  id: 'you',
+                  name: user?.name ?? 'You',
+                  progress: 0.45,
+                  wpm: hasRaced ? stats.avgWpm : 40,
+                  isYou: true,
+                  model: carModel,
+                  underglow,
+                  underglowColor,
+                  trail,
+                },
+              ]}
+              phase="ready"
+              finishLine={false}
+            />
+            <h1 className="p-5 text-3xl font-extrabold tracking-tight sm:text-4xl">
+              Ready when you are.
+            </h1>
+          </div>
 
-            <div className="race-track w-full sm:w-72">
-              <div className="race-track-inner">
-                <div className="race-track-fill" style={{ width: '55%' }} />
-                <div className="race-track-start" />
-              </div>
-              <div className="race-car-wrap" style={{ left: '55%' }}>
-                <CarIcon
-                  model={carModel}
-                  underglow={underglow}
-                  underglowColor={underglowColor}
-                  className="race-car-svg race-car-bob w-32 drop-shadow-[0_6px_10px_rgb(0_0_0/0.55)]"
-                />
-              </div>
-              <span className="race-flag-checkered" aria-hidden="true" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <div>
-          {/* gap-px + bg-border, not divide-x/y: with 4 tiles wrapping from 1 to 2 to 4
-              columns across breakpoints, Tailwind's divide utilities can't express "a line
-              between every adjacent cell" once the grid wraps to more than one row — this
-              collapsed-border trick (border-colored gap behind solid tiles) gives the same
-              thin dividing lines regardless of how many rows the grid wraps to. */}
-          <div className="px-corners grid grid-cols-1 gap-[2px] overflow-hidden border-2 border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-[2px] lg:grid-cols-4">
             {MODES.map(({ to, icon: Icon, title }) => (
               <Link
                 key={to}
                 to={to}
-                onMouseMove={handleTiltMove}
-                onMouseLeave={handleTiltLeave}
-                className="ignition group relative flex min-h-36 flex-col overflow-hidden bg-background p-5 transition-colors hover:bg-accent/40"
+                className={cn(
+                  CELL,
+                  'group flex items-center gap-3 p-4 transition-colors hover:bg-accent',
+                )}
               >
-                <Icon className="size-8 transition-transform duration-300 group-hover:scale-110" />
-                <p className="mt-auto font-display text-2xl font-extrabold tracking-tight uppercase">
-                  {title}
-                </p>
+                <Icon className="size-8 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                <span className="font-display text-xl uppercase">{title}</span>
+                <ChevronRight className="ml-auto size-4 opacity-0 transition-opacity group-hover:opacity-100" />
               </Link>
             ))}
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <Card className="rise-in overflow-hidden">
-            <CardHeader className="flex-row items-center justify-between py-5">
-              <p className="kicker">Your stats</p>
-              <Link
-                to="/stats"
-                className="text-xs font-semibold text-muted-foreground hover:text-foreground"
-              >
-                View all
-              </Link>
-            </CardHeader>
-            <CardContent className="flex flex-wrap justify-around gap-4 pt-0 pb-6">
-              {!hydrated ? (
-                [0, 1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-20 w-[6.5rem] animate-pulse rounded-2xl bg-secondary/40"
-                  />
-                ))
-              ) : (
-                <>
-                  <Gauge
-                    label="best wpm"
-                    value={hasRaced ? stats.bestWpm : 0}
-                    max={WPM_GAUGE_MAX}
-                  />
-                  <Gauge
-                    label="avg wpm"
-                    value={hasRaced ? stats.avgWpm : 0}
-                    max={WPM_GAUGE_MAX}
-                  />
-                  <Gauge
-                    label="avg accuracy"
-                    value={hasRaced ? stats.avgAccuracy : 0}
-                    max={100}
-                    suffix="%"
-                  />
-                  <DigitalReadout
-                    label="races run"
-                    value={hasRaced ? String(stats.racesPlayed) : '0'}
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="rise-in overflow-hidden">
-            <CardHeader className="flex-row items-center justify-between py-5">
-              <p className="kicker">Achievements</p>
-              <span className="font-mono text-xs text-muted-foreground">
-                {unlockedCount}/{ACHIEVEMENTS.length}
-              </span>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1 pt-0 pb-5">
-              {teaserAchievements.map(({ id, icon: Icon, title }) => {
-                const done = hydrated && achievements.includes(id)
-                return (
-                  <div
-                    key={title}
-                    className={cn(
-                      'flex items-center gap-2.5 rounded-md px-2 py-1.5',
-                      !done && 'opacity-45',
-                    )}
-                  >
-                    <Icon
-                      className={cn('size-4 shrink-0', !done && 'grayscale')}
-                    />
-                    <span className="truncate text-sm font-semibold">
-                      {title}
-                    </span>
-                  </div>
-                )
-              })}
-              <Link
-                to="/achievements"
-                className="mt-1 flex items-center gap-1 px-2 text-xs font-semibold text-muted-foreground hover:text-foreground"
-              >
-                View all {ACHIEVEMENTS.length}
-                <ChevronRight className="size-3.5" />
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="rise-in overflow-hidden">
-          <CardHeader className="py-5">
-            <p className="kicker">Recent races</p>
-          </CardHeader>
-          <CardContent className="pt-0 pb-5">
+          <div className="grid grid-cols-2 gap-[2px] lg:grid-cols-5">
             {!hydrated ? (
-              <div className="h-24 w-full animate-pulse rounded-lg bg-secondary/40" />
-            ) : hasRaced ? (
-              <div className="flex flex-col gap-1">
-                {races.slice(0, 5).map((race, i) => (
-                  <RaceHistoryRow
-                    key={race.id}
-                    race={race}
-                    lapNumber={stats.racesPlayed - i}
-                  />
-                ))}
-              </div>
+              <div className={cn(CELL, 'col-span-full h-28 animate-pulse')} />
             ) : (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No races yet
-              </p>
+              <>
+                <StatCell
+                  label="Best"
+                  value={
+                    <>
+                      {stats.bestWpm}
+                      <span className="ml-1 text-base text-muted-foreground">
+                        wpm
+                      </span>
+                    </>
+                  }
+                  meter={stats.bestWpm / WPM_METER_MAX}
+                />
+                <StatCell
+                  label="Average"
+                  value={
+                    <>
+                      {stats.avgWpm}
+                      <span className="ml-1 text-base text-muted-foreground">
+                        wpm
+                      </span>
+                    </>
+                  }
+                  meter={stats.avgWpm / WPM_METER_MAX}
+                  color="var(--color-primary)"
+                />
+                <StatCell
+                  label="Accuracy"
+                  value={`${stats.avgAccuracy}%`}
+                  meter={stats.avgAccuracy / 100}
+                  color="var(--color-success)"
+                />
+                <StatCell label="Races" value={stats.racesPlayed} />
+                <StatCell
+                  label="Coins"
+                  value={<Coins amount={coins} className="text-signal" />}
+                  className="col-span-2 lg:col-span-1"
+                />
+              </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+
+          <div className="grid grid-cols-1 gap-[2px] lg:grid-cols-3">
+            <section
+              className={cn(CELL, 'flex flex-col gap-3 p-5 lg:col-span-2')}
+            >
+              <p className="kicker">Speed · last {TREND_RACES} races</p>
+              {hasRaced ? (
+                <div className="flex-1">
+                  <SpeedBars races={races} />
+                </div>
+              ) : (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No races yet
+                </p>
+              )}
+            </section>
+
+            <section className={cn(CELL, 'flex flex-col gap-3 p-5')}>
+              <div className="flex items-center justify-between">
+                <p className="kicker">Top this week</p>
+                <Link
+                  to="/leaderboards"
+                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  Leaderboards
+                </Link>
+              </div>
+              {weekly.data ? (
+                <LeaderboardTable board={weekly.data} compact limit={5} />
+              ) : (
+                <div className="h-24 animate-pulse bg-secondary/40" />
+              )}
+            </section>
+          </div>
+
+          <div className="grid grid-cols-1 gap-[2px] lg:grid-cols-3">
+            <section className={cn(CELL, 'p-5 lg:col-span-2')}>
+              <div className="mb-3 flex items-center justify-between">
+                <p className="kicker">Recent races</p>
+                <Link
+                  to="/stats"
+                  className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                >
+                  All stats
+                </Link>
+              </div>
+              {!hydrated ? (
+                <div className="h-24 animate-pulse bg-secondary/40" />
+              ) : hasRaced ? (
+                <div className="flex flex-col gap-1">
+                  {races.slice(0, 5).map((race, i) => (
+                    <RaceHistoryRow
+                      key={race.id}
+                      race={race}
+                      lapNumber={stats.racesPlayed - i}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No races yet
+                </p>
+              )}
+            </section>
+
+            <section className={cn(CELL, 'flex flex-col gap-4 p-5')}>
+              <div className="flex items-center justify-between">
+                <p className="kicker">Achievements</p>
+                <Link
+                  to="/achievements"
+                  className="font-mono text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {unlocked.length}/{ACHIEVEMENTS.length}
+                </Link>
+              </div>
+              {/* One block per achievement. */}
+              <PixelMeter
+                frac={unlocked.length / ACHIEVEMENTS.length}
+                segments={ACHIEVEMENTS.length}
+                className="gap-[2px]"
+              />
+              {nextUp.length > 0 ? (
+                <div className="flex flex-col gap-1">
+                  <p className="kicker">Next up</p>
+                  {nextUp.map(({ id, icon: Icon, title, detail }) => (
+                    <div key={id} className="flex items-center gap-2.5 py-1.5">
+                      <Icon className="size-5 shrink-0" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold">
+                          {title}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {detail}
+                        </span>
+                      </span>
+                      <Coins
+                        amount={achievementReward(id)}
+                        prefix="+"
+                        className="shrink-0 text-xs text-signal"
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">All unlocked</p>
+              )}
+            </section>
+          </div>
+        </div>
       </div>
     </main>
   )
