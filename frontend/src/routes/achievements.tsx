@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
-import { ACHIEVEMENTS } from '#/lib/achievements'
+import { ACHIEVEMENTS, achievementReward } from '#/lib/achievements'
+import Coins from '#/components/ui/Coins'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { Achievement, AchievementCategory } from '#/lib/achievements'
@@ -21,7 +22,7 @@ const CATEGORIES: Array<AchievementCategory> = [
 ]
 
 function AchievementsPage() {
-  const { hydrated, stats, races } = useProfile()
+  const { hydrated, achievements } = useProfile()
   const byCategory = new Map<AchievementCategory, Array<Achievement>>()
   for (const achievement of ACHIEVEMENTS) {
     const list = byCategory.get(achievement.category) ?? []
@@ -41,8 +42,8 @@ function AchievementsPage() {
               </CardHeader>
               <CardContent className="grid grid-cols-1 gap-3 pt-0 pb-6 sm:grid-cols-2">
                 {(byCategory.get(category) ?? []).map(
-                  ({ icon: Icon, title, detail, unlocked }) => {
-                    const done = hydrated && unlocked(stats, races)
+                  ({ id, icon: Icon, title, detail }) => {
+                    const done = hydrated && achievements.includes(id)
                     return (
                       <div
                         key={title}
@@ -57,12 +58,20 @@ function AchievementsPage() {
                             !done && 'grayscale',
                           )}
                         />
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm font-bold">{title}</p>
                           <p className="mt-0.5 text-xs text-muted-foreground">
                             {detail}
                           </p>
                         </div>
+                        <Coins
+                          amount={achievementReward(id)}
+                          prefix={done ? '' : '+'}
+                          className={cn(
+                            'shrink-0 text-xs',
+                            done ? 'text-muted-foreground' : 'text-signal',
+                          )}
+                        />
                       </div>
                     )
                   },

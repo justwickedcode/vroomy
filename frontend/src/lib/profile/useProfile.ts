@@ -25,6 +25,7 @@ import {
   saveLocalReplay,
 } from '#/lib/replay/localReplays'
 import { clearLocalDaily, readLocalDaily } from '#/lib/daily/localDaily'
+import { ACHIEVEMENTS, achievementReward } from '#/lib/achievements'
 import type {
   ApiCosmetics,
   ApiProfile,
@@ -70,9 +71,17 @@ export interface RaceRecord {
   hasReplay?: boolean
 }
 
+export interface UnlockedAchievement {
+  id: string
+  title: string
+  reward: number
+}
+
 export interface SavedRace {
   replayId: string | null
   coinsEarned: number
+  // Achievements this race newly unlocked; their rewards are paid on top of coinsEarned.
+  achievements: Array<UnlockedAchievement>
 }
 
 export interface NewRace {
@@ -101,6 +110,8 @@ interface Profile {
   // Shop balance and the paid items bought with it (see #/lib/shop).
   coins: number
   owned: Array<string>
+  // Achievements already paid for (see payAchievements).
+  achievementsClaimed: Array<string>
   races: Array<RaceRecord>
   // Lifetime race count, tracked separately from races.length: races itself is capped to
   // MAX_RACE_HISTORY so storage doesn't grow forever, which means races.length alone
@@ -120,6 +131,7 @@ const DEFAULT_PROFILE: Profile = {
   racesPlayedTotal: 0,
   coins: 0,
   owned: [],
+  achievementsClaimed: [],
 }
 
 // The paid items a profile has equipped — what a save from before the shop existed gets to keep,
@@ -149,7 +161,7 @@ function readProfile(): Profile {
       trail: toTrailVariant(parsed.trail ?? DEFAULT_TRAIL),
       equippedPowerup: parsed.equippedPowerup ?? DEFAULT_POWERUP,
     }
-    return {
+    const profile: Profile = {
       ...cosmetics,
       // A save from before the shop gets paid for the races it still has on record, and keeps
       // whatever it had equipped.
@@ -159,12 +171,19 @@ function readProfile(): Profile {
       owned: Array.isArray(parsed.owned)
         ? parsed.owned
         : equippedPaidItems(cosmetics),
+      achievementsClaimed: Array.isArray(parsed.achievementsClaimed)
+        ? parsed.achievementsClaimed
+        : [],
       races,
       // A profile saved before racesPlayedTotal existed has no lifetime count on record —
       // races.length is the best available floor for it (never an overcount, since the total
       // can only be >= how many are currently retained).
       racesPlayedTotal: parsed.racesPlayedTotal ?? races.length,
     }
+    // A save from before achievements paid out gets paid for everything it has already unlocked.
+    return Array.isArray(parsed.achievementsClaimed)
+      ? profile
+      : payAchievements(profile).profile
   } catch {
     return DEFAULT_PROFILE
   }
@@ -178,6 +197,32 @@ function writeProfile(profile: Profile) {
     // localStorage unavailable (private browsing, quota, etc.) — the
     // in-memory state still works for the current session, it just won't
     // persist across reloads.
+  }
+}
+
+// Pays a guest for every achievement their history now satisfies that hasn't been paid yet —
+// the browser-side twin of backend/api's syncAchievements.
+function payAchievements(profile: Profile): {
+  profile: Profile
+  unlocked: Array<UnlockedAchievement>
+} {
+  const stats = computeStats(profile.races, profile.racesPlayedTotal)
+  const unlocked = ACHIEVEMENTS.filter(
+    (a) =>
+      !profile.achievementsClaimed.includes(a.id) &&
+      a.unlocked(stats, profile.races),
+  ).map((a) => ({ id: a.id, title: a.title, reward: achievementReward(a.id) }))
+  if (unlocked.length === 0) return { profile, unlocked }
+  return {
+    profile: {
+      ...profile,
+      coins: profile.coins + unlocked.reduce((sum, a) => sum + a.reward, 0),
+      achievementsClaimed: [
+        ...profile.achievementsClaimed,
+        ...unlocked.map((a) => a.id),
+      ],
+    },
+    unlocked,
   }
 }
 
@@ -277,6 +322,7 @@ function raceInput(race: NewRace): ApiRaceInput {
     passage: race.replay?.passage,
     replay: race.replay?.events,
     dailyDate: race.dailyDate,
+    localHour: new Date().getHours(),
   }
 }
 
@@ -346,6 +392,7 @@ async function importGuestData(userId: string, queryClient: QueryClient) {
         racerCount: r.racerCount,
         mode: r.mode ?? 'solo',
         date: r.date,
+        localHour: new Date(r.date).getHours(),
         passage: replay?.passage,
         replay: replay?.events,
       } satisfies ApiRaceInput
@@ -487,38 +534,45 @@ export function useProfile() {
     [updateCosmetics],
   )
 
-  // Returns the new record's id, so the caller can link to its replay.
-  const addLocalRace = useCallback((race: NewRace): string => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    updateLocalProfile((prev) => {
-      const record: RaceRecord = {
-        id,
-        date: new Date().toISOString(),
-        wpm: race.wpm,
-        accuracy: race.accuracy,
-        placement: race.placement,
-        racerCount: race.racerCount,
-        mode: race.mode,
-        hasReplay: Boolean(race.replay),
-      }
-      const races = [record, ...prev.races].slice(0, MAX_RACE_HISTORY)
-      if (race.replay) {
-        saveLocalReplay(
-          record.id,
-          race.replay,
-          races.map((r) => r.id),
-        )
-      }
-      const next = {
-        ...prev,
-        races,
-        racesPlayedTotal: prev.racesPlayedTotal + 1,
-        coins: prev.coins + coinsForRace(race),
-      }
-      return next
-    })
-    return id
-  }, [])
+  // Returns the new record's id (so the caller can link to its replay) and any achievements it
+  // unlocked.
+  const addLocalRace = useCallback(
+    (race: NewRace): { id: string; unlocked: Array<UnlockedAchievement> } => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      let unlocked: Array<UnlockedAchievement> = []
+      updateLocalProfile((prev) => {
+        const record: RaceRecord = {
+          id,
+          date: new Date().toISOString(),
+          wpm: race.wpm,
+          accuracy: race.accuracy,
+          placement: race.placement,
+          racerCount: race.racerCount,
+          mode: race.mode,
+          hasReplay: Boolean(race.replay),
+        }
+        const races = [record, ...prev.races].slice(0, MAX_RACE_HISTORY)
+        if (race.replay) {
+          saveLocalReplay(
+            record.id,
+            race.replay,
+            races.map((r) => r.id),
+          )
+        }
+        const next = {
+          ...prev,
+          races,
+          racesPlayedTotal: prev.racesPlayedTotal + 1,
+          coins: prev.coins + coinsForRace(race),
+        }
+        const paid = payAchievements(next)
+        unlocked = paid.unlocked
+        return paid.profile
+      })
+      return { id, unlocked }
+    },
+    [],
+  )
 
   // Resolves once the race is saved: the id to open its replay with (/replays/$replayId, null
   // when there's no replay) and the coins it paid — for the finish screen.
@@ -527,10 +581,11 @@ export function useProfile() {
       const key = profileQueryKey(userId)
       const coinsEarned = coinsForRace(race)
       if (!userId || !queryClient.getQueryData(key)) {
-        const id = addLocalRace(race)
+        const { id, unlocked } = addLocalRace(race)
         return Promise.resolve({
           replayId: race.replay ? id : null,
           coinsEarned,
+          achievements: unlocked,
         })
       }
 
@@ -561,6 +616,10 @@ export function useProfile() {
         .then((saved) => ({
           replayId: saved.hasReplay ? String(saved.id) : null,
           coinsEarned: saved.coinsEarned ?? coinsEarned,
+          achievements: (saved.achievements ?? []).map((a) => ({
+            ...a,
+            title: ACHIEVEMENTS.find((def) => def.id === a.id)?.title ?? a.id,
+          })),
         }))
         .catch((err: unknown) => {
           // Don't lose the race if api is unreachable — keep it as guest history, which gets
@@ -571,8 +630,12 @@ export function useProfile() {
           } catch {
             // Nothing to clear.
           }
-          const id = addLocalRace(race)
-          return { replayId: race.replay ? id : null, coinsEarned }
+          const { id, unlocked } = addLocalRace(race)
+          return {
+            replayId: race.replay ? id : null,
+            coinsEarned,
+            achievements: unlocked,
+          }
         })
         .finally(() => {
           void queryClient.invalidateQueries({ queryKey: key })
@@ -618,6 +681,7 @@ export function useProfile() {
         racesPlayedTotal: remote.stats.racesPlayed,
         coins: remote.coins,
         owned: remote.owned,
+        achievementsClaimed: remote.achievements,
       }
     : local
 
@@ -642,6 +706,8 @@ export function useProfile() {
     setEquippedPowerup,
     addRace,
     coins: profile.coins,
+    // Ids of unlocked achievements — the server's record when logged in.
+    achievements: profile.achievementsClaimed,
     owns: (itemId: string) => ownsItem(profile.owned, itemId),
     buy,
   }

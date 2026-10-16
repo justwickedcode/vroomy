@@ -39,7 +39,8 @@ Postgres.
   Magnet, EMP, or the Nuke. Solo races always have them; for multiplayer and friends rooms you
   pick a Classic or Power-ups lobby, and against real people attacks freeze the target's
   keyboard briefly instead of deleting their typing.
-- **Achievements.** Milestones for speed, accuracy, streaks and podiums.
+- **Achievements.** 23 milestones for speed, accuracy, streaks and podiums, each paying a
+  one-time coin reward (checked and paid by the server for logged-in players).
 - **Typing guide.** Drills with an on-screen keyboard for practicing technique.
 
 ## Tech stack

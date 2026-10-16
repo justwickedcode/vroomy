@@ -16,6 +16,8 @@ import TypingWords from '#/components/typing/TypingWords'
 import RaceTrack from '#/components/typing/RaceTrack'
 import QuoteCredit from '#/components/typing/QuoteCredit'
 import Coins from '#/components/ui/Coins'
+import AchievementUnlocks from '#/components/ui/AchievementUnlocks'
+import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import Gauge from '#/components/typing/Gauge'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
@@ -82,6 +84,7 @@ export default function DailyChallengeCard() {
   // This attempt's replay, once saved — for the "Watch replay" button.
   const [replayId, setReplayId] = useState<string | null>(null)
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
+  const [unlocks, setUnlocks] = useState<Array<UnlockedAchievement>>([])
   const recordedAttemptRef = useRef<number | null>(null)
   const latestAttemptRef = useRef(attempt)
   latestAttemptRef.current = attempt
@@ -131,6 +134,7 @@ export default function DailyChallengeCard() {
         if (latestAttemptRef.current !== attempt) return
         setReplayId(saved.replayId)
         setCoinsEarned(saved.coinsEarned)
+        setUnlocks(saved.achievements)
       })
   }, [
     finished,
@@ -153,6 +157,7 @@ export default function DailyChallengeCard() {
     setNewBest(false)
     setReplayId(null)
     setCoinsEarned(null)
+    setUnlocks([])
     setAttempt((a) => a + 1)
     setPhase('idle')
   }
@@ -286,6 +291,7 @@ export default function DailyChallengeCard() {
                   </Badge>
                 )}
               </div>
+              <AchievementUnlocks unlocked={unlocks} />
             </div>
           </div>
         ) : (

@@ -55,19 +55,24 @@ const MODES = [
 const TEASER_COUNT = 6
 
 function Dashboard() {
-  const { hydrated, stats, races, carModel, underglow, underglowColor } =
-    useProfile()
+  const {
+    hydrated,
+    stats,
+    races,
+    achievements,
+    carModel,
+    underglow,
+    underglowColor,
+  } = useProfile()
   const hasRaced = hydrated && stats.racesPlayed > 0
-  const unlockedCount = hydrated
-    ? ACHIEVEMENTS.filter((a) => a.unlocked(stats, races)).length
-    : 0
+  const unlockedCount = hydrated ? achievements.length : 0
   // Earned badges first (so a returning player sees what they've already got), then whatever's
   // still locked, each group in its original declaration order — Array#sort is stable, so this
   // reorder doesn't scramble either group's own ordering.
   const teaserAchievements = [...ACHIEVEMENTS]
     .sort((a, b) => {
-      const aDone = hydrated && a.unlocked(stats, races)
-      const bDone = hydrated && b.unlocked(stats, races)
+      const aDone = hydrated && achievements.includes(a.id)
+      const bDone = hydrated && achievements.includes(b.id)
       return aDone === bDone ? 0 : aDone ? -1 : 1
     })
     .slice(0, TEASER_COUNT)
@@ -213,8 +218,8 @@ function Dashboard() {
               </span>
             </CardHeader>
             <CardContent className="flex flex-col gap-1 pt-0 pb-5">
-              {teaserAchievements.map(({ icon: Icon, title, unlocked }) => {
-                const done = hydrated && unlocked(stats, races)
+              {teaserAchievements.map(({ id, icon: Icon, title }) => {
+                const done = hydrated && achievements.includes(id)
                 return (
                   <div
                     key={title}

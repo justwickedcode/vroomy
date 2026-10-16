@@ -78,8 +78,10 @@ type RaceResult struct {
 	Placement  int    `json:"placement"`
 	RacerCount int    `json:"racerCount"`
 	HasReplay  bool   `json:"hasReplay"`
-	// CoinsEarned is set only on the POST response — what this race paid (see coinsForRace).
-	CoinsEarned int `json:"coinsEarned,omitempty"`
+	// CoinsEarned and Achievements are set only on the POST response: what this race paid (see
+	// coinsForRace) and any achievements it newly unlocked (paid on top — see syncAchievements).
+	CoinsEarned  int                   `json:"coinsEarned,omitempty"`
+	Achievements []UnlockedAchievement `json:"achievements,omitempty"`
 }
 
 // raceModes are the kinds of race the frontend records. An empty mode (an older client, or an
@@ -114,6 +116,8 @@ type UserProfile struct {
 	Stats           ProfileStats `json:"stats"`
 	Coins           int          `json:"coins"`
 	Owned           []string     `json:"owned"`
+	// Achievements is the ids of every achievement unlocked (and paid) so far.
+	Achievements []string `json:"achievements"`
 }
 
 // upsertIdentity guarantees a users row exists and its identity-owned columns (name/email/
@@ -218,6 +222,10 @@ func loadFullProfile(ctx context.Context, pool *pgxpool.Pool, userID string) (Us
 	if err != nil {
 		return UserProfile{}, err
 	}
+	achievements, err := listAchievements(ctx, pool, userID)
+	if err != nil {
+		return UserProfile{}, err
+	}
 	return UserProfile{
 		ID:              userID,
 		DisplayName:     row.displayName,
@@ -232,6 +240,7 @@ func loadFullProfile(ctx context.Context, pool *pgxpool.Pool, userID string) (Us
 		Stats:           stats,
 		Coins:           row.coins,
 		Owned:           row.owned,
+		Achievements:    achievements,
 	}, nil
 }
 
@@ -243,6 +252,11 @@ func handleGetMe(pool *pgxpool.Pool) http.HandlerFunc {
 			log.Printf("upsertIdentity failed: %s\n", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
+		}
+		// Normally a no-op; pays out anything already earned that hasn't been (back pay for
+		// achievements unlocked before they had rewards).
+		if _, err := syncAchievements(r.Context(), pool, id.id); err != nil {
+			log.Printf("syncAchievements failed: %s\n", err)
 		}
 		profile, err := loadFullProfile(r.Context(), pool, id.id)
 		if err != nil {
@@ -334,6 +348,9 @@ type raceRequest struct {
 	// DailyDate is the player's local date for a mode "daily" race (see daily.go's
 	// parseDailyDate) — the race then also counts toward that day's daily-challenge result.
 	DailyDate string `json:"dailyDate"`
+	// LocalHour is the hour (0-23) on the player's own clock when they finished, for the Early
+	// bird / Night owl achievements. Optional.
+	LocalHour *int `json:"localHour"`
 }
 
 // normalize fills in defaults before validation — kept separate from validate so validate stays
@@ -360,6 +377,9 @@ func (req raceRequest) replayColumns() (any, any, error) {
 func (req raceRequest) validate() string {
 	if !raceModes[req.Mode] {
 		return "unknown mode"
+	}
+	if req.LocalHour != nil && (*req.LocalHour < 0 || *req.LocalHour > 23) {
+		return "localHour out of range"
 	}
 	if len(req.Replay) > 0 {
 		if msg := validateReplay(req.Passage, req.Replay); msg != "" {
@@ -429,10 +449,10 @@ func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 		var result RaceResult
 		var createdAt time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, local_hour)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			RETURNING id, mode, wpm, accuracy, placement, racer_count, replay IS NOT NULL, created_at
-		`, id.id, req.WPM, req.Accuracy, req.Placement, req.RacerCount, req.Mode, passage, replay).
+		`, id.id, req.WPM, req.Accuracy, req.Placement, req.RacerCount, req.Mode, passage, replay, req.LocalHour).
 			Scan(&result.ID, &result.Mode, &result.WPM, &result.Accuracy, &result.Placement, &result.RacerCount, &result.HasReplay, &createdAt)
 		if err != nil {
 			log.Printf("insert race_results failed: %s\n", err)
@@ -451,6 +471,12 @@ func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
+		}
+		result.Achievements, err = syncAchievements(ctx, tx, id.id)
+		if err != nil {
+			log.Printf("syncAchievements failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 		if err := tx.Commit(ctx); err != nil {
 			log.Printf("commit race tx failed: %s\n", err)
@@ -522,9 +548,9 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 				return
 			}
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, created_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			`, id.id, e.WPM, e.Accuracy, e.Placement, e.RacerCount, e.Mode, passage, replay, createdAt); err != nil {
+				INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, local_hour, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			`, id.id, e.WPM, e.Accuracy, e.Placement, e.RacerCount, e.Mode, passage, replay, e.LocalHour, createdAt); err != nil {
 				log.Printf("insert imported race failed: %s\n", err)
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
@@ -538,6 +564,11 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		if _, err := tx.Exec(ctx, `UPDATE users SET coins = coins + $2 WHERE id = $1`, id.id, earned); err != nil {
 			log.Printf("award import coins failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if _, err := syncAchievements(ctx, tx, id.id); err != nil {
+			log.Printf("syncAchievements failed: %s\n", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}

@@ -122,6 +122,8 @@ A race body:
 
 Every recorded race pays coins (`shop.go`'s `coinsForRace`: 10 for finishing, a quarter of the WPM, +20/+10/+5 for a podium when there were opponents, +15 for the daily challenge), and the POST response includes `coinsEarned`. Races uploaded through the import endpoint pay out the same way; a guest's own browser-side balance is never trusted. `GET /api/users/me` returns `coins` and `owned` (the paid items bought). `PUT /api/users/me/cosmetics` refuses (`403`) to equip anything with a price that isn't owned.
 
+Achievements pay too, once each (`achievements.go`). After every race the server checks the player's full history against the same rules the frontend shows (`frontend/src/lib/achievements.ts`), records newly unlocked ones in `user_achievements` and adds their reward from `achievement_rewards.json`. The race response lists them under `achievements`, `GET /api/users/me` returns all unlocked ids, and loading the profile also pays anything earned but not yet paid (back pay for achievements unlocked before rewards existed). Races may send `localHour` (0-23, the player's clock) for the Early bird / Night owl achievements.
+
 Prices live in `shop_prices.json`, embedded into the binary. The frontend renders from an identical copy (`frontend/src/lib/shop/prices.json`), and `TestShopPricesMatchFrontend` fails if the two ever differ.
 
 ### `GET /api/leaderboards`

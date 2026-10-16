@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Check, Copy, PlayCircle, Trophy, Users } from '#/components/ui/icons'
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  PlayCircle,
+  Trophy,
+  Users,
+} from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
@@ -10,6 +17,8 @@ import QuoteCredit from '#/components/typing/QuoteCredit'
 import PixelIcon from '#/components/ui/PixelIcon'
 import { POWERUPS } from '#/lib/powerups'
 import Coins from '#/components/ui/Coins'
+import AchievementUnlocks from '#/components/ui/AchievementUnlocks'
+import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
@@ -230,6 +239,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   // This race's replay, once saved — for the "Watch replay" button on the results screen.
   const [replayId, setReplayId] = useState<string | null>(null)
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
+  const [unlocks, setUnlocks] = useState<Array<UnlockedAchievement>>([])
   useEffect(() => {
     if (!myResult || recordedQuoteRef.current === mp.text) return
     recordedQuoteRef.current = mp.text
@@ -245,6 +255,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       .then((saved) => {
         setReplayId(saved.replayId)
         setCoinsEarned(saved.coinsEarned)
+        setUnlocks(saved.achievements)
       })
   }, [
     myResult,
@@ -463,6 +474,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                   />
                 )}
               </div>
+              <AchievementUnlocks unlocked={unlocks} />
 
               {mp.results && (
                 <div className="standings">

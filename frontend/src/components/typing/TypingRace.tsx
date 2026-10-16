@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Medal, PlayCircle, RotateCcw, Sparkles, Trophy } from '#/components/ui/icons'
+import {
+  Medal,
+  PlayCircle,
+  RotateCcw,
+  Sparkles,
+  Trophy,
+} from '#/components/ui/icons'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
@@ -16,6 +22,8 @@ import TypingWords from '#/components/typing/TypingWords'
 import QuoteCredit from '#/components/typing/QuoteCredit'
 import PixelIcon from '#/components/ui/PixelIcon'
 import Coins from '#/components/ui/Coins'
+import AchievementUnlocks from '#/components/ui/AchievementUnlocks'
+import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
 import type { PowerupKind } from '#/lib/powerups'
@@ -279,6 +287,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   // The just-finished race's replay, once it's saved — for the "Watch replay" button.
   const [replayId, setReplayId] = useState<string | null>(null)
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
+  const [unlocks, setUnlocks] = useState<Array<UnlockedAchievement>>([])
 
   useEffect(() => {
     if (!finished || !place) return
@@ -287,6 +296,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     setNewBest(profile.stats.racesPlayed > 0 && wpm > profile.stats.bestWpm)
     setReplayId(null)
     setCoinsEarned(null)
+    setUnlocks([])
     const raceText = text
     void profile
       .addRace({
@@ -302,6 +312,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
         if (recordedRaceRef.current !== raceText) return
         setReplayId(saved.replayId)
         setCoinsEarned(saved.coinsEarned)
+        setUnlocks(saved.achievements)
       })
   }, [
     finished,
@@ -441,6 +452,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
                   </Badge>
                 )}
               </div>
+              <AchievementUnlocks unlocked={unlocks} />
             </div>
           </div>
           <div className="race-footer-controls">{analytics}</div>
