@@ -19,6 +19,8 @@ export interface Racer {
   // (see BOT_TRAILS below for theirs).
   underglow?: boolean
   underglowColor?: string
+  // Flashing red/blue police lights around the car (the dashboard's chase scene).
+  siren?: boolean
   trail?: TrailVariant
 }
 
@@ -221,6 +223,7 @@ function Lane({
         >
           {racer.name}
         </span>
+        {racer.siren && <span className="race-siren" aria-hidden="true" />}
         {racing && <Trail variant={trailVariant} />}
         {racer.isYou && racer.finished && <FinishBurst />}
         {burst && <PowerupBurst key={burst.key} kind={burst.kind} />}

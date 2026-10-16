@@ -59,27 +59,58 @@ function StatCell({
   )
 }
 
-// The title-screen lineup: four rivals from a hand-picked set of the coolest rides, in a fixed
-// staggered formation around the player's car. Picked by the date, so the grid changes once a
-// day but stays put while you're looking at it.
-const SHOWCASE_CARS = [
+// The title-screen scene: a police chase. You lead your supercar crew out front; two police
+// cruisers with flashing lights chase from the back. The crew is two of the big, detailed
+// supercar sprites (picked by the date, skipping whatever you drive), so it changes once a day
+// but never on refresh.
+const CREW = [
   { model: 'lambo', name: 'Viper' },
-  { model: 'super', name: 'Phantom' },
-  { model: 'pixel-racer-blue', name: 'Blitz' },
-  { model: 'drift', name: 'Razor' },
-  { model: 'police', name: 'Interceptor' },
-  { model: 'pixel-racer-red', name: 'Inferno' },
+  { model: 'coupe-gt', name: 'Razor' },
+  { model: 'roadster', name: 'Phantom' },
+  { model: 'convertible', name: 'Inferno' },
+  { model: 'coupe-white', name: 'Ghost' },
 ]
-// Where each lane's car sits along the track, top to bottom; the player is the middle lane.
-// You always lead — the middle lane is furthest ahead, everyone else trails behind.
-const FORMATION = [0.38, 0.5, 0.72, 0.56, 0.32]
-const SHOWCASE_LEAD = [0.78, 0.88, 1, 0.92, 0.72]
 
-function showcaseLineup(playerModel: string) {
-  const day = Math.floor(Date.now() / 86_400_000)
-  const pool = SHOWCASE_CARS.filter((c) => c.model !== playerModel)
-  return Array.from({ length: 4 }, (_, i) => pool[(day + i * 2) % pool.length])
+interface ShowcaseRacer {
+  id: string
+  name: string
+  progress: number
+  // Fraction of your speed shown on their WPM readout.
+  pace: number
+  model: string
+  siren?: boolean
 }
+
+// Lanes top to bottom; the player takes the middle one (see Dashboard).
+function chaseLineup(playerModel: string): Array<ShowcaseRacer> {
+  const day = Math.floor(Date.now() / 86_400_000)
+  const pool = CREW.filter((c) => c.model !== playerModel)
+  const a = pool[day % pool.length]
+  const b = pool[(day + 2) % pool.length]
+  return [
+    { id: 'crew-a', ...a, progress: 0.66, pace: 0.95 },
+    {
+      id: 'cop-1',
+      model: 'police',
+      name: 'Interceptor',
+      progress: 0.3,
+      pace: 0.85,
+      siren: true,
+    },
+    { id: 'crew-b', ...b, progress: 0.7, pace: 0.97 },
+    {
+      id: 'cop-2',
+      model: 'police',
+      name: 'Pursuit',
+      progress: 0.22,
+      pace: 0.82,
+      siren: true,
+    },
+  ]
+}
+
+// Your car's position: far ahead of the pack.
+const LEAD_PROGRESS = 0.86
 
 function Dashboard() {
   const {
@@ -113,20 +144,16 @@ function Dashboard() {
             <RaceTrack
               racers={(() => {
                 const youWpm = hasRaced ? Math.max(stats.avgWpm, 40) : 40
-                const lanes = showcaseLineup(carModel).map((car, i) => {
-                  const lane = i < 2 ? i : i + 1
-                  return {
-                    id: `showcase-${i}`,
-                    name: car.name,
-                    progress: FORMATION[lane],
-                    wpm: Math.round(youWpm * SHOWCASE_LEAD[lane]),
-                    model: car.model,
-                  }
-                })
+                const others = chaseLineup(carModel).map(
+                  ({ pace, ...racer }) => ({
+                    ...racer,
+                    wpm: Math.round(youWpm * pace),
+                  }),
+                )
                 const you = {
                   id: 'you',
                   name: user?.name ?? 'You',
-                  progress: FORMATION[2],
+                  progress: LEAD_PROGRESS,
                   wpm: youWpm,
                   isYou: true,
                   model: carModel,
@@ -134,7 +161,7 @@ function Dashboard() {
                   underglowColor,
                   trail,
                 }
-                return [...lanes.slice(0, 2), you, ...lanes.slice(2)]
+                return [...others.slice(0, 2), you, ...others.slice(2)]
               })()}
               phase="ready"
               finishLine={false}
