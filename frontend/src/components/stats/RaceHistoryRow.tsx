@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Medal, PlayCircle } from 'lucide-react'
+import { Medal, PlayCircle } from '#/components/ui/icons'
 import { cn, ordinal } from '#/lib/utils'
 import type { RaceRecord } from '#/lib/profile/useProfile'
 

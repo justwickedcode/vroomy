@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pause, Play, RotateCcw } from 'lucide-react'
+import { Pause, Play, RotateCcw } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'

@@ -5,7 +5,7 @@ import {
   Scripts,
   createRootRouteWithContext,
 } from '@tanstack/react-router'
-import { Flag } from 'lucide-react'
+import { Flag } from '#/components/ui/icons'
 import AppShell from '#/components/layout/AppShell'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'

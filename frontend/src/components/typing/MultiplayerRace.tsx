@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Check, Copy, PlayCircle, Trophy, Users } from 'lucide-react'
+import { ArrowLeft, Check, Copy, PlayCircle, Trophy, Users } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'

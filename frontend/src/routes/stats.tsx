@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Trophy } from 'lucide-react'
+import { Trophy } from '#/components/ui/icons'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import Gauge from '#/components/typing/Gauge'

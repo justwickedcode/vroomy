@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { LogIn, LogOut, X } from 'lucide-react'
+import { LogIn, LogOut, X } from '#/components/ui/icons'
 import Logo from '#/components/layout/Logo'
 import { SidebarNavList } from '#/components/layout/SidebarNav'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'

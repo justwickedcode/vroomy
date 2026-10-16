@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { LogIn, LogOut, UserRound } from 'lucide-react'
+import { LogIn, LogOut, UserRound } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'

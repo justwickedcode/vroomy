@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { ArrowRight, Link2 } from 'lucide-react'
+import { ArrowRight, Link2 } from '#/components/ui/icons'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import LobbyModePicker from '#/components/multiplayer/LobbyModePicker'
 import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'

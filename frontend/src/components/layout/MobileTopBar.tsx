@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Menu } from 'lucide-react'
+import { Menu } from '#/components/ui/icons'
 import Logo from '#/components/layout/Logo'
 
 export default function MobileTopBar({

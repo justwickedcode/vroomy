@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink } from '#/components/ui/icons'
 import { cn } from '#/lib/utils'
 
 // Only http(s) links are rendered — sourceUrl comes from scraped data, and anything else (a

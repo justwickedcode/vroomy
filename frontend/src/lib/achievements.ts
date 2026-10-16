@@ -22,9 +22,9 @@ import {
   Trophy,
   Wind,
   Zap,
-} from 'lucide-react'
+} from '#/components/ui/icons'
 import type { ProfileStats, RaceRecord } from '#/lib/profile/useProfile'
-import type { LucideIcon } from 'lucide-react'
+import type { IconComponent } from '#/components/ui/icons'
 
 export type AchievementCategory =
   | 'Speed'
@@ -34,7 +34,7 @@ export type AchievementCategory =
   | 'Timing'
 
 export interface Achievement {
-  icon: LucideIcon
+  icon: IconComponent
   title: string
   detail: string
   category: AchievementCategory

@@ -1,4 +1,4 @@
-import { Keyboard } from 'lucide-react'
+import { Keyboard } from '#/components/ui/icons'
 import PixelIcon from '#/components/ui/PixelIcon'
 import { useProfile } from '#/lib/profile/useProfile'
 import { POWERUPS } from '#/lib/powerups'

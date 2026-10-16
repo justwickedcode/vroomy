@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { LogIn } from 'lucide-react'
+import { LogIn } from '#/components/ui/icons'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import LeaderboardTable from '#/components/social/LeaderboardTable'

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Check, Lock } from 'lucide-react'
+import { Check, Lock } from '#/components/ui/icons'
 import PixelIcon from '#/components/ui/PixelIcon'
 import Coins from '#/components/ui/Coins'
 import { Button } from '#/components/ui/button'

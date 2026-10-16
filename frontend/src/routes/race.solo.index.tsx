@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { ArrowRight, Minus, Plus, SlidersHorizontal } from 'lucide-react'
+import { ArrowRight, Minus, Plus, SlidersHorizontal } from '#/components/ui/icons'
 import { Card, CardContent } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'

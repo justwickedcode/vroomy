@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { Medal, PlayCircle, RotateCcw, Sparkles, Trophy } from 'lucide-react'
+import { Medal, PlayCircle, RotateCcw, Sparkles, Trophy } from '#/components/ui/icons'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'

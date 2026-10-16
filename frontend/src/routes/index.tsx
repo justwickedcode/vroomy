@@ -1,5 +1,5 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { CalendarDays, ChevronRight, Flag, Link2, Users } from 'lucide-react'
+import { CalendarDays, ChevronRight, Flag, Link2, Users } from '#/components/ui/icons'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import Gauge from '#/components/typing/Gauge'
