@@ -4,12 +4,15 @@ import type { PixelIconName } from '#/components/ui/PixelIcon'
 
 // The app's icon set, drawn as pixel art (see PixelIcon) to match the car sprites. Each export
 // has the same name and props as the lucide-react icon it replaced, so swapping a file over is
-// just its import line. They follow the surrounding text color like lucide's did, so button
-// states, hover colors and per-icon colors (medals) keep working.
+// just its import line. Each is drawn in its own color with sprite-style shading; a color passed
+// in style tints it instead (medals), and `mono` draws it flat in the text color.
 
 export interface IconProps {
   className?: string
   style?: CSSProperties
+  // Flat, in the surrounding text color, instead of the icon's own colors — for faint
+  // decorative uses where color would be too loud.
+  mono?: boolean
   // Accepted for drop-in compatibility with lucide's props; pixel icons have no stroke.
   strokeWidth?: number | string
 }
@@ -17,8 +20,15 @@ export interface IconProps {
 export type IconComponent = FunctionComponent<IconProps>
 
 function pixel(name: PixelIconName, displayName: string): IconComponent {
-  const Icon = ({ className, style }: IconProps) => (
-    <PixelIcon name={name} className={className} style={style} />
+  // A text color passed in style (gold/silver/bronze medals) becomes the icon's tint.
+  const Icon = ({ className, style, mono }: IconProps) => (
+    <PixelIcon
+      name={name}
+      className={className}
+      style={style}
+      tint={typeof style?.color === 'string' ? style.color : undefined}
+      mono={mono}
+    />
   )
   Icon.displayName = displayName
   return Icon

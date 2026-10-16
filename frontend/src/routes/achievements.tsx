@@ -54,9 +54,8 @@ function AchievementsPage() {
                         <Icon
                           className={cn(
                             'size-6 shrink-0',
-                            done ? 'text-primary' : 'text-muted-foreground',
+                            !done && 'grayscale',
                           )}
-                          strokeWidth={2}
                         />
                         <div>
                           <p className="text-sm font-bold">{title}</p>

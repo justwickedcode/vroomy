@@ -6,9 +6,11 @@ import type { CSSProperties } from 'react'
 // at any whole-number scale (16px, 32px...).
 //
 // Two kinds:
-// - "mono" icons follow the surrounding text color, so nav links keep their active/hover
-//   colors: '#' is currentColor, '+' is currentColor at 45% for shading.
-// - "color" icons use fixed colors from PALETTE (the power-ups and the logo).
+// - "mono" icons are drawn in one base color (ICON_COLORS, or a `tint` the caller passes) and
+//   shaded automatically like the sprites: a pixel with nothing above it is a highlight, one with
+//   nothing below it a shadow, and '+' marks a darker fill. `mono` rendering turns the shading
+//   off and draws in the surrounding text color instead, for faint decorative uses.
+// - "color" icons use fixed colors from PALETTE (the power-ups, the coin and the logo).
 // '.' is transparent in both.
 
 const PALETTE: Record<string, string> = {
@@ -1342,6 +1344,74 @@ const ICONS = {
 
 export type PixelIconName = keyof typeof ICONS
 
+// Each mono icon's base color, picked for what it means: green for confirm/go, red for
+// close/remove, gold for rewards, violet for people, blue for navigation and links...
+const ICON_COLORS: Partial<Record<PixelIconName, string>> = {
+  achievements: '#facc15',
+  'arrow-left': '#38bdf8',
+  'arrow-right': '#38bdf8',
+  calendar: '#f87171',
+  'calendar-clock': '#f87171',
+  check: '#22c55e',
+  'check-check': '#22c55e',
+  'chevron-right': '#38bdf8',
+  clock: '#f59e0b',
+  copy: '#94a3b8',
+  crosshair: '#ef4444',
+  crown: '#facc15',
+  external: '#38bdf8',
+  flag: '#ef4444',
+  flame: '#fb923c',
+  friends: '#a78bfa',
+  garage: '#fb923c',
+  gauge: '#f59e0b',
+  keyboard: '#94a3b8',
+  leaderboards: '#facc15',
+  link: '#38bdf8',
+  lock: '#f59e0b',
+  'log-in': '#22c55e',
+  'log-out': '#f87171',
+  'map-pin': '#ef4444',
+  menu: '#94a3b8',
+  milestone: '#f59e0b',
+  minus: '#ef4444',
+  monitor: '#38bdf8',
+  moon: '#a5b4fc',
+  'panel-close': '#94a3b8',
+  'panel-open': '#94a3b8',
+  pause: '#f59e0b',
+  play: '#22c55e',
+  plus: '#22c55e',
+  rabbit: '#f9a8d4',
+  replays: '#38bdf8',
+  rocket: '#f472b6',
+  'rotate-ccw': '#38bdf8',
+  route: '#34d399',
+  search: '#38bdf8',
+  sliders: '#38bdf8',
+  sparkles: '#facc15',
+  stats: '#22c55e',
+  sunrise: '#fb923c',
+  swords: '#cbd5e1',
+  target: '#ef4444',
+  'trending-up': '#22c55e',
+  user: '#a78bfa',
+  'user-minus': '#a78bfa',
+  users: '#a78bfa',
+  wind: '#67e8f9',
+  x: '#ef4444',
+  zap: '#facc15',
+}
+
+// Shading tones for mono icons, derived from the base with color-mix so a caller's tint (a gold,
+// silver or bronze medal) gets the same treatment.
+const TONES: Record<string, (base: string) => string> = {
+  b: (base) => base,
+  h: (base) => `color-mix(in oklab, ${base} 60%, white)`,
+  s: (base) => `color-mix(in oklab, ${base} 70%, black)`,
+  f: (base) => `color-mix(in oklab, ${base} 55%, black)`,
+}
+
 interface Run {
   x: number
   y: number
@@ -1349,16 +1419,30 @@ interface Run {
   char: string
 }
 
+// A mono pixel's tone: 'f' for fill, 'h' for a top edge, 's' for a bottom edge, 'b' otherwise.
+function toneOf(rows: ReadonlyArray<string>, x: number, y: number): string {
+  if (rows[y][x] === '+') return 'f'
+  const filled = (yy: number) =>
+    yy >= 0 && yy < rows.length && rows[yy][x] !== '.'
+  const above = filled(y - 1)
+  const below = filled(y + 1)
+  if (!above && below) return 'h'
+  if (above && !below) return 's'
+  return 'b'
+}
+
 // Merges each row's consecutive same-character pixels into one rect, so an icon is a few dozen
-// elements rather than up to 256.
-function runsOf(rows: ReadonlyArray<string>): Array<Run> {
+// elements rather than up to 256. Mono icons are keyed by tone rather than character.
+function runsOf(rows: ReadonlyArray<string>, shaded: boolean): Array<Run> {
   const runs: Array<Run> = []
   rows.forEach((row, y) => {
+    const keyAt = (x: number) =>
+      row[x] === '.' ? '.' : shaded ? toneOf(rows, x, y) : row[x]
     let x = 0
     while (x < row.length) {
-      const char = row[x]
+      const char = keyAt(x)
       let end = x + 1
-      while (end < row.length && row[end] === char) end++
+      while (end < row.length && keyAt(end) === char) end++
       if (char !== '.') runs.push({ x, y, width: end - x, char })
       x = end
     }
@@ -1367,21 +1451,40 @@ function runsOf(rows: ReadonlyArray<string>): Array<Run> {
 }
 
 const RUNS = Object.fromEntries(
-  Object.entries(ICONS).map(([name, icon]) => [name, runsOf(icon.rows)]),
+  Object.entries(ICONS).map(([name, icon]) => [
+    name,
+    runsOf(icon.rows, icon.kind === 'mono'),
+  ]),
+) as Record<PixelIconName, Array<Run>>
+
+// Flat runs (by character) for the `mono` rendering of mono icons.
+const FLAT_RUNS = Object.fromEntries(
+  Object.entries(ICONS).map(([name, icon]) => [name, runsOf(icon.rows, false)]),
 ) as Record<PixelIconName, Array<Run>>
 
 export default function PixelIcon({
   name,
   className,
   style,
+  tint,
+  mono = false,
   title,
 }: {
   name: PixelIconName
   className?: string
   style?: CSSProperties
+  // Overrides a mono icon's own color (keeps the shading) — e.g. gold/silver/bronze medals.
+  tint?: string
+  // Draws a mono icon flat in the surrounding text color, for faint decorative uses.
+  mono?: boolean
   title?: string
 }) {
-  const mono = ICONS[name].kind === 'mono'
+  const shaded = ICONS[name].kind === 'mono'
+  const flat = shaded && mono
+  const base = tint ?? ICON_COLORS[name] ?? 'currentColor'
+  const runs = flat ? FLAT_RUNS[name] : RUNS[name]
+  const fillOf = (run: Run) =>
+    !shaded ? PALETTE[run.char] : flat ? 'currentColor' : TONES[run.char](base)
   return (
     <svg
       viewBox="0 0 16 16"
@@ -1392,15 +1495,17 @@ export default function PixelIcon({
       aria-label={title}
       aria-hidden={title ? undefined : true}
     >
-      {RUNS[name].map((run) => (
+      {runs.map((run) => (
         <rect
           key={`${run.x}-${run.y}`}
           x={run.x}
           y={run.y}
           width={run.width}
           height={1}
-          fill={mono ? 'currentColor' : PALETTE[run.char]}
-          fillOpacity={mono && run.char === '+' ? 0.45 : undefined}
+          // style, not the fill attribute: color-mix() is CSS, and only the style property is
+          // guaranteed to parse it.
+          style={{ fill: fillOf(run) }}
+          fillOpacity={flat && run.char === '+' ? 0.45 : undefined}
         />
       ))}
     </svg>

@@ -1,5 +1,11 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { CalendarDays, ChevronRight, Flag, Link2, Users } from '#/components/ui/icons'
+import {
+  CalendarDays,
+  ChevronRight,
+  Flag,
+  Link2,
+  Users,
+} from '#/components/ui/icons'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import Gauge from '#/components/typing/Gauge'
@@ -138,7 +144,7 @@ function Dashboard() {
                 </span>
                 <Icon
                   className="pointer-events-none absolute -right-6 -bottom-8 size-40 text-foreground/[0.05] transition-transform duration-500 ease-out group-hover:scale-110 group-hover:text-foreground/[0.07]"
-                  strokeWidth={1}
+                  mono
                 />
                 <div className="relative mt-auto">
                   <p className="font-display text-2xl font-extrabold tracking-tight uppercase sm:text-3xl">
@@ -218,11 +224,7 @@ function Dashboard() {
                     )}
                   >
                     <Icon
-                      className={cn(
-                        'size-4 shrink-0',
-                        done ? 'text-primary' : 'text-muted-foreground',
-                      )}
-                      strokeWidth={2.25}
+                      className={cn('size-4 shrink-0', !done && 'grayscale')}
                     />
                     <span className="truncate text-sm font-semibold">
                       {title}
