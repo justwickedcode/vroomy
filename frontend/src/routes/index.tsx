@@ -112,7 +112,7 @@ function Dashboard() {
             space under the panel. */}
         <div className="rise-in px-corners grid flex-1 grid-rows-[auto_auto_auto_auto_1fr] gap-[2px] border-2 border-border bg-border">
           {/* Hero: your own car cruising, like a game's title screen. */}
-          <div className={CELL}>
+          <div className={cn(CELL, 'relative')}>
             <RaceTrack
               racers={(() => {
                 const youWpm = hasRaced ? Math.max(stats.avgWpm, 40) : 40
@@ -142,7 +142,8 @@ function Dashboard() {
               finishLine={false}
               epic
             />
-            <h1 className="p-5 text-3xl font-extrabold tracking-tight sm:text-4xl">
+            {/* The title sits in the sky like a game's title screen, with a hard pixel shadow. */}
+            <h1 className="pointer-events-none absolute top-4 left-5 text-3xl font-extrabold tracking-tight [text-shadow:3px_3px_0_#1a0b2e] sm:top-5 sm:text-4xl">
               Ready when you are.
             </h1>
           </div>

@@ -99,6 +99,15 @@ const FAR_TILE = tile(cityRects(7, 14, 34, '#2a1240', 0))
 const NEAR_TILE = tile(cityRects(42, 8, 26, '#12081f', 0.22))
 const STREET_TILE = tile(streetRects())
 
+// Stars scattered over the dark upper sky; every fifth one twinkles.
+const STARS: Array<[number, number, boolean]> = []
+{
+  const next = rng(99)
+  for (let i = 0; i < 46; i++) {
+    STARS.push([Math.floor(next() * W), Math.floor(next() * 22), i % 5 === 0])
+  }
+}
+
 // The sun: a pixel disc centred on the horizon, cut by widening horizontal gaps toward its base.
 const SUN: Array<[number, number, number]> = []
 {
@@ -142,6 +151,18 @@ export default function PixelSkyline() {
             width={W}
             height={Math.ceil(band) + 1}
             fill={color}
+          />
+        ))}
+        {STARS.map(([x, y, twinkle]) => (
+          <rect
+            key={`${x},${y}`}
+            x={x}
+            y={y}
+            width={1}
+            height={1}
+            fill="#fff3e0"
+            fillOpacity={0.75}
+            className={twinkle ? 'sky-twinkle' : undefined}
           />
         ))}
         {SUN.map(([x, y, w]) => (
