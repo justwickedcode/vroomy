@@ -1,4 +1,14 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { useState } from 'react'
+import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '#/components/ui/dialog'
+import SoloPicker from '#/components/play/SoloPicker'
+import FriendsPicker from '#/components/play/FriendsPicker'
+import LobbyModePicker from '#/components/multiplayer/LobbyModePicker'
 import {
   CalendarDays,
   ChevronRight,
@@ -22,12 +32,27 @@ export const Route = createFileRoute('/')({ component: Dashboard })
 // Where the WPM meters top out — a strong typist sits near the top, nobody is pinned at full.
 const WPM_METER_MAX = 130
 
-const MODES = [
-  { to: '/race/solo', icon: Flag, title: 'Solo' },
-  { to: '/race/multiplayer', icon: Users, title: 'Multiplayer' },
-  { to: '/race/friends', icon: Link2, title: 'Friends' },
-  { to: '/daily-challenge', icon: CalendarDays, title: 'Daily' },
-] as const
+// Solo, Multiplayer and Friends open their setup as a modal over the dashboard; Daily has
+// nothing to pick, so it goes straight to the challenge.
+type PlayModal = 'solo' | 'multiplayer' | 'friends'
+
+const MODES: Array<{
+  icon: typeof Flag
+  title: string
+  modal?: PlayModal
+  to?: '/daily-challenge'
+}> = [
+  { icon: Flag, title: 'Solo', modal: 'solo' },
+  { icon: Users, title: 'Multiplayer', modal: 'multiplayer' },
+  { icon: Link2, title: 'Friends', modal: 'friends' },
+  { icon: CalendarDays, title: 'Daily', to: '/daily-challenge' },
+]
+
+const MODAL_TITLES: Record<PlayModal, string> = {
+  solo: 'Solo race',
+  multiplayer: 'Multiplayer',
+  friends: 'Race with friends',
+}
 
 // How many races the WPM trend chart and the recent-races list show.
 const TREND_RACES = 20
@@ -97,6 +122,8 @@ function Dashboard() {
     trail,
   } = useProfile()
   const { user } = useCurrentUser()
+  const navigate = useNavigate()
+  const [openModal, setOpenModal] = useState<PlayModal | null>(null)
   const hasRaced = hydrated && stats.racesPlayed > 0
   const unlocked = hydrated ? achievements : []
   // The next achievements to go for, in the catalog's own easiest-first order.
@@ -149,20 +176,35 @@ function Dashboard() {
           </div>
 
           <div className="grid grid-cols-2 gap-[2px] lg:grid-cols-4">
-            {MODES.map(({ to, icon: Icon, title }) => (
-              <Link
-                key={to}
-                to={to}
-                className={cn(
-                  CELL,
-                  'group flex items-center gap-3 p-4 transition-colors hover:bg-accent',
-                )}
-              >
-                <Icon className="size-8 shrink-0 transition-transform duration-200 group-hover:scale-110" />
-                <span className="font-display text-xl uppercase">{title}</span>
-                <ChevronRight className="ml-auto size-4 opacity-0 transition-opacity group-hover:opacity-100" />
-              </Link>
-            ))}
+            {MODES.map(({ icon: Icon, title, modal, to }) => {
+              const tileClass = cn(
+                CELL,
+                'group flex items-center gap-3 p-4 text-left transition-colors hover:bg-accent',
+              )
+              const inner = (
+                <>
+                  <Icon className="size-8 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                  <span className="font-display text-xl uppercase">
+                    {title}
+                  </span>
+                  <ChevronRight className="ml-auto size-4 opacity-0 transition-opacity group-hover:opacity-100" />
+                </>
+              )
+              return modal ? (
+                <button
+                  key={title}
+                  type="button"
+                  onClick={() => setOpenModal(modal)}
+                  className={tileClass}
+                >
+                  {inner}
+                </button>
+              ) : (
+                <Link key={title} to={to ?? '/'} className={tileClass}>
+                  {inner}
+                </Link>
+              )
+            })}
           </div>
 
           <div className="grid grid-cols-2 gap-[2px] lg:grid-cols-5">
@@ -288,6 +330,32 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={openModal !== null}
+        onOpenChange={(open) => {
+          if (!open) setOpenModal(null)
+        }}
+      >
+        <DialogContent
+          className={cn(openModal === 'solo' ? 'sm:max-w-3xl' : 'sm:max-w-xl')}
+        >
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl uppercase">
+              {openModal ? MODAL_TITLES[openModal] : ''}
+            </DialogTitle>
+          </DialogHeader>
+          {openModal === 'solo' && <SoloPicker />}
+          {openModal === 'multiplayer' && (
+            <LobbyModePicker
+              onSelect={(mode) =>
+                void navigate({ to: '/race/multiplayer', search: { mode } })
+              }
+            />
+          )}
+          {openModal === 'friends' && <FriendsPicker />}
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }
