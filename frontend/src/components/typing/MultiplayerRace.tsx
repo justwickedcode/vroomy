@@ -7,6 +7,7 @@ import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
 import QuoteCredit from '#/components/typing/QuoteCredit'
+import Coins from '#/components/ui/Coins'
 import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
@@ -225,6 +226,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const { myResult, getReplay } = mp
   // This race's replay, once saved — for the "Watch replay" button on the results screen.
   const [replayId, setReplayId] = useState<string | null>(null)
+  const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
   useEffect(() => {
     if (!myResult || recordedQuoteRef.current === mp.text) return
     recordedQuoteRef.current = mp.text
@@ -237,7 +239,10 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         mode: 'multiplayer',
         replay: getReplay(),
       })
-      .then(setReplayId)
+      .then((saved) => {
+        setReplayId(saved.replayId)
+        setCoinsEarned(saved.coinsEarned)
+      })
   }, [
     myResult,
     mp.text,
@@ -349,6 +354,13 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                     'Race finished'
                   )}
                 </p>
+                {coinsEarned !== null && (
+                  <Coins
+                    amount={coinsEarned}
+                    prefix="+"
+                    className="text-sm text-signal"
+                  />
+                )}
               </div>
 
               {mp.results && (

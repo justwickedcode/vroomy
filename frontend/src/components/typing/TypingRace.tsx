@@ -15,6 +15,7 @@ import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
 import QuoteCredit from '#/components/typing/QuoteCredit'
 import PixelIcon from '#/components/ui/PixelIcon'
+import Coins from '#/components/ui/Coins'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
 import type { PowerupKind } from '#/lib/powerups'
@@ -26,6 +27,9 @@ const MEDAL_COLORS: Record<number, string> = {
 }
 
 const WPM_GAUGE_MAX = 130
+
+// How far the Nuke throws every bot back — the strongest powerup, priced to match (see shop).
+const NUKE_WORDS = 3
 
 // Solo vs AI has nobody else to wait on, so the countdown just needs to be
 // long enough to get fingers on the keys — not a real multiplayer-room wait.
@@ -190,6 +194,12 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
         setLastEvent('EMP!')
         triggerEffect({ kind: 'emp' })
       }
+    } else if (powerup === 'nuke') {
+      if (contenders.length > 0) {
+        for (const bot of contenders) hitBot(bot.id, NUKE_WORDS)
+        setLastEvent('Nuked!')
+        triggerEffect({ kind: 'nuke' })
+      }
     } else {
       const ahead = contenders.filter((b) => b.progress > progress)
       const rival =
@@ -268,6 +278,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   const [newBest, setNewBest] = useState(false)
   // The just-finished race's replay, once it's saved — for the "Watch replay" button.
   const [replayId, setReplayId] = useState<string | null>(null)
+  const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
 
   useEffect(() => {
     if (!finished || !place) return
@@ -275,6 +286,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     recordedRaceRef.current = text
     setNewBest(profile.stats.racesPlayed > 0 && wpm > profile.stats.bestWpm)
     setReplayId(null)
+    setCoinsEarned(null)
     const raceText = text
     void profile
       .addRace({
@@ -285,9 +297,11 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
         mode: 'solo',
         replay: getReplay(),
       })
-      .then((id) => {
+      .then((saved) => {
         // Ignore a save that lands after the player already started the next race.
-        if (recordedRaceRef.current === raceText) setReplayId(id)
+        if (recordedRaceRef.current !== raceText) return
+        setReplayId(saved.replayId)
+        setCoinsEarned(saved.coinsEarned)
       })
   }, [
     finished,
@@ -412,12 +426,21 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
                 Finished <strong>{place && ordinal(place)}</strong> of{' '}
                 {bots.length + 1} in <strong>{formatTime(elapsedMs)}</strong>
               </p>
-              {newBest && (
-                <Badge variant="success" className="w-fit gap-1">
-                  <Sparkles className="size-3" />
-                  New personal best
-                </Badge>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {coinsEarned !== null && (
+                  <Coins
+                    amount={coinsEarned}
+                    prefix="+"
+                    className="text-sm text-signal"
+                  />
+                )}
+                {newBest && (
+                  <Badge variant="success" className="w-fit gap-1">
+                    <Sparkles className="size-3" />
+                    New personal best
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
           <div className="race-footer-controls">{analytics}</div>

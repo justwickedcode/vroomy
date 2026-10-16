@@ -1,19 +1,155 @@
+import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { Check } from 'lucide-react'
+import { Check, Lock } from 'lucide-react'
 import PixelIcon from '#/components/ui/PixelIcon'
+import Coins from '#/components/ui/Coins'
+import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
-import CarIcon, {
-  VEHICLE_CATEGORIES,
-  VEHICLES,
-} from '#/components/typing/CarIcon'
+import CarIcon, { VEHICLES } from '#/components/typing/CarIcon'
 import { Trail } from '#/components/typing/RaceTrack'
 import { CAR_COLORS, useProfile } from '#/lib/profile/useProfile'
 import { TRAILS } from '#/lib/trails'
 import { POWERUPS } from '#/lib/powerups'
+import {
+  UNDERGLOW_ITEM,
+  byPrice,
+  carItem,
+  powerupItem,
+  priceOf,
+  trailItem,
+} from '#/lib/shop'
 import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
-import type { CarModel, VehicleCategory } from '#/components/typing/CarIcon'
+import type { ReactNode } from 'react'
 
 export const Route = createFileRoute('/garage')({ component: GaragePage })
+
+const SORTED_CARS = byPrice(
+  VEHICLES,
+  (v) => carItem(v.id),
+  (v) => v.label,
+)
+const SORTED_TRAILS = byPrice(
+  TRAILS,
+  (t) => trailItem(t.id),
+  (t) => t.label,
+)
+const SORTED_POWERUPS = byPrice(
+  POWERUPS,
+  (p) => powerupItem(p.id),
+  (p) => p.label,
+)
+
+// One purchase flow for every tile on the page: clicking something you don't own first asks
+// "Buy for N?", and only the confirm actually spends coins — a single stray click never does.
+function useShop() {
+  const { coins, owns, buy } = useProfile()
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const [buying, setBuying] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function purchase(itemId: string, thenEquip: () => void) {
+    setBuying(itemId)
+    setError(null)
+    try {
+      await buy(itemId)
+      setConfirming(null)
+      thenEquip()
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message
+          ? err.message
+          : "That didn't go through. Try again.",
+      )
+    } finally {
+      setBuying(null)
+    }
+  }
+
+  return { coins, owns, confirming, setConfirming, buying, error, purchase }
+}
+
+type Shop = ReturnType<typeof useShop>
+
+// A garage item: owned ones equip on click; locked ones show their price, ask to confirm, then
+// buy and equip in one go.
+function ShopTile({
+  shop,
+  itemId,
+  selected,
+  onEquip,
+  className,
+  children,
+}: {
+  shop: Shop
+  itemId: string
+  selected: boolean
+  onEquip: () => void
+  className?: string
+  children: ReactNode
+}) {
+  const owned = shop.owns(itemId)
+  const price = priceOf(itemId)
+  const affordable = shop.coins >= price
+  const confirming = shop.confirming === itemId
+
+  return (
+    <div
+      className={cn(
+        'glass-chip relative flex flex-col rounded-xl transition-colors',
+        selected && 'border-primary bg-primary/12',
+        !owned && 'border-dashed',
+      )}
+    >
+      <button
+        type="button"
+        onClick={() =>
+          owned ? onEquip() : shop.setConfirming(confirming ? null : itemId)
+        }
+        onMouseMove={handleTiltMove}
+        onMouseLeave={handleTiltLeave}
+        className={cn('tilt-card flex flex-1 flex-col', className)}
+      >
+        <span className={cn('contents', !owned && '[&>*]:opacity-60')}>
+          {children}
+        </span>
+      </button>
+      <div className="flex items-center justify-center gap-1.5 px-2 pb-3 text-xs">
+        {owned ? (
+          selected ? (
+            <span className="flex items-center gap-1 font-semibold text-primary">
+              <Check className="size-3.5" />
+              Equipped
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              {price === 0 ? 'Free' : 'Owned'}
+            </span>
+          )
+        ) : confirming ? (
+          <Button
+            size="sm"
+            className="h-7 px-2 text-xs"
+            disabled={!affordable || shop.buying === itemId}
+            onClick={() => void shop.purchase(itemId, onEquip)}
+          >
+            {affordable ? (
+              <>
+                Buy for <Coins amount={price} />
+              </>
+            ) : (
+              `Need ${(price - shop.coins).toLocaleString()} more`
+            )}
+          </Button>
+        ) : (
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <Lock className="size-3" />
+            <Coins amount={price} />
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function GaragePage() {
   const {
@@ -28,12 +164,21 @@ function GaragePage() {
     setTrail,
     setEquippedPowerup,
   } = useProfile()
+  const shop = useShop()
+  const ownsUnderglow = shop.owns(UNDERGLOW_ITEM)
 
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
         <Card className="rise-in overflow-hidden">
           <CardContent className="pt-6">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+              <Coins amount={shop.coins} className="text-lg text-signal" />
+              <p className="text-xs text-muted-foreground">
+                Earn coins by finishing races — faster and higher placings pay
+                more.
+              </p>
+            </div>
             <div className="race-track mb-8">
               <div className="race-track-inner">
                 <div className="race-track-fill" style={{ width: '38%' }} />
@@ -50,16 +195,33 @@ function GaragePage() {
               </div>
               <span className="race-flag-checkered" aria-hidden="true" />
             </div>
+            {shop.error && (
+              <p className="mb-2 text-sm text-destructive">{shop.error}</p>
+            )}
           </CardContent>
 
-          {VEHICLE_CATEGORIES.map((category) => (
-            <CategorySection
-              key={category}
-              category={category}
-              carModel={carModel}
-              onSelect={setCarModel}
-            />
-          ))}
+          <div className="glass-divider" />
+          <CardHeader className="py-5">
+            <p className="kicker">Cars</p>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8 sm:grid-cols-3 lg:grid-cols-4">
+            {SORTED_CARS.map((vehicle) => (
+              <ShopTile
+                key={vehicle.id}
+                shop={shop}
+                itemId={carItem(vehicle.id)}
+                selected={vehicle.id === carModel}
+                onEquip={() => setCarModel(vehicle.id)}
+                className="speed-option items-center gap-2 pt-4 pb-1"
+              >
+                {/* Fixed-height slot so every label lines up, whatever the sprite's shape. */}
+                <span className="flex h-14 items-center self-center">
+                  <CarIcon model={vehicle.id} className="w-24" />
+                </span>
+                <span className="text-sm font-bold">{vehicle.label}</span>
+              </ShopTile>
+            ))}
+          </CardContent>
 
           <div className="glass-divider" />
 
@@ -67,33 +229,55 @@ function GaragePage() {
             <p className="kicker">Underglow</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-4 pt-0 pb-8">
-            <button
-              type="button"
-              onClick={() => setUnderglow(!underglow)}
-              className={cn(
-                'glass-chip flex w-full items-center gap-4 rounded-xl p-4 text-left transition-colors',
-                underglow && 'border-primary bg-primary/12',
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className="size-8 shrink-0 rounded-full border border-border"
-                style={{ backgroundColor: underglowColor }}
-              />
-              <span className="flex-1">
-                <p className="text-sm font-bold">Neon underglow</p>
-                <p className="text-xs text-muted-foreground">
-                  Pick any color below.
-                </p>
-              </span>
-              {underglow && (
-                <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
-                  <Check className="size-3.5" />
-                  On
+            {ownsUnderglow ? (
+              <button
+                type="button"
+                onClick={() => setUnderglow(!underglow)}
+                className={cn(
+                  'glass-chip flex w-full items-center gap-4 rounded-xl p-4 text-left transition-colors',
+                  underglow && 'border-primary bg-primary/12',
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-8 shrink-0 rounded-full border border-border"
+                  style={{ backgroundColor: underglowColor }}
+                />
+                <span className="flex-1">
+                  <p className="text-sm font-bold">Neon underglow</p>
+                  <p className="text-xs text-muted-foreground">
+                    Pick any color below.
+                  </p>
                 </span>
-              )}
-            </button>
-            {underglow && (
+                {underglow && (
+                  <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
+                    <Check className="size-3.5" />
+                    On
+                  </span>
+                )}
+              </button>
+            ) : (
+              <ShopTile
+                shop={shop}
+                itemId={UNDERGLOW_ITEM}
+                selected={false}
+                onEquip={() => setUnderglow(true)}
+                className="flex-row items-center gap-4 p-4 text-left"
+              >
+                <span
+                  aria-hidden="true"
+                  className="size-8 shrink-0 rounded-full border border-border"
+                  style={{ backgroundColor: underglowColor }}
+                />
+                <span className="flex-1">
+                  <p className="text-sm font-bold">Neon underglow</p>
+                  <p className="text-xs text-muted-foreground">
+                    A glow under your car, in any color.
+                  </p>
+                </span>
+              </ShopTile>
+            )}
+            {ownsUnderglow && underglow && (
               <div className="flex flex-wrap items-center gap-3 pl-1">
                 {CAR_COLORS.map((swatch) => (
                   <button
@@ -145,27 +329,26 @@ function GaragePage() {
           <CardHeader className="py-5">
             <p className="kicker">Trail</p>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8 sm:grid-cols-4">
-            {TRAILS.map((option) => (
-              <button
+          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8 sm:grid-cols-3">
+            {SORTED_TRAILS.map((option) => (
+              <ShopTile
                 key={option.id}
-                type="button"
-                onClick={() => setTrail(option.id)}
-                className={cn(
-                  'glass-chip relative flex flex-col items-center gap-2 rounded-xl p-4 text-center transition-colors',
-                  option.id === trail && 'border-primary bg-primary/12',
-                )}
+                shop={shop}
+                itemId={trailItem(option.id)}
+                selected={option.id === trail}
+                onEquip={() => setTrail(option.id)}
+                className="items-center gap-2 px-4 pt-4 pb-1 text-center"
               >
                 {/* Live preview, not just a name — the trail is rendered exactly like it is
                     mid-race (see RaceTrack's Trail), anchored to a small dot standing in for
                     the car so the effect has something to trail off of. */}
-                <div className="flex h-7 w-16 items-center justify-end">
+                <div className="flex h-7 w-16 items-center justify-end self-center">
                   <span className="relative inline-block size-2 shrink-0 rounded-full bg-foreground/70">
                     <Trail variant={option.id} />
                   </span>
                 </div>
                 <p className="text-sm font-bold">{option.label}</p>
-              </button>
+              </ShopTile>
             ))}
           </CardContent>
 
@@ -174,97 +357,28 @@ function GaragePage() {
           <CardHeader className="py-5">
             <p className="kicker">Powerups</p>
           </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8">
-            {POWERUPS.map((option) => {
-              const equipped = option.id === equippedPowerup
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setEquippedPowerup(option.id)}
-                  className={cn(
-                    'glass-chip flex items-center gap-3 rounded-xl p-4 text-left transition-colors',
-                    equipped && 'border-primary bg-primary/12',
-                  )}
-                >
-                  <PixelIcon name={option.id} className="size-8" />
-                  <span className="flex-1">
-                    <p className="text-sm font-bold">{option.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {option.detail}
-                    </p>
-                  </span>
-                  {equipped && (
-                    <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-primary">
-                      <Check className="size-3.5" />
-                      Equipped
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+          <CardContent className="grid grid-cols-1 gap-3 pt-0 pb-8 sm:grid-cols-2">
+            {SORTED_POWERUPS.map((option) => (
+              <ShopTile
+                key={option.id}
+                shop={shop}
+                itemId={powerupItem(option.id)}
+                selected={option.id === equippedPowerup}
+                onEquip={() => setEquippedPowerup(option.id)}
+                className="flex-row items-center gap-3 px-4 pt-4 pb-1 text-left"
+              >
+                <PixelIcon name={option.id} className="size-8" />
+                <span className="flex-1">
+                  <p className="text-sm font-bold">{option.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {option.detail}
+                  </p>
+                </span>
+              </ShopTile>
+            ))}
           </CardContent>
         </Card>
       </div>
     </main>
-  )
-}
-
-function CategorySection({
-  category,
-  carModel,
-  onSelect,
-}: {
-  category: VehicleCategory
-  carModel: CarModel
-  onSelect: (id: CarModel) => void
-}) {
-  const models = VEHICLES.filter((v) => v.category === category)
-  return (
-    <>
-      <div className="glass-divider" />
-      <CardHeader className="py-5">
-        <p className="kicker">{category}</p>
-      </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-3 pt-0 sm:grid-cols-3 lg:grid-cols-4">
-        {models.map((vehicle) => (
-          <ModelOption
-            key={vehicle.id}
-            id={vehicle.id}
-            label={vehicle.label}
-            selected={vehicle.id === carModel}
-            onSelect={() => onSelect(vehicle.id)}
-          />
-        ))}
-      </CardContent>
-    </>
-  )
-}
-
-function ModelOption({
-  id,
-  label,
-  selected,
-  onSelect,
-}: {
-  id: CarModel
-  label: string
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      onMouseMove={handleTiltMove}
-      onMouseLeave={handleTiltLeave}
-      className={cn(
-        'tilt-card speed-option glass-chip relative flex flex-col items-center gap-2 py-4',
-        selected && 'border-primary bg-primary/12',
-      )}
-    >
-      <CarIcon model={id} className="w-24" />
-      <span className="text-sm font-bold">{label}</span>
-    </button>
   )
 }

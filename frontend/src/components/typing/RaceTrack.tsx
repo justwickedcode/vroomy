@@ -25,7 +25,7 @@ export interface Racer {
 // use, even reusing the same kind back-to-back, so consumers can remount the animated element
 // instead of it no-op'ing because its own props didn't change. `targetId` names which bot a
 // shell/magnet hit landed on; boost/nitro (no target — the effect plays on the player's own car)
-// and emp (plays on every lane at once) leave it unset.
+// and emp/nuke (play on every lane at once) leave it unset.
 export interface RaceEffect {
   kind: PowerupKind
   targetId?: string
@@ -46,7 +46,7 @@ function carLeft(racer: Racer) {
 
 // Bots always cycle through these three regardless of what the player has unlocked (see
 // #/lib/trails) — only the player's own trail choice is gated.
-const BOT_TRAILS: Array<TrailVariant> = ['orbs', 'smoke', 'spark']
+const BOT_TRAILS: Array<TrailVariant> = ['orbs', 'smoke', 'stars']
 
 // Exported for reuse in the Garage's Trail picker — a preview needs to render the exact same
 // visual, not a re-description of it.
@@ -63,73 +63,6 @@ export function Trail({ variant }: { variant: TrailVariant }) {
   if (variant === 'smoke') {
     return (
       <span className="race-trail-smoke" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-    )
-  }
-  if (variant === 'spark') {
-    // Three bolts grouped as a column, all anchored at the same tip (near the car) but running
-    // different lengths — short/long/medium, like uneven flame tongues — rather than three
-    // identical-length copies, which read as one bolt repeated instead of a cluster.
-    const makeBolt = (points: string) => (
-      <>
-        <polyline
-          points={points}
-          fill="none"
-          stroke="#0c4a6e"
-          strokeWidth="9"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        <polyline
-          points={points}
-          fill="none"
-          stroke="#38bdf8"
-          strokeWidth="6"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        <polyline
-          points={points}
-          fill="none"
-          stroke="#f0f9ff"
-          strokeWidth="2.6"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-      </>
-    )
-    return (
-      <svg className="race-trail-spark" viewBox="0 0 56 62" aria-hidden="true">
-        <g
-          className="spark-bolt"
-          style={{ animationDelay: '0ms' }}
-          transform="translate(22,1) rotate(-3) scale(0.95)"
-        >
-          {makeBolt('44,7 34,3 37,9 24,4 27,10 16,5')}
-        </g>
-        <g
-          className="spark-bolt"
-          style={{ animationDelay: '80ms' }}
-          transform="translate(22,20) rotate(3) scale(0.95)"
-        >
-          {makeBolt('44,7 32,2 35,8 20,3 23,9 8,3 11,10 0,6')}
-        </g>
-        <g
-          className="spark-bolt"
-          style={{ animationDelay: '160ms' }}
-          transform="translate(22,39) rotate(-4) scale(0.95)"
-        >
-          {makeBolt('44,7 36,3 39,8 30,4')}
-        </g>
-      </svg>
-    )
-  }
-  if (variant === 'bubbles') {
-    return (
-      <span className="race-trail-bubbles" aria-hidden="true">
         <span />
         <span />
         <span />
@@ -396,6 +329,13 @@ export default function RaceTrack({
           <span
             key={effect.key}
             className="race-emp-flash"
+            aria-hidden="true"
+          />
+        )}
+        {effect?.kind === 'nuke' && (
+          <span
+            key={effect.key}
+            className="race-nuke-flash"
             aria-hidden="true"
           />
         )}

@@ -78,6 +78,8 @@ type RaceResult struct {
 	Placement  int    `json:"placement"`
 	RacerCount int    `json:"racerCount"`
 	HasReplay  bool   `json:"hasReplay"`
+	// CoinsEarned is set only on the POST response — what this race paid (see coinsForRace).
+	CoinsEarned int `json:"coinsEarned,omitempty"`
 }
 
 // raceModes are the kinds of race the frontend records. An empty mode (an older client, or an
@@ -110,6 +112,8 @@ type UserProfile struct {
 	EquippedPowerup string       `json:"equippedPowerup"`
 	Races           []RaceResult `json:"races"`
 	Stats           ProfileStats `json:"stats"`
+	Coins           int          `json:"coins"`
+	Owned           []string     `json:"owned"`
 }
 
 // upsertIdentity guarantees a users row exists and its identity-owned columns (name/email/
@@ -143,14 +147,18 @@ type userRow struct {
 	displayName, email, avatarURL                    string
 	carModel, underglowColor, trail, equippedPowerup string
 	underglow                                        bool
+	coins                                            int
+	owned                                            []string
 }
 
 func loadUserRow(ctx context.Context, pool *pgxpool.Pool, userID string) (userRow, error) {
 	var row userRow
 	err := pool.QueryRow(ctx, `
-		SELECT display_name, email, avatar_url, car_model, underglow, underglow_color, trail, equipped_powerup
+		SELECT display_name, COALESCE(email, ''), COALESCE(avatar_url, ''), car_model, underglow,
+		       underglow_color, trail, equipped_powerup, coins, owned
 		FROM users WHERE id = $1
-	`, userID).Scan(&row.displayName, &row.email, &row.avatarURL, &row.carModel, &row.underglow, &row.underglowColor, &row.trail, &row.equippedPowerup)
+	`, userID).Scan(&row.displayName, &row.email, &row.avatarURL, &row.carModel, &row.underglow,
+		&row.underglowColor, &row.trail, &row.equippedPowerup, &row.coins, &row.owned)
 	return row, err
 }
 
@@ -222,6 +230,8 @@ func loadFullProfile(ctx context.Context, pool *pgxpool.Pool, userID string) (Us
 		EquippedPowerup: row.equippedPowerup,
 		Races:           races,
 		Stats:           stats,
+		Coins:           row.coins,
+		Owned:           row.owned,
 	}, nil
 }
 
@@ -252,10 +262,10 @@ type cosmeticsRequest struct {
 	EquippedPowerup string `json:"equippedPowerup"`
 }
 
-// handlePutCosmetics serves PUT /api/users/me/cosmetics. Field values aren't checked against
-// frontend's own allowed sets (frontend/src/lib/trails.ts, powerups.ts) — the frontend's own UI
-// already only ever offers valid choices, and duplicating that allowlist here would just be two
-// places to keep in sync. Only length-capped, not value-validated, same spirit as truncate above.
+// handlePutCosmetics serves PUT /api/users/me/cosmetics. Anything with a price in the shop
+// catalog must already be owned (see cosmeticsOwned) — otherwise the garage's prices could be
+// skipped with a direct request. Values the catalog doesn't know are only length-capped, same
+// spirit as truncate above; the frontend never offers them.
 func handlePutCosmetics(pool *pgxpool.Pool) http.HandlerFunc {
 	return withIdentity(func(w http.ResponseWriter, r *http.Request, id identity) {
 		var req cosmeticsRequest
@@ -272,6 +282,16 @@ func handlePutCosmetics(pool *pgxpool.Pool) http.HandlerFunc {
 		if err := upsertIdentity(ctx, pool, id); err != nil {
 			log.Printf("upsertIdentity failed: %s\n", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		var owned []string
+		if err := pool.QueryRow(ctx, `SELECT owned FROM users WHERE id = $1`, id.id).Scan(&owned); err != nil {
+			log.Printf("load owned failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if !cosmeticsOwned(owned, req) {
+			writeError(w, http.StatusForbidden, "buy that in the garage first")
 			return
 		}
 		_, err := pool.Exec(ctx, `
@@ -419,6 +439,12 @@ func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		result.CoinsEarned = coinsForRace(req)
+		if _, err := tx.Exec(ctx, `UPDATE users SET coins = coins + $2 WHERE id = $1`, id.id, result.CoinsEarned); err != nil {
+			log.Printf("award coins failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 		if dailyDay != nil {
 			if err := upsertDailyResult(ctx, tx, id.id, *dailyDay, req.WPM, req.Accuracy, &result.ID); err != nil {
 				log.Printf("upsert daily_results failed: %s\n", err)
@@ -503,6 +529,17 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 				writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
+		}
+		// Races played as a guest pay out on import exactly as they would have live — the guest's
+		// own browser-side balance is never trusted, only the races themselves (validated above).
+		earned := 0
+		for _, e := range entries {
+			earned += coinsForRace(e.raceRequest)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET coins = coins + $2 WHERE id = $1`, id.id, earned); err != nil {
+			log.Printf("award import coins failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
 		}
 		if err := tx.Commit(ctx); err != nil {
 			log.Printf("commit import tx failed: %s\n", err)

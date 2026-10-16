@@ -90,6 +90,7 @@ Returns the daily challenge passage: one quote per calendar day, identical for e
 | `PUT /api/users/me/cosmetics`     | Saves car, underglow, trail and power-up                                                                                                                                       |
 | `POST /api/users/me/races`        | Records one finished race (see below)                                                                                                                                          |
 | `POST /api/users/me/races/import` | Bulk-uploads up to 50 races a guest played before logging in                                                                                                                   |
+| `POST /api/users/me/purchases`    | `{"itemId": "car:lambo"}`: buys a garage item at its catalog price (`shop_prices.json`). `402` without enough coins, `409` if already owned                                    |
 | `GET /api/users/me/daily`         | The player's daily-challenge results for the last 60 days                                                                                                                      |
 | `POST /api/users/me/daily/import` | Bulk-uploads a guest's daily results (idempotent: keeps the best per day)                                                                                                      |
 
@@ -116,6 +117,12 @@ A race body:
 - `mode` is `solo`, `multiplayer` or `daily`.
 - `replay` is optional. Each event is `[msSinceStart, typedLength, rejected]`. The game only accepts correct characters, so what the player had typed at any moment is `passage[:typedLength]`, which keeps a whole race to a few KB. `rejected` is `1` for a keystroke the game refused (a typo). The server checks that timestamps never go backwards, lengths stay inside the passage, and the timeline ends on the last character (`replays.go`).
 - `dailyDate` (with `mode: "daily"`) also records the run as that day's daily-challenge result, in the same transaction, keeping only the player's best run per day.
+
+### Coins and the garage shop
+
+Every recorded race pays coins (`shop.go`'s `coinsForRace`: 10 for finishing, a quarter of the WPM, +20/+10/+5 for a podium when there were opponents, +15 for the daily challenge), and the POST response includes `coinsEarned`. Races uploaded through the import endpoint pay out the same way; a guest's own browser-side balance is never trusted. `GET /api/users/me` returns `coins` and `owned` (the paid items bought). `PUT /api/users/me/cosmetics` refuses (`403`) to equip anything with a price that isn't owned.
+
+Prices live in `shop_prices.json`, embedded into the binary. The frontend renders from an identical copy (`frontend/src/lib/shop/prices.json`), and `TestShopPricesMatchFrontend` fails if the two ever differ.
 
 ### `GET /api/leaderboards`
 

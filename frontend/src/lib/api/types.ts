@@ -21,6 +21,8 @@ export interface ApiRace {
   placement: number
   racerCount: number
   hasReplay: boolean
+  // Only on the POST response: what this race paid.
+  coinsEarned?: number
 }
 
 // users.go ProfileStats
@@ -45,6 +47,9 @@ export interface ApiProfile {
   equippedPowerup: string
   races: Array<ApiRace>
   stats: ApiStats
+  coins: number
+  // Paid shop items this player has bought (see #/lib/shop).
+  owned: Array<string>
 }
 
 export interface ApiCosmetics {

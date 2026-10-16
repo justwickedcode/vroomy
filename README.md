@@ -32,7 +32,12 @@ Postgres.
 - **Accounts (OIDC).** Log in through a self-hosted Keycloak. Your race history, replays, daily
   results and cosmetics are stored server-side. Guests get the full game on localStorage, and
   everything they played gets imported the first time they log in.
-- **Garage and achievements.** Unlockable cars, underglow, trails and power-ups.
+- **Garage shop.** Every finished race pays coins (more for speed and podiums); spend them on
+  29 cars, trails, underglow and power-ups. For logged-in players the server awards the coins and
+  prices every purchase, so balances can't be edited from the browser.
+- **Power-ups.** One per solo race, fired with Tab whenever you choose: Boost, Nitro, Shell,
+  Magnet, EMP, or the Nuke, which throws every other racer three words back.
+- **Achievements.** Milestones for speed, accuracy, streaks and podiums.
 - **Typing guide.** Drills with an on-screen keyboard for practicing technique.
 
 ## Tech stack

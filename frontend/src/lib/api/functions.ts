@@ -53,6 +53,16 @@ export const importRacesFn = createServerFn({ method: 'POST' })
     }),
   )
 
+export const purchaseFn = createServerFn({ method: 'POST' })
+  .validator((itemId: string) => itemId)
+  .handler(({ data: itemId }) =>
+    apiFetch<ApiProfile>('/api/users/me/purchases', {
+      method: 'POST',
+      body: { itemId },
+      auth: 'required',
+    }),
+  )
+
 // --- Daily challenge ---
 
 export const getMyDailyFn = createServerFn({ method: 'GET' }).handler(() =>

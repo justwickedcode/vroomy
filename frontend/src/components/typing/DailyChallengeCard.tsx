@@ -15,6 +15,7 @@ import { Badge } from '#/components/ui/badge'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceTrack from '#/components/typing/RaceTrack'
 import QuoteCredit from '#/components/typing/QuoteCredit'
+import Coins from '#/components/ui/Coins'
 import Gauge from '#/components/typing/Gauge'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
@@ -80,6 +81,7 @@ export default function DailyChallengeCard() {
   const [newBest, setNewBest] = useState(false)
   // This attempt's replay, once saved — for the "Watch replay" button.
   const [replayId, setReplayId] = useState<string | null>(null)
+  const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
   const recordedAttemptRef = useRef<number | null>(null)
   const latestAttemptRef = useRef(attempt)
   latestAttemptRef.current = attempt
@@ -124,9 +126,11 @@ export default function DailyChallengeCard() {
         dailyDate: todayKey(),
         replay: getReplay(),
       })
-      .then((id) => {
+      .then((saved) => {
         // Ignore a save that lands after the player already hit "Try again".
-        if (latestAttemptRef.current === attempt) setReplayId(id)
+        if (latestAttemptRef.current !== attempt) return
+        setReplayId(saved.replayId)
+        setCoinsEarned(saved.coinsEarned)
       })
   }, [
     finished,
@@ -148,6 +152,7 @@ export default function DailyChallengeCard() {
     reset()
     setNewBest(false)
     setReplayId(null)
+    setCoinsEarned(null)
     setAttempt((a) => a + 1)
     setPhase('idle')
   }
@@ -266,12 +271,21 @@ export default function DailyChallengeCard() {
                 accuracy. Same passage for everyone today — come back tomorrow
                 for a new one.
               </p>
-              {newBest && (
-                <Badge variant="success" className="w-fit gap-1">
-                  <Sparkles className="size-3" />
-                  New daily best
-                </Badge>
-              )}
+              <div className="flex flex-wrap items-center gap-2">
+                {coinsEarned !== null && (
+                  <Coins
+                    amount={coinsEarned}
+                    prefix="+"
+                    className="text-sm text-signal"
+                  />
+                )}
+                {newBest && (
+                  <Badge variant="success" className="w-fit gap-1">
+                    <Sparkles className="size-3" />
+                    New daily best
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
         ) : (

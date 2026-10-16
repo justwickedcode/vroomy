@@ -1177,6 +1177,23 @@ body::before {
   }
 }
 
+/* Nuke: a white-hot core blooming into orange, held a beat longer than the EMP so the
+   strongest powerup also reads as the biggest. */
+.race-nuke-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 30% 50%,
+    rgb(255 251 235 / 85%) 0%,
+    rgb(251 146 60 / 55%) 30%,
+    rgb(234 88 12 / 25%) 55%,
+    transparent 80%
+  );
+  animation: pu-emp-flash 800ms ease-out forwards;
+}
+
 /* Trails off the rear of the car (nose faces right, so effects sit at the wrapper's left edge)
    — only rendered while a racer is actively moving, see the `racing` guard in RaceTrack.tsx.
    Sized and colored to read as aggressive propulsion at a glance — direct feedback was that the
@@ -1363,101 +1380,6 @@ body::before {
   100% {
     opacity: 0;
     transform: translateY(-150%) scale(2.2);
-  }
-}
-
-.race-trail-spark {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 3.4rem;
-  height: 3.8rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.spark-bolt {
-  /* A small blur radius on purpose — stacked this close, anything bigger merges the three bolts'
-     glow into one solid haze that reads as a background panel behind them, not three bolts. */
-  filter: drop-shadow(0 0 1.5px rgb(56 189 248 / 90%));
-  animation: bolt-crackle 260ms steps(1) infinite;
-}
-
-@keyframes bolt-crackle {
-  0%,
-  55% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 0.3;
-  }
-  85% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
-/* Three horizontal chevrons blasting backward off the bumper, like speed lines — a static
-   bullseye-style ring (the first cut here) read as a plain circle icon, not a trail in motion. */
-.race-trail-bubbles {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 4.4rem;
-  height: 2.2rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.race-trail-bubbles span {
-  position: absolute;
-  right: 0;
-  width: 1.9rem;
-  height: 1.1rem;
-  background: #7dd3fc;
-  clip-path: polygon(100% 0%, 12% 50%, 100% 100%, 52% 50%);
-  filter: drop-shadow(0 0 8px rgb(125 211 252 / 95%))
-    drop-shadow(2px 0 0 rgb(8 47 73 / 75%));
-  animation: shock-streak 480ms ease-out infinite;
-}
-
-.race-trail-bubbles span:nth-child(1) {
-  top: 4%;
-  animation-delay: 0ms;
-}
-
-.race-trail-bubbles span:nth-child(2) {
-  top: 44%;
-  animation-delay: 140ms;
-  background: #f0f9ff;
-  filter: drop-shadow(0 0 7px rgb(240 249 255 / 95%))
-    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
-}
-
-.race-trail-bubbles span:nth-child(3) {
-  top: 82%;
-  animation-delay: 280ms;
-  background: #38bdf8;
-  filter: drop-shadow(0 0 7px rgb(56 189 248 / 95%))
-    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
-}
-
-@keyframes shock-streak {
-  0% {
-    opacity: 1;
-    transform: translateX(4px) scaleX(0.7);
-  }
-  70% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-14px) scaleX(1.3);
   }
 }
 
