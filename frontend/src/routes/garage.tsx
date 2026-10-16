@@ -1,24 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Check, Crosshair, Flame, Magnet, Radar, Zap } from 'lucide-react'
+import { Check } from 'lucide-react'
+import PixelIcon from '#/components/ui/PixelIcon'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
-import CarIcon, { VEHICLE_CATEGORIES, VEHICLES } from '#/components/typing/CarIcon'
+import CarIcon, {
+  VEHICLE_CATEGORIES,
+  VEHICLES,
+} from '#/components/typing/CarIcon'
 import { Trail } from '#/components/typing/RaceTrack'
 import { CAR_COLORS, useProfile } from '#/lib/profile/useProfile'
 import { TRAILS } from '#/lib/trails'
 import { POWERUPS } from '#/lib/powerups'
 import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
 import type { CarModel, VehicleCategory } from '#/components/typing/CarIcon'
-import type { PowerupKind } from '#/lib/powerups'
 
 export const Route = createFileRoute('/garage')({ component: GaragePage })
-
-const POWERUP_ICONS: Record<PowerupKind, typeof Zap> = {
-  boost: Zap,
-  nitro: Flame,
-  shell: Crosshair,
-  emp: Radar,
-  magnet: Magnet,
-}
 
 function GaragePage() {
   const {
@@ -37,20 +32,6 @@ function GaragePage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Garage.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Model and upgrades — saved automatically. Everything's unlocked
-            for now.
-          </p>
-        </div>
-
         <Card className="rise-in overflow-hidden">
           <CardContent className="pt-6">
             <div className="race-track mb-8">
@@ -195,7 +176,6 @@ function GaragePage() {
           </CardHeader>
           <CardContent className="grid grid-cols-2 gap-3 pt-0 pb-8">
             {POWERUPS.map((option) => {
-              const Icon = POWERUP_ICONS[option.id]
               const equipped = option.id === equippedPowerup
               return (
                 <button
@@ -207,7 +187,7 @@ function GaragePage() {
                     equipped && 'border-primary bg-primary/12',
                   )}
                 >
-                  <Icon className="size-5 shrink-0 text-primary" />
+                  <PixelIcon name={option.id} className="size-8" />
                   <span className="flex-1">
                     <p className="text-sm font-bold">{option.label}</p>
                     <p className="text-xs text-muted-foreground">

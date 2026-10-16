@@ -18,16 +18,6 @@ function StatsPage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Your stats.
-          </h1>
-        </div>
-
         {!hydrated ? (
           // Distinct from the "No races yet" empty state below — this is only shown for the one
           // tick before useProfile reads localStorage. Without this separate branch, a page load
@@ -65,7 +55,11 @@ function StatsPage() {
         ) : (
           <Card className="rise-in overflow-hidden">
             <CardContent className="flex flex-wrap justify-around gap-4 pt-6">
-              <Gauge label="best wpm" value={stats.bestWpm} max={WPM_GAUGE_MAX} />
+              <Gauge
+                label="best wpm"
+                value={stats.bestWpm}
+                max={WPM_GAUGE_MAX}
+              />
               <Gauge label="avg wpm" value={stats.avgWpm} max={WPM_GAUGE_MAX} />
               <Gauge
                 label="avg accuracy"
@@ -73,7 +67,10 @@ function StatsPage() {
                 max={100}
                 suffix="%"
               />
-              <DigitalReadout label="races run" value={String(stats.racesPlayed)} />
+              <DigitalReadout
+                label="races run"
+                value={String(stats.racesPlayed)}
+              />
             </CardContent>
 
             <div className="glass-divider" />

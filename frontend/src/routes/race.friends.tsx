@@ -31,19 +31,6 @@ function FriendsPage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Race with friends.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Create a room and send the link, or join one you were sent.
-          </p>
-        </div>
-
         <Card className="rise-in overflow-hidden">
           <CardHeader className="py-5">
             <p className="kicker">Create a room</p>

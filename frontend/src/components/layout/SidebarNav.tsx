@@ -1,13 +1,5 @@
 import { Link, useRouterState } from '@tanstack/react-router'
-import {
-  Award,
-  Car,
-  Keyboard,
-  LineChart,
-  PlayCircle,
-  Trophy,
-  UserPlus,
-} from 'lucide-react'
+import PixelIcon from '#/components/ui/PixelIcon'
 import { cn } from '#/lib/utils'
 
 // Grouped like lichess's sidebar rather than one flat list of links —
@@ -23,21 +15,21 @@ export const NAV_GROUPS = [
   {
     label: 'Improve',
     items: [
-      { to: '/guide', label: 'Type faster', icon: Keyboard },
-      { to: '/stats', label: 'Stats', icon: LineChart },
-      { to: '/achievements', label: 'Achievements', icon: Award },
+      { to: '/guide', label: 'Type faster', icon: 'keyboard' },
+      { to: '/stats', label: 'Stats', icon: 'stats' },
+      { to: '/achievements', label: 'Achievements', icon: 'achievements' },
     ],
   },
   {
     label: 'Garage',
-    items: [{ to: '/garage', label: 'Garage', icon: Car }],
+    items: [{ to: '/garage', label: 'Garage', icon: 'garage' }],
   },
   {
     label: 'Compete',
     items: [
-      { to: '/leaderboards', label: 'Leaderboards', icon: Trophy },
-      { to: '/friends', label: 'Friends', icon: UserPlus },
-      { to: '/replays', label: 'Replays', icon: PlayCircle },
+      { to: '/leaderboards', label: 'Leaderboards', icon: 'leaderboards' },
+      { to: '/friends', label: 'Friends', icon: 'friends' },
+      { to: '/replays', label: 'Replays', icon: 'replays' },
     ],
   },
 ] as const
@@ -84,7 +76,7 @@ export function SidebarNavList({
                   className="sidebar-link"
                 >
                   <span className="relative flex shrink-0 items-center justify-center">
-                    <item.icon className="size-4" strokeWidth={2.25} />
+                    <PixelIcon name={item.icon} />
                   </span>
                   {!collapsed && <span className="truncate">{item.label}</span>}
                 </Link>

@@ -22,10 +22,6 @@ const CATEGORIES: Array<AchievementCategory> = [
 
 function AchievementsPage() {
   const { hydrated, stats, races } = useProfile()
-  const unlockedCount = hydrated
-    ? ACHIEVEMENTS.filter((a) => a.unlocked(stats, races)).length
-    : 0
-
   const byCategory = new Map<AchievementCategory, Array<Achievement>>()
   for (const achievement of ACHIEVEMENTS) {
     const list = byCategory.get(achievement.category) ?? []
@@ -36,19 +32,6 @@ function AchievementsPage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Achievements.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {unlockedCount} of {ACHIEVEMENTS.length} unlocked
-          </p>
-        </div>
-
         <Card className="rise-in overflow-hidden">
           {CATEGORIES.map((category, i) => (
             <div key={category}>

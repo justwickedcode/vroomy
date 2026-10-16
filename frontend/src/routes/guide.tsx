@@ -53,28 +53,28 @@ function Practice() {
         </div>
       </CardHeader>
 
-      {/* The drill never ends, so there's no finish to drive toward: the car pulls off the line
-          once you start typing and then cruises, with the road scrolling at your current WPM. */}
-      <RaceTrack
-        racers={[
-          {
-            id: 'you',
-            name: user?.name ?? 'You',
-            progress: wpm > 0 ? 0.4 : 0,
-            wpm,
-            isYou: true,
-            model: profile.carModel,
-            underglow: profile.underglow,
-            underglowColor: profile.underglowColor,
-            trail: profile.trail,
-          },
-        ]}
-        phase="ready"
-        finishLine={false}
-        className="flex-shrink-0"
-      />
-
       <CardContent className="pt-6">
+        {/* The drill never ends, so there's no finish to drive toward: the car pulls off the line
+            once you start typing and then cruises, with the road scrolling at your current WPM. */}
+        <RaceTrack
+          racers={[
+            {
+              id: 'you',
+              name: user?.name ?? 'You',
+              progress: wpm > 0 ? 0.4 : 0,
+              wpm,
+              isYou: true,
+              model: profile.carModel,
+              underglow: profile.underglow,
+              underglowColor: profile.underglowColor,
+              trail: profile.trail,
+            },
+          ]}
+          phase="ready"
+          finishLine={false}
+          className="mb-4 overflow-hidden rounded-lg"
+        />
+
         <WordStream
           queue={queue}
           typed={typed}
@@ -100,19 +100,6 @@ function GuidePage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Type faster.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Drill real words, one key at a time.
-          </p>
-        </div>
-
         <Practice />
       </div>
     </main>

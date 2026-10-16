@@ -199,19 +199,6 @@ function SoloSetup() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap flex flex-col gap-8">
-        <div className="text-center">
-          <div
-            className="livery-stripe mx-auto mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Choose your pace.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Pick a preset, or dial in your own number.
-          </p>
-        </div>
-
         <Card className="rise-in w-full overflow-hidden">
           <CardContent className="grid grid-cols-2 gap-3 pt-6 sm:grid-cols-4">
             {SPEED_RANGES.map((range, i) => (

@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import {
-  Crosshair,
-  Flame,
-  Magnet,
-  Medal,
-  PlayCircle,
-  Radar,
-  RotateCcw,
-  Sparkles,
-  Trophy,
-  Zap,
-} from 'lucide-react'
+import { Medal, PlayCircle, RotateCcw, Sparkles, Trophy } from 'lucide-react'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
@@ -25,27 +14,10 @@ import Gauge from '#/components/typing/Gauge'
 import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
 import QuoteCredit from '#/components/typing/QuoteCredit'
+import PixelIcon from '#/components/ui/PixelIcon'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
 import type { PowerupKind } from '#/lib/powerups'
-
-const POWERUP_ICONS: Record<PowerupKind, typeof Zap> = {
-  boost: Zap,
-  nitro: Flame,
-  shell: Crosshair,
-  emp: Radar,
-  magnet: Magnet,
-}
-
-// Matches each powerup's `--pu-c` accent in styles.css (activation burst/impact effects) so the
-// status chip and the effect that fires when you use it read as the same thing.
-const POWERUP_COLORS: Record<PowerupKind, string> = {
-  boost: '#fbbf24',
-  nitro: '#fb5607',
-  shell: '#ef4444',
-  emp: '#38bdf8',
-  magnet: '#a855f7',
-}
 
 const MEDAL_COLORS: Record<number, string> = {
   1: '#facc15',
@@ -340,7 +312,6 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
 
   // Shown for the whole race, ready or spent, so the chip never pops in and out.
   const equippedDef = POWERUPS.find((p) => p.id === profile.equippedPowerup)
-  const EquippedIcon = POWERUP_ICONS[profile.equippedPowerup]
 
   return (
     <Card className="rise-in flex flex-col overflow-hidden">
@@ -376,11 +347,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
                     Race Again
                   </Button>
                   {replayId && (
-                    <Button
-                      asChild
-                      size="lg"
-                      className="pointer-events-auto"
-                    >
+                    <Button asChild size="lg" className="pointer-events-auto">
                       <Link to="/replays/$replayId" params={{ replayId }}>
                         <PlayCircle />
                         Watch replay
@@ -411,10 +378,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
                 powerup ? 'hover:text-foreground' : 'opacity-40',
               )}
             >
-              <EquippedIcon
-                className="size-3.5"
-                style={{ color: POWERUP_COLORS[profile.equippedPowerup] }}
-              />
+              <PixelIcon name={profile.equippedPowerup} />
               {equippedDef.label}
               <span>{powerup ? '· once per race' : '· used'}</span>
               {powerup && (

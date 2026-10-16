@@ -12,16 +12,6 @@ function AccountPage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Account.
-          </h1>
-        </div>
-
         {!loaded ? (
           <Card className="rise-in overflow-hidden">
             <CardContent className="flex items-center gap-4 pt-6 pb-6">
@@ -75,8 +65,8 @@ function AccountPage() {
               <UserRound className="mb-2 size-8 text-muted-foreground" />
               <p className="font-semibold">Not logged in</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Log in to keep your stats, cosmetics, and race history tied
-                to your account.
+                Log in to keep your stats, cosmetics, and race history tied to
+                your account.
               </p>
             </CardHeader>
             <CardContent className="pb-10">

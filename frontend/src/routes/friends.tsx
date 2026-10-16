@@ -140,16 +140,6 @@ function FriendsPage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Friends.
-          </h1>
-        </div>
-
         {!loaded ? (
           <Card className="rise-in overflow-hidden">
             <CardContent className="flex flex-col gap-2 py-6">

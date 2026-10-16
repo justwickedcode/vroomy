@@ -14,10 +14,11 @@ import { checkBackendConnectivity } from '#/lib/checkBackendConnectivity'
 import appCss from '../styles.css?url'
 
 import type { QueryClient } from '@tanstack/react-query'
+import { logoSvgMarkup } from '#/components/ui/PixelIcon'
 import type { ErrorComponentProps } from '@tanstack/react-router'
 
-const FAVICON =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2338bdf8'/%3E%3Cg fill='white'%3E%3Crect x='8' y='8' width='4' height='4'/%3E%3Crect x='16' y='8' width='4' height='4'/%3E%3Crect x='12' y='12' width='4' height='4'/%3E%3Crect x='20' y='12' width='4' height='4'/%3E%3Crect x='8' y='16' width='4' height='4'/%3E%3Crect x='16' y='16' width='4' height='4'/%3E%3Crect x='12' y='20' width='4' height='4'/%3E%3Crect x='20' y='20' width='4' height='4'/%3E%3C/g%3E%3C/svg%3E"
+// The same pixel-art car as the sidebar logo (see PixelIcon).
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(logoSvgMarkup())}`
 
 const DESCRIPTION =
   'A multiplayer typing race game — race real quotes against AI bots, type fast, and watch your car cross the finish line first.'

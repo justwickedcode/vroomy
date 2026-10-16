@@ -109,21 +109,6 @@ function LeaderboardsPage() {
   return (
     <main className="flex-1 px-4 py-8 sm:py-10">
       <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Leaderboards.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {board === 'daily'
-              ? "Best run on today's daily passage."
-              : 'Each racer’s single fastest race in the window.'}
-          </p>
-        </div>
-
         <Card className="rise-in overflow-hidden">
           <CardHeader className="flex-col items-stretch gap-3 py-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <Segmented

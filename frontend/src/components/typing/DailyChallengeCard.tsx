@@ -170,26 +170,26 @@ export default function DailyChallengeCard() {
         </div>
       </CardHeader>
 
-      <RaceTrack
-        racers={[
-          {
-            id: 'you',
-            name: user?.name ?? 'You',
-            progress,
-            wpm,
-            finished,
-            isYou: true,
-            model: profile.carModel,
-            underglow: profile.underglow,
-            underglowColor: profile.underglowColor,
-            trail: profile.trail,
-          },
-        ]}
-        phase="ready"
-        className="flex-shrink-0"
-      />
-
       <CardContent className="pt-6">
+        <RaceTrack
+          racers={[
+            {
+              id: 'you',
+              name: user?.name ?? 'You',
+              progress,
+              wpm,
+              finished,
+              isYou: true,
+              model: profile.carModel,
+              underglow: profile.underglow,
+              underglowColor: profile.underglowColor,
+              trail: profile.trail,
+            },
+          ]}
+          phase="ready"
+          className="mb-5 overflow-hidden rounded-lg"
+        />
+
         {hydrated && bestWpm > 0 && !finished && (
           <div className="mb-5 flex items-center gap-2 rounded-lg border border-border bg-secondary/40 p-3 text-sm text-muted-foreground">
             <Trophy className="size-4 shrink-0 text-primary" />
@@ -220,11 +220,7 @@ export default function DailyChallengeCard() {
                   Try again
                 </Button>
                 {replayId && (
-                  <Button
-                    asChild
-                    size="lg"
-                    className="pointer-events-auto"
-                  >
+                  <Button asChild size="lg" className="pointer-events-auto">
                     <Link to="/replays/$replayId" params={{ replayId }}>
                       <PlayCircle />
                       Watch replay
