@@ -59,16 +59,16 @@ function StatCell({
   )
 }
 
-// The title-screen lineup: four cars from a hand-picked set of the coolest rides, in a fixed
+// The title-screen lineup: four rivals from a hand-picked set of the coolest rides, in a fixed
 // staggered formation around the player's car. Picked by the date, so the grid changes once a
 // day but stays put while you're looking at it.
 const SHOWCASE_CARS = [
-  { model: 'lambo', name: 'Lambo' },
-  { model: 'super', name: 'Super' },
-  { model: 'pixel-racer-blue', name: 'Blue Racer' },
-  { model: 'drift', name: 'Drift' },
-  { model: 'police', name: 'Police' },
-  { model: 'pixel-racer-red', name: 'Red Racer' },
+  { model: 'lambo', name: 'Viper' },
+  { model: 'super', name: 'Phantom' },
+  { model: 'pixel-racer-blue', name: 'Blitz' },
+  { model: 'drift', name: 'Razor' },
+  { model: 'police', name: 'Interceptor' },
+  { model: 'pixel-racer-red', name: 'Inferno' },
 ]
 // Where each lane's car sits along the track, top to bottom; the player is the middle lane.
 // You always lead — the middle lane is furthest ahead, everyone else trails behind.

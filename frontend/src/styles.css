@@ -911,6 +911,15 @@ body::before {
   height: 66px;
 }
 
+/* Night-time asphalt with a purple cast, so the road belongs to the synthwave skyline. */
+.race-track-panel--epic .race-lane:nth-child(odd) {
+  background: linear-gradient(180deg, #2a2536 0%, #26212f 100%);
+}
+
+.race-track-panel--epic .race-lane:nth-child(even) {
+  background: linear-gradient(180deg, #221e2c 0%, #1f1b28 100%);
+}
+
 .race-track-panel--epic .race-car-svg {
   width: 6.5rem;
 }
@@ -930,6 +939,21 @@ body::before {
   height: 2px;
   background: linear-gradient(90deg, transparent, rgb(255 255 255 / 55%));
   animation: race-speedline linear infinite;
+}
+
+/* Epic barriers: dark steel rails with a glowing neon magenta strip and cyan marker lights that
+   scroll with the road, instead of red/white kerbs — synthwave, to match the skyline. */
+.race-track-panel--epic .race-curb {
+  height: 12px;
+  background:
+    repeating-linear-gradient(90deg, #22d3ee 0 6px, transparent 6px 36px)
+      calc(-1 * var(--road-pos, 0px)) 7px / auto 3px no-repeat,
+    linear-gradient(#ff2fb4, #ff2fb4) 0 2px / 100% 2px no-repeat,
+    #15101f;
+  background-repeat: repeat-x, no-repeat, no-repeat;
+  box-shadow:
+    0 0 10px 1px rgb(255 47 180 / 45%),
+    inset 0 -2px 0 rgb(0 0 0 / 45%);
 }
 
 @keyframes race-speedline {
