@@ -406,7 +406,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                     <div className="pointer-events-none absolute top-3 right-3 z-10">
                       <span
                         className={cn(
-                          'rounded-full px-3 py-1 text-[0.7rem] font-semibold',
+                          'px-corners pixel-text px-3 py-1 text-[0.7rem] font-semibold',
                           mp.frozen
                             ? 'bg-sky-500/90 text-white'
                             : 'bg-secondary/80 text-muted-foreground',

@@ -16,7 +16,10 @@ export default function PlayerAvatar({
       <img
         src={avatarUrl}
         alt=""
-        className={cn('size-7 shrink-0 rounded-full object-cover', className)}
+        className={cn(
+          'px-corners size-7 shrink-0 object-cover [image-rendering:pixelated]',
+          className,
+        )}
       />
     )
   }
@@ -24,7 +27,7 @@ export default function PlayerAvatar({
     <span
       aria-hidden="true"
       className={cn(
-        'flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold',
+        'px-corners pixel-text flex size-7 shrink-0 items-center justify-center bg-secondary text-xs font-semibold',
         className,
       )}
     >

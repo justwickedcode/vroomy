@@ -383,7 +383,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
               )}
               {!finished && lastEvent && (
                 <div className="pointer-events-none absolute top-3 right-3 z-10">
-                  <span className="rounded-full bg-secondary/80 px-3 py-1 text-[0.7rem] font-semibold text-muted-foreground">
+                  <span className="px-corners pixel-text bg-secondary/80 px-3 py-1 text-[0.7rem] font-semibold text-muted-foreground">
                     {lastEvent}
                   </span>
                 </div>

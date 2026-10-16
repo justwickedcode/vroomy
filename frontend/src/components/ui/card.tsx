@@ -5,7 +5,10 @@ function Card({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       data-slot="card"
-      className={cn('glass-panel rounded-xl text-card-foreground', className)}
+      className={cn(
+        'glass-panel px-corners rounded-xl text-card-foreground',
+        className,
+      )}
       {...props}
     />
   )

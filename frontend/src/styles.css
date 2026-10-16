@@ -1,14 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=Silkscreen:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @theme {
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  /* Headlines only — condensed and industrial, standing apart from the UI's own sans so
-     numbers/labels/passage text (all IBM Plex, one coherent instrument system) don't compete
-     with it. See h1/h2 base styles below for where this actually gets applied. */
-  --font-display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  /* Pixel faces, matching the pixel-art cars and icons: Pixelify Sans for headlines, buttons and
+     big numbers (pixel-shaped but still easy to read), Silkscreen for tiny all-caps labels
+     (kickers, badges). Body copy and the passage you type stay in IBM Plex for readability. */
+  --font-display: 'Pixelify Sans', 'IBM Plex Mono', monospace;
+  --font-pixel: 'Silkscreen', 'IBM Plex Mono', monospace;
+  /* No rounded corners anywhere — pixel art doesn't have them. Shapes get stepped "pixel"
+     corners instead (see .px-corners). */
+  --radius-xs: 0px;
 }
 
 @theme inline {
@@ -32,10 +36,10 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-signal: var(--signal);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
 }
 
 /* Instrument Cluster: a cockpit, not a SaaS dashboard wearing a racing skin — see
@@ -47,7 +51,24 @@
    and `success` keep their own real hue on purpose, same as before: semantic signals, not
    brand color, so they stay put through every visual pass. */
 :root {
-  --radius: 0.25rem;
+  --radius: 0;
+  /* Size of the stepped corner cut by .px-corners — the same as the 2px borders, so edges meet
+     at a single diagonal step like a hand-drawn pixel box. */
+  --notch: 2px;
+  --px-clip: polygon(
+    0 var(--notch),
+    var(--notch) var(--notch),
+    var(--notch) 0,
+    calc(100% - var(--notch)) 0,
+    calc(100% - var(--notch)) var(--notch),
+    100% var(--notch),
+    100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%,
+    var(--notch) 100%,
+    var(--notch) calc(100% - var(--notch)),
+    0 calc(100% - var(--notch))
+  );
 
   --background: oklch(0.09 0.004 75);
   --foreground: oklch(0.96 0.004 85);
@@ -104,7 +125,26 @@ h1,
 h2 {
   font-family: var(--font-display);
   text-transform: uppercase;
-  letter-spacing: -0.005em;
+  letter-spacing: 0.01em;
+}
+
+/* Stepped "pixel-rounded" corners: cuts a --notch square off each corner, the CSS version of a
+   sprite's rounded corner. Used by every card, chip, button, badge and input. */
+.px-corners {
+  clip-path: var(--px-clip);
+}
+
+/* Pixel type for UI text that should feel part of the game (buttons, numbers) — readable at
+   body sizes, unlike the tiny-caps --font-pixel. */
+.pixel-text {
+  font-family: var(--font-display);
+  letter-spacing: 0.02em;
+}
+
+/* Square, hard-edged focus outline instead of a soft ring. */
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
 }
 
 /* A near-flat dark surface with one faint gradient — not a SaaS hero-glow
@@ -116,11 +156,19 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image: radial-gradient(
-    900px 500px at 15% -10%,
-    color-mix(in oklab, var(--color-primary) 7%, transparent),
-    transparent 65%
-  );
+  background-image:
+    radial-gradient(
+      900px 500px at 15% -10%,
+      color-mix(in oklab, var(--color-primary) 7%, transparent),
+      transparent 65%
+    ),
+    /* A faint 8px pixel grid, like graph paper for sprites. */
+    linear-gradient(rgb(255 255 255 / 2.5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 2.5%) 1px, transparent 1px);
+  background-size:
+    auto,
+    8px 8px,
+    8px 8px;
 }
 
 .page-wrap {
@@ -132,10 +180,11 @@ body::before {
 .glass-panel {
   position: relative;
   background: var(--color-card);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-border);
+  /* Hard, flat pixel bevel: a light top edge and dark bottom edge inside the box, no blur. */
   box-shadow:
-    inset 0 1px 0 color-mix(in oklab, white 6%, transparent),
-    0 24px 48px -16px rgb(0 0 0 / 70%);
+    inset 0 2px 0 color-mix(in oklab, white 6%, transparent),
+    inset 0 -3px 0 rgb(0 0 0 / 35%);
 }
 
 /* @layer components, not a bare rule: Tailwind's own utilities (border-primary,
@@ -149,18 +198,19 @@ body::before {
 @layer components {
   .glass-chip {
     background: var(--color-secondary);
-    border: 1px solid var(--color-border);
+    border: 2px solid var(--color-border);
+    box-shadow: inset 0 -3px 0 rgb(0 0 0 / 30%);
+    clip-path: var(--px-clip);
   }
 }
 
 .glass-divider {
-  height: 1px;
-  background: linear-gradient(
+  height: 2px;
+  /* A dashed pixel line. */
+  background: repeating-linear-gradient(
     90deg,
-    transparent,
-    color-mix(in oklab, white 14%, var(--color-border)) 20%,
-    color-mix(in oklab, white 14%, var(--color-border)) 80%,
-    transparent
+    color-mix(in oklab, white 10%, var(--color-border)) 0 4px,
+    transparent 4px 8px
   );
 }
 
@@ -168,22 +218,20 @@ body::before {
   display: inline-flex;
   align-items: center;
   gap: 0.5em;
-  font-family: var(--font-mono);
-  letter-spacing: 0.16em;
+  font-family: var(--font-pixel);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  font-weight: 600;
+  font-weight: 400;
   font-size: 0.7rem;
   color: var(--color-muted-foreground);
 }
 
 .kicker::before {
   content: '';
-  width: 0.4em;
-  height: 0.4em;
+  width: 6px;
+  height: 6px;
   flex-shrink: 0;
-  border-radius: 50%;
   background: var(--color-signal);
-  box-shadow: 0 0 6px 1px var(--color-signal);
 }
 
 /* --- Pit-lane chrome: nav, ticker, livery stripe, stagger/tilt utilities --- */
@@ -279,8 +327,7 @@ body::before {
   left: -1rem;
   top: 0.3rem;
   bottom: 0.3rem;
-  width: 2px;
-  border-radius: 999px;
+  width: 3px;
   background: var(--color-primary);
   transform: scaleY(0);
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -307,7 +354,7 @@ body::before {
    for the primary readout wherever a stat is the point of the row (not
    every incidental number on a page). */
 .stat-figure {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
@@ -367,22 +414,22 @@ body::before {
 
 .btn-primary-glow {
   background: var(--color-primary);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
-  transition:
-    background-color 120ms ease,
-    box-shadow 200ms ease;
+  /* A chunky arcade-button lip: the bottom edge is a darker band that the button "presses"
+     into on click (see :active). */
+  box-shadow: inset 0 -4px 0 rgb(0 0 0 / 25%);
+  transition: background-color 120ms ease;
 }
 
 /* The one button that ever turns signal amber — an ignition switch, not a hover state every
    control on the page shares. Ghost/outline/secondary buttons stay neutral on hover. */
 .btn-primary-glow:hover {
   background: var(--color-signal);
-  box-shadow: 0 0 0 4px
-    color-mix(in oklab, var(--color-signal) 20%, transparent);
 }
 
-.btn-primary-glow:active {
-  filter: brightness(0.95);
+/* Pressed: the whole button drops onto its lip, for every button variant. */
+[data-slot='button']:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: inset 0 -1px 0 rgb(0 0 0 / 25%);
 }
 
 /* An automotive semi-circle dial (needle, ticks, a three-zone arc), not a full progress ring —

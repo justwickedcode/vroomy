@@ -240,7 +240,7 @@ function GaragePage() {
               >
                 <span
                   aria-hidden="true"
-                  className="size-8 shrink-0 rounded-full border border-border"
+                  className="px-corners size-8 shrink-0 border-2 border-border"
                   style={{ backgroundColor: underglowColor }}
                 />
                 <span className="flex-1">
@@ -266,7 +266,7 @@ function GaragePage() {
               >
                 <span
                   aria-hidden="true"
-                  className="size-8 shrink-0 rounded-full border border-border"
+                  className="px-corners size-8 shrink-0 border-2 border-border"
                   style={{ backgroundColor: underglowColor }}
                 />
                 <span className="flex-1">
@@ -286,7 +286,7 @@ function GaragePage() {
                     aria-label={`${swatch.id} underglow`}
                     onClick={() => setUnderglowColor(swatch.value)}
                     className={cn(
-                      'flex size-9 items-center justify-center rounded-full border-2 transition-transform hover:scale-110',
+                      'px-corners flex size-9 items-center justify-center border-2 transition-transform hover:scale-110',
                       swatch.value === underglowColor
                         ? 'border-foreground'
                         : 'border-transparent',
@@ -301,7 +301,7 @@ function GaragePage() {
                 {/* A native color input, not another swatch row — the 8 presets above cover
                     "pick a nice color fast", this covers "no really, this exact hex". */}
                 <label
-                  className="relative flex size-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-muted-foreground"
+                  className="px-corners relative flex size-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden border-2 border-dashed border-muted-foreground"
                   title="Custom color"
                 >
                   <input
@@ -343,7 +343,7 @@ function GaragePage() {
                     mid-race (see RaceTrack's Trail), anchored to a small dot standing in for
                     the car so the effect has something to trail off of. */}
                 <div className="flex h-7 w-16 items-center justify-end self-center">
-                  <span className="relative inline-block size-2 shrink-0 rounded-full bg-foreground/70">
+                  <span className="relative inline-block size-2 shrink-0 bg-foreground/70">
                     <Trail variant={option.id} />
                   </span>
                 </div>
