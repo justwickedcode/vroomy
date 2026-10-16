@@ -1,3 +1,4 @@
+import { cn } from '#/lib/utils'
 import type { CSSProperties } from 'react'
 
 // A pixel-art synthwave backdrop for the dashboard's title-screen track, built as parallax
@@ -133,10 +134,13 @@ function layer(image: string, speed: number): CSSProperties {
   }
 }
 
-export default function PixelSkyline() {
+export default function PixelSkyline({ className }: { className?: string }) {
   const band = H / SKY.length
   return (
-    <div className="relative h-28 overflow-hidden sm:h-36" aria-hidden="true">
+    <div
+      className={cn('relative h-28 overflow-hidden sm:h-36', className)}
+      aria-hidden="true"
+    >
       <svg
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="xMidYMax slice"
