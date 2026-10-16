@@ -911,6 +911,46 @@ body::before {
   height: 66px;
 }
 
+/* A showcase, not a race: no WPM readouts on the lanes. */
+.race-track-panel--epic .race-wpm {
+  display: none;
+}
+
+/* Pools of streetlight on the asphalt, one under each lamp of the skyline's street layer, sliding
+   past at road speed — they line up with the lamps because both move by exactly --road-pos and
+   share the lamp spacing (40 skyline px at the skyline's scale: 112px tall -> 70px, 144px -> 90px).
+   This is what ties the city to the road. */
+.race-track-panel--epic {
+  --lamp-gap: 70px;
+  --lamp-x: 37px;
+}
+
+@media (min-width: 640px) {
+  .race-track-panel--epic {
+    --lamp-gap: 90px;
+    --lamp-x: 47px;
+  }
+}
+
+.race-track-panel--epic .race-lanes-area::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: radial-gradient(
+    ellipse 30% 55% at 50% 0%,
+    rgb(165 243 252 / 16%),
+    transparent 100%
+  );
+  background-size: var(--lamp-gap) 100%;
+  background-repeat: repeat-x;
+  background-position-x: calc(
+    var(--lamp-x) - var(--lamp-gap) / 2 - var(--road-pos, 0px)
+  );
+  mix-blend-mode: screen;
+}
+
 /* Night-time asphalt with a purple cast, so the road belongs to the synthwave skyline. */
 .race-track-panel--epic .race-lane:nth-child(odd) {
   background: linear-gradient(180deg, #2a2536 0%, #26212f 100%);

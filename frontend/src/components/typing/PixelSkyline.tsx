@@ -1,7 +1,18 @@
-// A pixel-art synthwave backdrop for the dashboard's title-screen track: stepped sunset bands,
-// a big striped sun, and two layers of city silhouettes with lit windows. Everything is drawn on
-// a coarse grid with crisp edges, so it reads as sprite art at any width. The city is generated
-// from a fixed seed — the same skyline every time, no randomness at render.
+import type { CSSProperties } from 'react'
+
+// A pixel-art synthwave backdrop for the dashboard's title-screen track, built as parallax
+// layers so the city moves with the road instead of sitting behind it like a poster:
+//
+//   sky + sun   — static (infinitely far away)
+//   far city    — drifts at 15% of road speed
+//   near city   — 35% of road speed, with lit windows
+//   street      — exactly road speed: the sidewalk, neon kerb and streetlights right next to the
+//                 track, so the street edge is locked to the road below it (the track's light
+//                 pools line up with these lamps — see .race-track-panel--epic in styles.css)
+//
+// The moving layers are repeating SVG tiles used as CSS backgrounds, positioned from the track's
+// own --road-pos (set every frame by RaceTrack), so they wrap forever with no JS of their own.
+// Everything is generated from fixed seeds — the same city every time.
 
 const W = 320
 const H = 64
@@ -9,7 +20,7 @@ const H = 64
 // same colour as the track's barrier right below it, so the city and the road share one ground.
 const GROUND = 5
 const STREET = '#15101f'
-// One streetlight every this many pixels along the sidewalk.
+// One streetlight every this many pixels along the sidewalk (W is a multiple, so tiles seam).
 const LIGHT_SPACING = 40
 
 // Small deterministic PRNG (mulberry32) so the skyline is identical on server and client.
@@ -34,34 +45,59 @@ const SKY = [
   '#f59145',
 ]
 
-interface Building {
-  x: number
-  w: number
-  h: number
-  windows: Array<[number, number]>
+function rect(x: number, y: number, w: number, h: number, fill: string) {
+  return `<rect x='${x}' y='${y}' width='${w}' height='${h}' fill='${fill}'/>`
 }
 
-function city(seed: number, minH: number, maxH: number, windowChance: number) {
+// A row of buildings standing on the sidewalk, as SVG rects (windows optional).
+function cityRects(
+  seed: number,
+  minH: number,
+  maxH: number,
+  body: string,
+  windowChance: number,
+) {
   const next = rng(seed)
-  const buildings: Array<Building> = []
-  let x = -2
+  const parts: Array<string> = []
+  let x = 0
   while (x < W) {
-    const w = 6 + Math.floor(next() * 12)
+    const w = Math.min(6 + Math.floor(next() * 12), W - x)
     const h = minH + Math.floor(next() * (maxH - minH))
-    const windows: Array<[number, number]> = []
-    for (let wy = H - h + 3; wy < H - 2; wy += 3) {
+    const top = H - GROUND - h
+    parts.push(rect(x, top, w, h, body))
+    for (let wy = top + 3; wy < H - GROUND - 2; wy += 3) {
       for (let wx = x + 2; wx < x + w - 1; wx += 3) {
-        if (next() < windowChance) windows.push([wx, wy])
+        if (next() < windowChance) parts.push(rect(wx, wy, 1, 1, '#ffcf5a'))
       }
     }
-    buildings.push({ x, w, h, windows })
     x += w + (next() < 0.3 ? 1 : 0)
   }
-  return buildings
+  return parts.join('')
 }
 
-const FAR = city(7, 14, 34, 0)
-const NEAR = city(42, 8, 26, 0.22)
+function streetRects() {
+  const parts = [
+    rect(0, H - GROUND, W, GROUND, STREET),
+    rect(0, H - GROUND, W, 1, '#ff2fb4'),
+  ]
+  for (let x = 18; x < W; x += LIGHT_SPACING) {
+    const top = H - GROUND - 14
+    parts.push(rect(x, top, 1, 14, '#3a2a4f'))
+    parts.push(rect(x, top, 4, 1, '#3a2a4f'))
+    parts.push(rect(x + 2, top - 1, 3, 3, 'rgba(34,211,238,0.3)'))
+    parts.push(rect(x + 3, top + 1, 1, 1, '#a5f3fc'))
+  }
+  return parts.join('')
+}
+
+function tile(body: string) {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 ${W} ${H}' shape-rendering='crispEdges'>${body}</svg>`
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+}
+
+const FAR_TILE = tile(cityRects(7, 14, 34, '#2a1240', 0))
+const NEAR_TILE = tile(cityRects(42, 8, 26, '#12081f', 0.22))
+const STREET_TILE = tile(streetRects())
 
 // The sun: a pixel disc centred on the horizon, cut by widening horizontal gaps toward its base.
 const SUN: Array<[number, number, number]> = []
@@ -78,92 +114,43 @@ const SUN: Array<[number, number, number]> = []
   }
 }
 
+function layer(image: string, speed: number): CSSProperties {
+  return {
+    backgroundImage: image,
+    backgroundRepeat: 'repeat-x',
+    backgroundSize: 'auto 100%',
+    backgroundPositionX: `calc(var(--road-pos, 0px) * ${-speed})`,
+    imageRendering: 'pixelated',
+  }
+}
+
 export default function PixelSkyline() {
   const band = H / SKY.length
-  // Buildings stand on the sidewalk, not the bottom edge.
-  const lift = GROUND
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="xMidYMax slice"
-      shapeRendering="crispEdges"
-      className="block h-28 w-full sm:h-36"
-      aria-hidden="true"
-    >
-      {SKY.map((color, i) => (
-        <rect
-          key={color}
-          x={0}
-          y={Math.floor(i * band)}
-          width={W}
-          height={Math.ceil(band) + 1}
-          fill={color}
-        />
-      ))}
-      {SUN.map(([x, y, w]) => (
-        <rect key={y} x={x} y={y} width={w} height={1} fill="#ffd166" />
-      ))}
-      {FAR.map((b) => (
-        <rect
-          key={`f${b.x}`}
-          x={b.x}
-          y={H - lift - b.h}
-          width={b.w}
-          height={b.h}
-          fill="#2a1240"
-        />
-      ))}
-      {NEAR.map((b) => (
-        <g key={`n${b.x}`}>
+    <div className="relative h-28 overflow-hidden sm:h-36" aria-hidden="true">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="xMidYMax slice"
+        shapeRendering="crispEdges"
+        className="absolute inset-0 h-full w-full"
+      >
+        {SKY.map((color, i) => (
           <rect
-            x={b.x}
-            y={H - lift - b.h}
-            width={b.w}
-            height={b.h}
-            fill="#12081f"
+            key={color}
+            x={0}
+            y={Math.floor(i * band)}
+            width={W}
+            height={Math.ceil(band) + 1}
+            fill={color}
           />
-          {b.windows.map(([wx, wy]) => (
-            <rect
-              key={`${wx},${wy}`}
-              x={wx}
-              y={wy - lift}
-              width={1}
-              height={1}
-              fill="#ffcf5a"
-            />
-          ))}
-        </g>
-      ))}
-      {/* Sidewalk with a neon kerb glow along its edge. */}
-      <rect x={0} y={H - GROUND} width={W} height={GROUND} fill={STREET} />
-      <rect
-        x={0}
-        y={H - GROUND}
-        width={W}
-        height={1}
-        fill="#ff2fb4"
-        fillOpacity={0.55}
-      />
-      {/* Streetlights: a pole, an arm over the road and a cyan lamp with a soft pool of light. */}
-      {Array.from({ length: Math.ceil(W / LIGHT_SPACING) }, (_, i) => {
-        const x = 18 + i * LIGHT_SPACING
-        const top = H - GROUND - 14
-        return (
-          <g key={x}>
-            <rect x={x} y={top} width={1} height={14} fill="#3a2a4f" />
-            <rect x={x} y={top} width={4} height={1} fill="#3a2a4f" />
-            <rect
-              x={x + 2}
-              y={top - 1}
-              width={3}
-              height={3}
-              fill="#22d3ee"
-              fillOpacity={0.25}
-            />
-            <rect x={x + 3} y={top + 1} width={1} height={1} fill="#a5f3fc" />
-          </g>
-        )
-      })}
-    </svg>
+        ))}
+        {SUN.map(([x, y, w]) => (
+          <rect key={y} x={x} y={y} width={w} height={1} fill="#ffd166" />
+        ))}
+      </svg>
+      <div className="absolute inset-0" style={layer(FAR_TILE, 0.15)} />
+      <div className="absolute inset-0" style={layer(NEAR_TILE, 0.35)} />
+      <div className="absolute inset-0" style={layer(STREET_TILE, 1)} />
+    </div>
   )
 }

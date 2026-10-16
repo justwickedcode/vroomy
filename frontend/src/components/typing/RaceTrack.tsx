@@ -270,8 +270,12 @@ export default function RaceTrack({
   const brakingRef = useRef(false)
   // Base speed in px/s — derived from wpm so faster typing = faster world scroll.
   // Kept in a ref so the rAF loop always reads the latest value without re-mounting.
-  const basePxPerSecRef = useRef(36 / Math.max(0.44, 1.9 - player.wpm / 110))
-  basePxPerSecRef.current = 36 / Math.max(0.44, 1.9 - player.wpm / 110)
+  // The title-screen track runs the world three times faster — it's a high-speed chase, not a
+  // race you're typing in.
+  const worldSpeed =
+    (36 / Math.max(0.44, 1.9 - player.wpm / 110)) * (epic ? 3 : 1)
+  const basePxPerSecRef = useRef(worldSpeed)
+  basePxPerSecRef.current = worldSpeed
 
   // rAF-driven scroll: runs once for the lifetime of this component instance.
   // All road elements (curbs, dashes, asphalt) share the same roadPos so they're
