@@ -11,6 +11,11 @@ export type TrailVariant =
   | 'glitch'
   | 'inferno'
   | 'afterimage'
+  | 'hyperspace'
+  | 'toxic'
+  | 'confetti'
+  | 'blizzard'
+  | 'hearts'
 
 export const DEFAULT_TRAIL: TrailVariant = 'nitro'
 
@@ -36,4 +41,9 @@ export const TRAILS: Array<TrailDef> = [
   { id: 'glitch', label: 'Glitch' },
   { id: 'inferno', label: 'Inferno' },
   { id: 'afterimage', label: 'Afterimage' },
+  { id: 'hyperspace', label: 'Hyperspace' },
+  { id: 'toxic', label: 'Toxic' },
+  { id: 'confetti', label: 'Confetti' },
+  { id: 'blizzard', label: 'Blizzard' },
+  { id: 'hearts', label: 'Love bomb' },
 ]

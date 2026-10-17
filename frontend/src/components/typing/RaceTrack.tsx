@@ -249,6 +249,11 @@ const TRAIL_PARTS: Record<TrailVariant, number> = {
   glitch: 7,
   inferno: 8,
   afterimage: 3,
+  hyperspace: 8,
+  toxic: 7,
+  confetti: 8,
+  blizzard: 7,
+  hearts: 5,
 }
 const PART_Y = [48, 22, 70, 36, 60, 14, 82, 44]
 const PART_S = [6, 9, 5, 8, 7, 10, 6, 8]

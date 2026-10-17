@@ -2762,6 +2762,203 @@ button:not(:disabled):hover .race-itembox--ready {
   }
 }
 
+/* Hyperspace: star-streaks stretching away behind the car, like jumping to lightspeed. */
+.trail--hyperspace {
+  width: 9rem;
+}
+
+.trail--hyperspace > span {
+  width: calc(var(--s) * 6px);
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #e0f2fe 70%, #fff);
+  box-shadow: 0 0 4px rgb(186 230 253 / 80%);
+  animation: trail-hyperspace 0.45s steps(5);
+}
+
+.trail--hyperspace > span:nth-child(3n) {
+  background: linear-gradient(90deg, transparent, #a5f3fc 70%, #fff);
+}
+
+@keyframes trail-hyperspace {
+  from {
+    transform: translateX(10px) scaleX(0.2);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-90px) scaleX(1.4);
+    opacity: 0;
+  }
+}
+
+/* Toxic: green acid bubbles rising and popping over a dripping slime track. */
+.trail--toxic::before {
+  content: '';
+  position: absolute;
+  bottom: 22%;
+  right: 0;
+  width: 100%;
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #4ade80 0 6px,
+    #16a34a 6px 9px,
+    transparent 9px 12px
+  );
+  box-shadow: 0 0 8px rgb(74 222 128 / 60%);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 40%);
+  mask: linear-gradient(90deg, transparent, #000 40%);
+}
+
+.trail--toxic > span {
+  top: auto;
+  bottom: 22%;
+  right: calc(var(--i) * 13%);
+  width: calc(var(--s) * 1px);
+  height: calc(var(--s) * 1px);
+  background: rgb(74 222 128 / 35%);
+  box-shadow:
+    inset 0 0 0 2px #4ade80,
+    inset 2px 2px 0 2px rgb(220 252 231 / 70%),
+    0 0 6px rgb(74 222 128 / 70%);
+  border-radius: 2px;
+  animation: trail-toxic 0.9s steps(6);
+}
+
+@keyframes trail-toxic {
+  0% {
+    transform: translateY(0) scale(0.4);
+    opacity: 1;
+  }
+  80% {
+    transform: translateY(-22px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-26px) scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Confetti: a party behind the car — chips of every colour tumbling away. */
+.trail--confetti > span {
+  width: 6px;
+  height: 3px;
+  background: #ff2fb4;
+  animation: trail-confetti 0.8s steps(8);
+}
+
+.trail--confetti > span:nth-child(4n + 1) {
+  background: #22d3ee;
+}
+
+.trail--confetti > span:nth-child(4n + 2) {
+  background: #facc15;
+}
+
+.trail--confetti > span:nth-child(4n + 3) {
+  background: #4ade80;
+}
+
+@keyframes trail-confetti {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-36px, -14px) rotate(180deg);
+  }
+  100% {
+    transform: translate(-70px, 16px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Blizzard: pixel snowflakes swirling off the back in an icy mist. */
+.trail--blizzard::before {
+  content: '';
+  position: absolute;
+  top: 25%;
+  right: 0;
+  width: 100%;
+  height: 50%;
+  background: linear-gradient(90deg, transparent, rgb(186 230 253 / 25%));
+}
+
+.trail--blizzard > span {
+  width: 7px;
+  height: 7px;
+  background: #f0f9ff;
+  clip-path: polygon(
+    40% 0,
+    60% 0,
+    60% 40%,
+    100% 40%,
+    100% 60%,
+    60% 60%,
+    60% 100%,
+    40% 100%,
+    40% 60%,
+    0 60%,
+    0 40%,
+    40% 40%
+  );
+  filter: drop-shadow(0 0 2px #bae6fd);
+  animation: trail-blizzard 1s steps(8);
+}
+
+@keyframes trail-blizzard {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-40px, 8px) rotate(90deg);
+  }
+  100% {
+    transform: translate(-80px, -6px) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+/* Love bomb: pixel hearts floating up and away. */
+.trail--hearts > span {
+  width: 10px;
+  height: 9px;
+  background: #f472b6;
+  clip-path: polygon(
+    0 20%,
+    20% 0,
+    40% 0,
+    50% 20%,
+    60% 0,
+    80% 0,
+    100% 20%,
+    100% 50%,
+    50% 100%,
+    0 50%
+  );
+  filter: drop-shadow(0 0 3px rgb(244 114 182 / 80%));
+  animation: trail-hearts 1s steps(8);
+}
+
+.trail--hearts > span:nth-child(even) {
+  background: #fb7185;
+}
+
+@keyframes trail-hearts {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-60px, -22px) scale(1.2);
+    opacity: 0;
+  }
+}
+
 /* After every trail's own `animation` shorthand (which would reset these): the parts loop
    forever, staggered so they never move in lockstep. */
 .trail > span {
@@ -2791,24 +2988,4 @@ button:not(:disabled):hover .race-itembox--ready {
 .trail-preview-car {
   left: 70%;
   scale: 0.75;
-}
-
-/* Neon underglow (see CarIcon): a pool of light on the road under the car in hard pixel rings
-   — solid at the core, stepping out to faint — pulsing gently. */
-.car-underglow {
-  position: absolute;
-  inset: 14% 4%;
-  background: color-mix(in oklab, var(--glow) 70%, transparent);
-  box-shadow:
-    0 0 0 4px color-mix(in oklab, var(--glow) 45%, transparent),
-    0 0 0 8px color-mix(in oklab, var(--glow) 22%, transparent),
-    0 0 0 12px color-mix(in oklab, var(--glow) 10%, transparent),
-    0 0 22px 10px color-mix(in oklab, var(--glow) 30%, transparent);
-  animation: car-underglow 1.6s steps(4) infinite alternate;
-}
-
-@keyframes car-underglow {
-  to {
-    opacity: 0.65;
-  }
 }
