@@ -45,12 +45,15 @@ function shortName(
 
 type Mp = ReturnType<typeof useMultiplayerRace>
 
+// The race's own countdown after the lobby wait (backend/ws's raceCountdown).
+const RACE_COUNTDOWN_MS = 3000
+
 // How long a lone racer waits in quick match before being offered a solo race instead.
 const ALONE_WAIT_MS = 30000
 
 // While the room fills, the typing screen holds the lobby instead of a quote.
 //   Quick match: a hard 30s countdown while you're alone (then the offer to race bots instead),
-//   and once a second racer is in, the server's few seconds until the race starts on its own.
+//   and once a second racer is in, "get ready" while the track counts down to GO.
 //   Friends: the room code to share, and the host's Start now.
 function LobbyCard({ mp }: { mp: Mp }) {
   const [copied, setCopied] = useState(false)
@@ -62,10 +65,7 @@ function LobbyCard({ mp }: { mp: Mp }) {
   const canStart = mp.isHost && mp.playersInRoom >= mp.minPlayers
   const quick = !mp.code
 
-  const startsIn =
-    mp.lobbyStartsAt !== null
-      ? Math.max(0, Math.ceil((mp.lobbyStartsAt - now) / 1000))
-      : null
+  const startsSoon = mp.lobbyStartsAt !== null
   const aloneLeft =
     quick && mp.lobbySince !== null && mp.playersInRoom < mp.minPlayers
       ? Math.max(0, Math.ceil((mp.lobbySince + ALONE_WAIT_MS - now) / 1000))
@@ -95,7 +95,7 @@ function LobbyCard({ mp }: { mp: Mp }) {
           <>
             <span className="kicker">Quick match</span>
             <span className="font-display text-3xl uppercase">
-              {startsIn !== null
+              {startsSoon
                 ? 'Get ready'
                 : aloneLeft === 0
                   ? 'Nobody around'
@@ -113,14 +113,7 @@ function LobbyCard({ mp }: { mp: Mp }) {
       </div>
 
       <div className="flex flex-col items-center gap-1">
-        {startsIn !== null ? (
-          <>
-            <span className="font-display text-6xl leading-none text-signal">
-              {startsIn}
-            </span>
-            <span className="race-lcd-label">starting in</span>
-          </>
-        ) : aloneLeft !== null ? (
+        {aloneLeft !== null ? (
           <>
             <span className="font-display text-5xl leading-none">
               0:{String(aloneLeft).padStart(2, '0')}
@@ -215,16 +208,33 @@ function ErrorView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
 function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const profile = useProfile()
   const { carModel, underglow, underglowColor, trail } = profile
-  const [countdown, setCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   useKeepTypingFocus(inputRef, mp.phase === 'racing' && !mp.finished)
 
+  // One countdown on the track, all the way to GO: in a public lobby it starts as soon as a
+  // second racer joins (the server's short wait, plus the race's own countdown after it) and
+  // carries straight on through the race countdown — never two countdowns in a row.
+  const [goAt, setGoAt] = useState<number | null>(null)
   useEffect(() => {
-    if (mp.phase !== 'countdown') return
-    setCountdown(Math.max(1, Math.ceil(mp.startsInMs / 1000)))
-    const id = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000)
+    if (mp.phase === 'lobby') {
+      setGoAt(
+        mp.lobbyStartsAt !== null ? mp.lobbyStartsAt + RACE_COUNTDOWN_MS : null,
+      )
+    } else if (mp.phase === 'countdown') {
+      setGoAt(Date.now() + mp.startsInMs)
+    } else {
+      setGoAt(null)
+    }
+  }, [mp.phase, mp.lobbyStartsAt, mp.startsInMs])
+  const [clock, setClock] = useState(() => Date.now())
+  useEffect(() => {
+    if (goAt === null) return
+    const id = setInterval(() => setClock(Date.now()), 100)
     return () => clearInterval(id)
-  }, [mp.phase, mp.startsInMs])
+  }, [goAt])
+  const counting = goAt !== null
+  const countdown =
+    goAt !== null ? Math.max(0, Math.ceil((goAt - clock) / 1000)) : 0
 
   // Saved to history the moment our own result arrives (player_finished), not at race_end — the
   // rank is final then, and the player may leave before everyone else finishes. WPM is the
@@ -382,7 +392,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
             <RaceTrack
               racers={racers}
               countdown={countdown}
-              phase={mp.phase === 'countdown' ? 'counting' : 'ready'}
+              phase={counting ? 'counting' : 'ready'}
               epic
               arrive={inLobby}
               effect={effect}

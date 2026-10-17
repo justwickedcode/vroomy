@@ -19,10 +19,11 @@ const (
 	raceMaxPlayers = 5
 
 	// lobbyWaitTimeout: once a public (matchmade) room reaches raceMinPlayers, it waits this
-	// long for more players before starting anyway. Never applies before raceMinPlayers is
+	// long for more players before starting anyway — with raceCountdown after it, that's 5s
+	// from the second racer joining to GO, which clients show as one countdown. Never applies before raceMinPlayers is
 	// reached (a lone player's client offers a solo race instead after a while), and never to a
 	// friends room, which starts when its host says so.
-	lobbyWaitTimeout = 5 * time.Second
+	lobbyWaitTimeout = 2 * time.Second
 
 	// raceCountdown: time between the quote being announced and the race actually starting —
 	// gives every client's UI a chance to render the quote and show a "get ready" countdown in
