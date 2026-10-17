@@ -398,17 +398,9 @@ async function importGuestData(userId: string, queryClient: QueryClient) {
         replay: replay?.events,
       } satisfies ApiRaceInput
     })
-    if (races.length > 0) {
-      try {
-        await importRacesFn({ data: races })
-      } catch {
-        // A malformed replay is the likeliest culprit — the races themselves are still worth
-        // keeping without it.
-        await importRacesFn({
-          data: races.map(({ passage: _p, replay: _r, ...rest }) => rest),
-        })
-      }
-    }
+    // The server keeps only races whose replay holds up (its anti-cheat), and quietly leaves
+    // the rest — an old race saved before replays existed, say — behind.
+    if (races.length > 0) await importRacesFn({ data: races })
 
     const daily = Object.entries(readLocalDaily())
       .sort((a, b) => b[0].localeCompare(a[0]))

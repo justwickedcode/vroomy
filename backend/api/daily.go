@@ -123,6 +123,8 @@ func upsertDailyResult(ctx context.Context, db dbExecutor, userID string, day ti
 			race_id = excluded.race_id,
 			updated_at = NOW()
 		WHERE excluded.wpm > daily_results.wpm
+			-- A verified race always replaces an unverified (imported) result for the day.
+			OR (daily_results.race_id IS NULL AND excluded.race_id IS NOT NULL)
 	`, userID, day, wpm, accuracy, raceID)
 	return err
 }

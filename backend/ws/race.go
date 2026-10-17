@@ -72,6 +72,12 @@ type playerState struct {
 	elapsedMs int64
 	wpm       float64
 	rank      int
+	// skippedWords is how many words this player's abilities could have carried them forward,
+	// and disqualified marks a run the anti-cheat rejected (see anticheat.go).
+	skippedWords int
+	disqualified bool
+	// pace is this player's recent progress, for the burst check.
+	pace []pacePoint
 	// lastPowerupAt is when this player last fired their ability (zero: not yet this race); it
 	// recharges after abilityRecharge (see handlePowerup).
 	lastPowerupAt time.Time
@@ -383,11 +389,23 @@ func (r *Room) handleProgress(c *Client, wordIndex int) {
 		r.mu.Unlock()
 		return
 	}
-	if wordIndex < 0 {
-		wordIndex = 0
+	if wordIndex <= state.wordIndex {
+		// Progress only moves forward.
+		r.mu.Unlock()
+		return
 	}
 	if wordIndex > r.wordCount {
 		wordIndex = r.wordCount
+	}
+	if r.outpacedLocked(state, wordIndex, time.Now()) {
+		r.disqualifyLocked(state)
+		allDone := r.allFinishedLocked()
+		r.mu.Unlock()
+		r.announceDisqualified(c)
+		if allDone {
+			r.finishRace()
+		}
+		return
 	}
 	state.wordIndex = wordIndex
 	r.mu.Unlock()
@@ -395,25 +413,44 @@ func (r *Room) handleProgress(c *Client, wordIndex int) {
 	r.broadcastExcept(c, serverMessage{Type: "player_progress", PlayerID: c.id, WordIndex: wordIndex})
 }
 
-func (r *Room) handleFinish(c *Client, elapsedMs int64) {
+func (r *Room) handleFinish(c *Client, clientElapsedMs int64) {
 	r.mu.Lock()
 	if r.state != roomRacing {
 		r.mu.Unlock()
 		return
 	}
 	state, ok := r.players[c]
-	if !ok || state.finished || elapsedMs <= 0 {
+	if !ok || state.finished {
 		r.mu.Unlock()
 		return
 	}
 
+	// The time is the server's own, from GO — never the client's. The client's figure only
+	// stands in when it's slower (its timer started a beat late), so latency never helps.
+	elapsed := time.Since(r.startedAt)
+	if client := time.Duration(clientElapsedMs) * time.Millisecond; client > elapsed {
+		elapsed = client
+	}
+	// Finishing means having typed up to the last word, at a pace a person could manage.
+	if state.wordIndex < r.wordCount-1 ||
+		r.wordCount > r.maxHonestWordsLocked(elapsed, state.skippedWords) {
+		r.disqualifyLocked(state)
+		allDone := r.allFinishedLocked()
+		r.mu.Unlock()
+		r.announceDisqualified(c)
+		if allDone {
+			r.finishRace()
+		}
+		return
+	}
+	elapsedMs := elapsed.Milliseconds()
+
 	state.finished = true
 	state.elapsedMs = elapsedMs
 	state.wordIndex = r.wordCount
-	// wpm from the room's own authoritative word count and the reported elapsed time, not
-	// whatever the client itself might claim its WPM to be — a small anti-cheat measure, and
-	// also just the one place both numbers are guaranteed to agree.
-	state.wpm = float64(r.wordCount) / (float64(elapsedMs) / 60000.0)
+	// Standard WPM (5-character words) from the room's own passage and the server's clock — the
+	// same measure the API checks a stored replay against.
+	state.wpm = float64(len(r.quote.Text)) / 5 / (float64(elapsedMs) / 60000.0)
 	r.finishedCount++
 	state.rank = r.finishedCount
 	allDone := r.allFinishedLocked()
@@ -466,7 +503,7 @@ func (r *Room) finishRace() {
 	unfinished := make([]playerResult, 0)
 	for c, state := range r.players {
 		res := playerResult{PlayerID: c.id, Rank: state.rank, ElapsedMs: state.elapsedMs, WPM: roundTo2(state.wpm)}
-		if state.finished {
+		if state.finished && !state.disqualified {
 			results = append(results, res)
 		} else {
 			unfinished = append(unfinished, res)
