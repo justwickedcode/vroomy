@@ -90,6 +90,22 @@ interface ServerMessage {
   targets?: Array<string>
 }
 
+const GUEST_RACER_KEY = 'vroomy:racer-id:v1'
+
+// A guest's stable racer id: made once and kept in this browser (so every tab shares it), or a
+// throwaway one if storage isn't available.
+function guestRacerId(): string {
+  try {
+    const saved = window.localStorage.getItem(GUEST_RACER_KEY)
+    if (saved) return saved
+    const id = `guest-${crypto.randomUUID()}`
+    window.localStorage.setItem(GUEST_RACER_KEY, id)
+    return id
+  } catch {
+    return `guest-${crypto.randomUUID()}`
+  }
+}
+
 function namesFrom(
   players: Array<{ playerId: string; name?: string }>,
 ): Record<string, string | undefined> {
@@ -109,6 +125,10 @@ export function useMultiplayerRace() {
   const { user } = useCurrentUser()
   const nameRef = useRef(user?.name)
   nameRef.current = user?.name
+  // Sent as ?racer= so the server can stop one person taking two seats in a room (a second tab
+  // racing the first): the account id, or for a guest an id saved in this browser.
+  const racerRef = useRef(user?.id)
+  racerRef.current = user?.id
 
   const [phase, setPhase] = useState<MultiplayerPhase>('connecting')
   const [myId, setMyId] = useState<string | null>(null)
@@ -117,6 +137,9 @@ export function useMultiplayerRace() {
   const [playersInRoom, setPlayersInRoom] = useState(0)
   const [minPlayers, setMinPlayers] = useState(2)
   const [maxPlayers, setMaxPlayers] = useState(5)
+  // When we joined the lobby, and (once there are two) when the room starts on its own.
+  const [lobbySince, setLobbySince] = useState<number | null>(null)
+  const [lobbyStartsAt, setLobbyStartsAt] = useState<number | null>(null)
   const [quote, setQuote] = useState<MultiplayerQuote | null>(null)
   const [wordCount, setWordCount] = useState(0)
   const [startsInMs, setStartsInMs] = useState(0)
@@ -370,6 +393,7 @@ export function useMultiplayerRace() {
 
       const target = new URL(`${WS_URL}${path}`)
       if (nameRef.current) target.searchParams.set('name', nameRef.current)
+      target.searchParams.set('racer', racerRef.current ?? guestRacerId())
       const url = target.toString()
       const ws = new WebSocket(url)
       socketRef.current = ws
@@ -409,6 +433,7 @@ export function useMultiplayerRace() {
           case 'welcome':
             myIdRef.current = msg.playerId ?? null
             setMyId(msg.playerId ?? null)
+            setLobbySince(Date.now())
             setPhase('lobby')
             break
           case 'host_assigned':
@@ -416,6 +441,10 @@ export function useMultiplayerRace() {
             break
           case 'waiting':
             if (msg.players) setNames(namesFrom(msg.players))
+            // A public room with two or more in it starts on its own at this moment.
+            setLobbyStartsAt(
+              msg.startsInMs ? Date.now() + msg.startsInMs : null,
+            )
             if (msg.mode) setMode(msg.mode)
             setCode(msg.code || null)
             setPlayersInRoom(msg.playersInRoom ?? 0)
@@ -660,6 +689,8 @@ export function useMultiplayerRace() {
     mode,
     powerupReady,
     powerupCharge,
+    lobbySince,
+    lobbyStartsAt,
     lastPowerup,
     firePowerup,
     errorMessage,

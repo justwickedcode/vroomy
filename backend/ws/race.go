@@ -18,11 +18,11 @@ const (
 	raceMinPlayers = 2
 	raceMaxPlayers = 5
 
-	// lobbyWaitTimeout: once raceMinPlayers is reached, the lobby waits this long for more
-	// players before starting anyway — long enough to give a real chance for the lobby to fill
-	// toward raceMaxPlayers, short enough that the first two players don't wait forever for a
-	// third. Never applies before raceMinPlayers is reached; a lone player just waits.
-	lobbyWaitTimeout = 30 * time.Second
+	// lobbyWaitTimeout: once a public (matchmade) room reaches raceMinPlayers, it waits this
+	// long for more players before starting anyway. Never applies before raceMinPlayers is
+	// reached (a lone player's client offers a solo race instead after a while), and never to a
+	// friends room, which starts when its host says so.
+	lobbyWaitTimeout = 5 * time.Second
 
 	// raceCountdown: time between the quote being announced and the race actually starting —
 	// gives every client's UI a chance to render the quote and show a "get ready" countdown in
@@ -94,9 +94,12 @@ type Room struct {
 	// wordCount is computed once from quote.Text at race_start time — the authoritative count
 	// both the server's own WPM calculation and each client's local progress tracking use, so
 	// there's no ambiguity between however the client itself tokenizes words.
-	wordCount     int
-	startedAt     time.Time
-	waitTimer     *time.Timer
+	wordCount int
+	startedAt time.Time
+	waitTimer *time.Timer
+	// waitDeadline is when waitTimer fires (zero while it isn't running), so every "waiting"
+	// message can tell clients how long until the race starts on its own.
+	waitDeadline  time.Time
 	raceTimer     *time.Timer
 	finishedCount int
 
@@ -133,42 +136,64 @@ func newRoom(id string, mode lobbyMode, pool *pgxpool.Pool) *Room {
 // to a room that's already moved past that — see Matchmaker.join).
 func (r *Room) addClient(c *Client) {
 	r.mu.Lock()
+	// Nobody races against themselves: a second connection from someone already in the room
+	// (another tab, say) is turned away rather than given a seat.
+	if c.racer != "" {
+		for other := range r.players {
+			if other.racer == c.racer {
+				r.mu.Unlock()
+				c.sendJSON(serverMessage{Type: "error", Message: "You're already in this race in another tab."})
+				c.closeSend()
+				return
+			}
+		}
+	}
 	r.players[c] = &playerState{client: c, connected: true}
 	count := len(r.players)
-	players := r.playerListLocked()
+	// Public rooms only: a friends room waits for its host to press start.
+	if r.host == nil && count == raceMinPlayers && r.waitTimer == nil {
+		// First time this room has enough to race at all — start the "wait for more, but not
+		// forever" clock, before announcing the join so the announcement carries the deadline.
+		// Later joins below raceMaxPlayers don't reset it, intentionally, so a room can't be
+		// kept in limbo indefinitely by a slow trickle of joiners each resetting the timeout.
+		r.waitDeadline = time.Now().Add(lobbyWaitTimeout)
+		r.waitTimer = time.AfterFunc(lobbyWaitTimeout, func() {
+			r.closeToNewJoiners()
+			r.startCountdown()
+		})
+	}
+	msg := r.waitingMessageLocked()
 	r.mu.Unlock()
 
-	r.broadcast(serverMessage{
-		Type:          "waiting",
-		Code:          r.code,
-		Mode:          string(r.mode),
-		PlayersInRoom: count,
-		MinPlayers:    raceMinPlayers,
-		MaxPlayers:    raceMaxPlayers,
-		Players:       players,
-	})
+	r.broadcast(msg)
 	if c == r.host {
 		// Told apart from "waiting" (which every player in the room gets) so the frontend knows
 		// specifically which connection may send "start" — see handleStart.
 		c.sendJSON(serverMessage{Type: "host_assigned"})
 	}
 
-	switch {
-	case count >= raceMaxPlayers:
+	if count >= raceMaxPlayers {
 		r.closeToNewJoiners()
 		r.startCountdown()
-	case count == raceMinPlayers:
-		// First time this room has enough to race at all — start the "wait for more, but not
-		// forever" clock. Only fires once: later joins below raceMaxPlayers don't reset it,
-		// intentionally, so a room can't be kept in limbo indefinitely by a slow trickle of
-		// joiners each resetting the timeout right before it fires.
-		r.mu.Lock()
-		r.waitTimer = time.AfterFunc(lobbyWaitTimeout, func() {
-			r.closeToNewJoiners()
-			r.startCountdown()
-		})
-		r.mu.Unlock()
 	}
+}
+
+// waitingMessageLocked is the "waiting" update for the room as it stands: who's in, and — once
+// the wait clock is running — how long until the race starts on its own. Caller must hold r.mu.
+func (r *Room) waitingMessageLocked() serverMessage {
+	msg := serverMessage{
+		Type:          "waiting",
+		Code:          r.code,
+		Mode:          string(r.mode),
+		PlayersInRoom: len(r.players),
+		MinPlayers:    raceMinPlayers,
+		MaxPlayers:    raceMaxPlayers,
+		Players:       r.playerListLocked(),
+	}
+	if !r.waitDeadline.IsZero() {
+		msg.StartsInMs = max(time.Until(r.waitDeadline).Milliseconds(), 1)
+	}
+	return msg
 }
 
 // removeClient handles a disconnect at any room state. A player leaving mid-race just stops
@@ -187,7 +212,13 @@ func (r *Room) removeClient(c *Client) {
 		delete(r.players, c)
 	}
 	remaining := len(r.players)
-	players := r.playerListLocked()
+	// Back below enough to race: the wait clock stops, and restarts if someone else joins.
+	if !wasRacing && remaining < raceMinPlayers && r.waitTimer != nil {
+		r.waitTimer.Stop()
+		r.waitTimer = nil
+		r.waitDeadline = time.Time{}
+	}
+	waiting := r.waitingMessageLocked()
 	allFinishedNow := wasRacing && r.allFinishedLocked()
 	r.mu.Unlock()
 
@@ -207,15 +238,7 @@ func (r *Room) removeClient(c *Client) {
 		r.closeToNewJoiners()
 		return
 	}
-	r.broadcast(serverMessage{
-		Type:          "waiting",
-		Code:          r.code,
-		Mode:          string(r.mode),
-		PlayersInRoom: remaining,
-		MinPlayers:    raceMinPlayers,
-		MaxPlayers:    raceMaxPlayers,
-		Players:       players,
-	})
+	r.broadcast(waiting)
 }
 
 // playerListLocked lists every player in the room, ordered by id so every client gets the same

@@ -4,18 +4,14 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  Flag,
   PlayCircle,
   Users,
 } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
 import RaceTrack from '#/components/typing/RaceTrack'
-import {
-  PlayPanel,
-  PlaySection,
-  StartButton,
-  TileGrid,
-  tileClass,
-} from '#/components/play/PlayKit'
+import PixelSkyline from '#/components/typing/PixelSkyline'
+import { PlayPanel, PlaySection, StartButton } from '#/components/play/PlayKit'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceConsole from '#/components/typing/RaceConsole'
 import RaceResults from '#/components/typing/RaceResults'
@@ -49,9 +45,31 @@ function shortName(
 
 type Mp = ReturnType<typeof useMultiplayerRace>
 
-function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
+// How long a lone racer waits in quick match before being offered a solo race instead.
+const ALONE_WAIT_MS = 30000
+
+// While the room fills, the typing screen holds the lobby instead of a quote.
+//   Quick match: a hard 30s countdown while you're alone (then the offer to race bots instead),
+//   and once a second racer is in, the server's few seconds until the race starts on its own.
+//   Friends: the room code to share, and the host's Start now.
+function LobbyCard({ mp }: { mp: Mp }) {
   const [copied, setCopied] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250)
+    return () => clearInterval(id)
+  }, [])
   const canStart = mp.isHost && mp.playersInRoom >= mp.minPlayers
+  const quick = !mp.code
+
+  const startsIn =
+    mp.lobbyStartsAt !== null
+      ? Math.max(0, Math.ceil((mp.lobbyStartsAt - now) / 1000))
+      : null
+  const aloneLeft =
+    quick && mp.lobbySince !== null && mp.playersInRoom < mp.minPlayers
+      ? Math.max(0, Math.ceil((mp.lobbySince + ALONE_WAIT_MS - now) / 1000))
+      : null
 
   const shareLink =
     mp.code && typeof window !== 'undefined'
@@ -65,127 +83,105 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch {
-      // Clipboard API unavailable (permissions, insecure context) — the code/link is still
-      // right there on screen to copy by hand.
+      // Clipboard API unavailable (permissions, insecure context) — the code is still right
+      // there on screen to copy by hand.
     }
   }
 
-  // Slot 1 is always us; the others are everyone else in the room, by name when they have one
-  // (guests connect without a name and show as "Racer").
-  const others = Object.entries(mp.names)
-    .filter(([id]) => id !== mp.myId)
-    .map(([, name]) => name)
-  const seats = Array.from({ length: mp.maxPlayers }, (_, i) => ({
-    pos: i + 1,
-    filled: i < mp.playersInRoom,
-    isYou: i === 0,
-    name: i > 0 ? others[i - 1] : undefined,
-  }))
-
   return (
-    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
-      {/* The same play panel as the Play picker: the room, the starting grid, then go. */}
+    <div className="race-results pointer-events-auto">
+      <div className="flex flex-col gap-2">
+        {quick ? (
+          <>
+            <span className="kicker">Quick match</span>
+            <span className="font-display text-3xl uppercase">
+              {startsIn !== null
+                ? 'Get ready'
+                : aloneLeft === 0
+                  ? 'Nobody around'
+                  : 'Finding racers'}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="kicker">Room code</span>
+            <span className="play-input flex items-center px-4 text-3xl tracking-[0.35em]">
+              {mp.code}
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-col items-center gap-1">
+        {startsIn !== null ? (
+          <>
+            <span className="font-display text-6xl leading-none text-signal">
+              {startsIn}
+            </span>
+            <span className="race-lcd-label">starting in</span>
+          </>
+        ) : aloneLeft !== null ? (
+          <>
+            <span className="font-display text-5xl leading-none">
+              0:{String(aloneLeft).padStart(2, '0')}
+            </span>
+            <span className="race-lcd-label">waiting for racers</span>
+          </>
+        ) : (
+          <>
+            <span className="font-display text-5xl leading-none">
+              {mp.playersInRoom}
+              <span className="text-2xl text-[#8a7ca3]">/{mp.maxPlayers}</span>
+            </span>
+            <span className="race-lcd-label">
+              {quick
+                ? 'racers'
+                : mp.isHost
+                  ? canStart
+                    ? 'start when ready'
+                    : `need ${mp.minPlayers}`
+                  : 'waiting for the host'}
+            </span>
+          </>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        {quick && aloneLeft === 0 && (
+          <Button asChild>
+            <Link to="/race/solo">
+              <Flag />
+              Race solo
+            </Link>
+          </Button>
+        )}
+        {!quick && mp.isHost && (
+          <Button onClick={mp.startNow} disabled={!canStart}>
+            <Users />
+            Start now
+          </Button>
+        )}
+        {mp.code && (
+          <Button variant="outline" onClick={handleCopy}>
+            {copied ? <Check className="text-success" /> : <Copy />}
+            {copied ? 'Copied' : 'Copy link'}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ConnectingView() {
+  return (
+    <main className="flex flex-1 flex-col justify-center px-4 py-8">
       <div className="page-wrap rise-in max-w-3xl">
         <PlayPanel>
-          <PlaySection
-            label={`${mp.code ? 'Private room' : 'Quick match'} · ${
-              mp.mode === 'powerups' ? 'with abilities' : 'without abilities'
-            }`}
-            aside={
-              <Button variant="ghost" size="sm" onClick={onLeave}>
-                <ArrowLeft />
-                Leave
-              </Button>
-            }
-          >
-            {mp.code ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="play-input flex items-center px-4 text-2xl tracking-[0.35em]">
-                  {mp.code}
-                </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-                  {shareLink}
-                </span>
-                <Button variant="outline" onClick={handleCopy}>
-                  {copied ? <Check className="text-success" /> : <Copy />}
-                  {copied ? 'Copied' : 'Copy link'}
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Finding racers for you…
-              </p>
-            )}
-          </PlaySection>
-
-          <PlaySection
-            label="Starting grid"
-            aside={
-              <span className="font-mono text-xs text-muted-foreground">
-                {mp.playersInRoom}/{mp.maxPlayers}
-              </span>
-            }
-          >
-            <TileGrid className="grid-cols-2 sm:grid-cols-5">
-              {seats.map((seat) => (
-                <div
-                  key={seat.pos}
-                  className={cn(
-                    tileClass(seat.isYou),
-                    !seat.filled && 'opacity-50',
-                  )}
-                >
-                  <span className="font-display text-lg text-muted-foreground">
-                    P{seat.pos}
-                  </span>
-                  <span className="flex min-w-0 flex-col leading-tight">
-                    <span className="truncate text-sm font-bold">
-                      {seat.isYou
-                        ? 'You'
-                        : seat.filled
-                          ? (seat.name ?? 'Racer')
-                          : 'Open seat'}
-                      {seat.isYou && mp.isHost && (
-                        <span className="ml-1.5 font-mono text-[0.6rem] text-signal">
-                          HOST
-                        </span>
-                      )}
-                    </span>
-                    <span
-                      className={cn(
-                        'font-mono text-[0.6rem] tracking-widest uppercase',
-                        seat.filled
-                          ? 'text-[#4ade80]'
-                          : 'text-muted-foreground',
-                      )}
-                    >
-                      {seat.filled ? 'Ready' : 'Waiting'}
-                    </span>
-                  </span>
-                </div>
-              ))}
-            </TileGrid>
-          </PlaySection>
-
-          <div className="flex flex-col items-center gap-2 bg-card p-4">
-            {mp.isHost ? (
-              <>
-                <StartButton onClick={mp.startNow} disabled={!canStart}>
-                  <Users />
-                  Start now
-                </StartButton>
-                <p className="text-xs text-muted-foreground">
-                  {canStart
-                    ? 'Starts automatically soon, or start right now'
-                    : `Waiting for at least ${mp.minPlayers} players`}
-                </p>
-              </>
-            ) : (
-              <p className="py-2 text-center text-sm text-muted-foreground">
-                Waiting for {mp.code ? 'the host to start, or for' : ''} the
-                lobby to fill…
-              </p>
-            )}
+          <div className="relative">
+            <PixelSkyline className="h-32" />
+            <p className="race-waiting absolute inset-x-0 bottom-3">
+              Connecting
+            </p>
           </div>
         </PlayPanel>
       </div>
@@ -193,27 +189,25 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   )
 }
 
-function ConnectingView() {
-  return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-10 text-center">
-      <p className="kicker">Multiplayer</p>
-      <p className="text-sm text-muted-foreground">Connecting…</p>
-    </main>
-  )
-}
-
 function ErrorView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-10 text-center">
-      <p className="kicker">Multiplayer</p>
-      <h2 className="text-lg font-bold">Something went wrong</h2>
-      <p className="max-w-sm text-sm text-muted-foreground">
-        {mp.errorMessage ?? 'Lost connection to the race server.'}
-      </p>
-      <Button variant="outline" onClick={onLeave}>
-        <ArrowLeft />
-        Back
-      </Button>
+    <main className="flex flex-1 flex-col justify-center px-4 py-8">
+      <div className="page-wrap rise-in max-w-3xl">
+        <PlayPanel>
+          <PlaySection label="Multiplayer">
+            <p className="font-display text-2xl uppercase">Can't join</p>
+            <p className="text-sm text-muted-foreground">
+              {mp.errorMessage ?? 'Lost connection to the race server.'}
+            </p>
+          </PlaySection>
+          <div className="bg-card p-4">
+            <StartButton onClick={onLeave}>
+              <ArrowLeft />
+              Back
+            </StartButton>
+          </div>
+        </PlayPanel>
+      </div>
     </main>
   )
 }
@@ -319,10 +313,23 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     }
   }, [lastPowerup, myId, names])
 
+  // While waiting in the lobby, the grid is everyone in the room (by name — guests show as
+  // "Racer"), each car driving in from the left as its player joins; once the race is on, it's
+  // the live opponents.
+  const inLobby = mp.phase === 'lobby'
+  const lobbyRivals = Object.entries(mp.names)
+    .filter(([id]) => id !== mp.myId)
+    .map(([id, name], index) => ({
+      id,
+      name: name ?? 'Racer',
+      progress: 0,
+      wpm: 0,
+      model: CAR_MODELS[(index + 1) % CAR_MODELS.length].id,
+    }))
   const racers: Array<Racer> = [
     {
       id: mp.myId ?? 'you',
-      name: 'You',
+      name: inLobby && mp.isHost ? 'You · host' : 'You',
       progress: mp.progress,
       wpm: mp.wpm,
       finished: mp.finished,
@@ -332,7 +339,8 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       underglowColor,
       trail,
     },
-    ...mp.opponents.map((opponent, index) => ({
+    ...(inLobby ? lobbyRivals : []),
+    ...(inLobby ? [] : mp.opponents).map((opponent, index) => ({
       id: opponent.id,
       name:
         shortName(opponent.id, mp.myId, mp.names) +
@@ -376,6 +384,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               countdown={countdown}
               phase={mp.phase === 'countdown' ? 'counting' : 'ready'}
               epic
+              arrive={inLobby}
               effect={effect}
               className="flex-shrink-0"
             />
@@ -395,6 +404,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 // only arrives once everyone still connected is done (or after 5 minutes), which
                 // has nothing to do with OUR rank.
                 <>
+                  {inLobby && <LobbyCard mp={mp} />}
                   {mp.myResult && (
                     <RaceResults
                       place={mp.myResult.rank}
@@ -505,8 +515,6 @@ export default function MultiplayerRace({
       return <ConnectingView />
     case 'error':
       return <ErrorView mp={mp} onLeave={onLeave} />
-    case 'lobby':
-      return <LobbyView mp={mp} onLeave={onLeave} />
     default:
       return <RaceView mp={mp} onLeave={onLeave} />
   }

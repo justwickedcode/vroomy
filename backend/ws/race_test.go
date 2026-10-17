@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,7 +56,7 @@ func fakeRoom(quote TypingQuote) *Room {
 // startNow skips past lobbyWaitTimeout — the join/timeout/max-players mechanics are already
 // covered by TestRoom_WaitsForMinPlayers and TestRoom_StartsImmediatelyAtMaxPlayers, so tests
 // concerned with what happens once a race is underway trigger the countdown directly instead of
-// either waiting out the real 30s timer or padding the room to raceMaxPlayers with filler
+// either waiting out the real 5s timer or padding the room to raceMaxPlayers with filler
 // clients that would then also need to finish before finishRace ever fires.
 func startNow(r *Room) {
 	r.closeToNewJoiners()
@@ -250,7 +251,7 @@ func TestMatchmaker_FreshRoomAfterPreviousStarts(t *testing.T) {
 }
 
 // TestRoom_HostCanStartEarly verifies a private room's host can skip lobbyWaitTimeout once
-// raceMinPlayers has joined, without waiting the real 30s out.
+// raceMinPlayers has joined, without waiting the real 5s out.
 func TestRoom_HostCanStartEarly(t *testing.T) {
 	r := fakeRoom(TypingQuote{Text: "one two three four five"})
 	host := testClient("host")
@@ -330,4 +331,58 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("condition never became true within the deadline")
+}
+
+// One person can't take two seats in the same room (a second tab): the second connection is
+// turned away with an error instead.
+func TestRoom_SameRacerCantJoinTwice(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	first, second := testClient("a"), testClient("b")
+	first.racer, second.racer = "user-1", "user-1"
+	r.addClient(first)
+	r.addClient(second)
+
+	r.mu.Lock()
+	seats := len(r.players)
+	r.mu.Unlock()
+	if seats != 1 {
+		t.Fatalf("room has %d seats, want 1", seats)
+	}
+	if msg, ok := lastOfType(drain(t, second), "error"); !ok || msg.Message == "" {
+		t.Errorf("second tab got %+v, want an error", msg)
+	}
+}
+
+func TestSanitizeRacerID(t *testing.T) {
+	for raw, want := range map[string]string{
+		"user-1_A":              "user-1_A",
+		"":                      "",
+		"has space":             "",
+		"<script>":              "",
+		strings.Repeat("a", 65): "",
+	} {
+		if got := sanitizeRacerID(raw); got != want {
+			t.Errorf("sanitizeRacerID(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// Once a second player joins, every "waiting" update says how long until the race starts on
+// its own; dropping back to one player stops that clock.
+func TestRoom_WaitingCarriesStartDeadline(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	a, b := testClient("a"), testClient("b")
+	r.addClient(a)
+	if msg, _ := lastOfType(drain(t, a), "waiting"); msg.StartsInMs != 0 {
+		t.Errorf("alone: startsInMs = %d, want none", msg.StartsInMs)
+	}
+	r.addClient(b)
+	msg, _ := lastOfType(drain(t, a), "waiting")
+	if msg.StartsInMs <= 0 || msg.StartsInMs > lobbyWaitTimeout.Milliseconds() {
+		t.Errorf("two players: startsInMs = %d, want within the wait", msg.StartsInMs)
+	}
+	r.removeClient(b)
+	if msg, _ := lastOfType(drain(t, a), "waiting"); msg.StartsInMs != 0 {
+		t.Errorf("back to one: startsInMs = %d, want the clock stopped", msg.StartsInMs)
+	}
 }

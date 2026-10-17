@@ -49,9 +49,13 @@ type Client struct {
 	id string
 	// name is the optional display name from the connection's ?name= (see sanitizeName).
 	name string
-	conn *websocket.Conn
-	send chan []byte
-	room *Room
+	// racer is the optional stable id of the person behind the connection (?racer=, their
+	// account id or a saved guest id — see sanitizeRacerID): one person can't take two seats in
+	// the same room, e.g. from a second tab.
+	racer string
+	conn  *websocket.Conn
+	send  chan []byte
+	room  *Room
 
 	// sendMu guards closed and send together. A sync.Once around just the close() would still
 	// let sendJSON race a concurrent closeSend: it could pass a "not closed yet" check and then
@@ -87,6 +91,21 @@ func newClientID() string {
 		return "p_fallback"
 	}
 	return "p_" + hex.EncodeToString(b)
+}
+
+// sanitizeRacerID keeps a client-supplied racer id to a short run of [A-Za-z0-9_-], or ""
+// (no id, never matched against anyone) if it's anything else.
+func sanitizeRacerID(raw string) string {
+	if len(raw) == 0 || len(raw) > 64 {
+		return ""
+	}
+	for _, ch := range raw {
+		ok := ch == '-' || ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+		if !ok {
+			return ""
+		}
+	}
+	return raw
 }
 
 // maxNameRunes keeps a display name to something that fits a lane label.
