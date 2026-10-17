@@ -171,9 +171,7 @@ function GaragePage() {
   // Preview mode: while a locked item's "Buy" is open, the showroom puts it on your car so you
   // can see it before spending anything.
   const preview = shop.confirming
-  const previewCar = preview?.startsWith('car:')
-    ? (preview.slice(4))
-    : null
+  const previewCar = preview?.startsWith('car:') ? preview.slice(4) : null
   const previewTrail = preview?.startsWith('trail:')
     ? (preview.slice(6) as typeof trail)
     : null
