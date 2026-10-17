@@ -236,51 +236,51 @@ const DECALS_STYLE: CSSProperties = {
 // #/lib/trails) — only the player's own trail choice is gated.
 const BOT_TRAILS: Array<TrailVariant> = ['orbs', 'smoke', 'stars']
 
-// Exported for reuse in the Garage's Trail picker — a preview needs to render the exact same
-// visual, not a re-description of it.
-export function Trail({ variant }: { variant: TrailVariant }) {
-  if (variant === 'orbs') {
-    return (
-      <span className="race-trail-orbs" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-    )
-  }
-  if (variant === 'smoke') {
-    return (
-      <span className="race-trail-smoke" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-    )
-  }
-  if (variant === 'stars') {
-    return (
-      <span className="race-trail-stars" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-    )
-  }
-  if (variant === 'rainbow') {
-    return (
-      <span className="race-trail-rainbow" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-      </span>
-    )
-  }
+// Particles per trail, and where each sits: --y is its height in the trail (%), --s its size
+// (px), --i its place in the stagger. Fixed values, so every racer's trail looks the same.
+const TRAIL_PARTS: Record<TrailVariant, number> = {
+  nitro: 4,
+  orbs: 7,
+  smoke: 5,
+  stars: 5,
+  rainbow: 6,
+  comet: 7,
+  coins: 6,
+  glitch: 7,
+  inferno: 8,
+  afterimage: 3,
+}
+const PART_Y = [48, 22, 70, 36, 60, 14, 82, 44]
+const PART_S = [6, 9, 5, 8, 7, 10, 6, 8]
+
+// The effect off the back of a car while it's moving: pixel-art particles in hard-stepped
+// animations (see .trail in styles.css). Afterimage needs the car itself, to draw its ghosts.
+// Exported for the Garage's trail picker, so its previews are the real thing.
+export function Trail({
+  variant,
+  model,
+}: {
+  variant: TrailVariant
+  model?: CarModel
+}) {
   return (
-    <span className="race-nitro" aria-hidden="true">
-      <span />
-      <span />
-      <span />
+    <span className={cn('trail', `trail--${variant}`)} aria-hidden="true">
+      {Array.from({ length: TRAIL_PARTS[variant] }, (_, i) => (
+        <span
+          key={i}
+          style={
+            {
+              '--i': i,
+              '--y': PART_Y[i % PART_Y.length],
+              '--s': PART_S[i % PART_S.length],
+            } as CSSProperties
+          }
+        >
+          {variant === 'afterimage' && (
+            <CarIcon model={model ?? 'sport'} className="race-car-svg w-20" />
+          )}
+        </span>
+      ))}
     </span>
   )
 }
@@ -407,7 +407,7 @@ function Lane({
             <span className="race-name-wpm">{racer.wpm}</span>
           )}
         </span>
-        {racing && <Trail variant={trailVariant} />}
+        {racing && <Trail variant={trailVariant} model={racer.model} />}
         {racer.isYou && racer.finished && <FinishBurst />}
         {burst && <PowerupBurst key={burst.key} kind={burst.kind} />}
         {pop && (

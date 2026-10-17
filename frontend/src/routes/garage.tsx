@@ -168,6 +168,17 @@ function GaragePage() {
   const shop = useShop()
   const ownsUnderglow = shop.owns(UNDERGLOW_ITEM)
 
+  // Preview mode: while a locked item's "Buy" is open, the showroom puts it on your car so you
+  // can see it before spending anything.
+  const preview = shop.confirming
+  const previewCar = preview?.startsWith('car:')
+    ? (preview.slice(4) as typeof carModel)
+    : null
+  const previewTrail = preview?.startsWith('trail:')
+    ? (preview.slice(6) as typeof trail)
+    : null
+  const previewUnderglow = preview === UNDERGLOW_ITEM
+
   return (
     <main className="flex flex-1 flex-col px-4 py-8 sm:py-10">
       <div className="page-wrap flex flex-1 flex-col">
@@ -175,7 +186,12 @@ function GaragePage() {
             you browse the shop on the right. */}
         <div className="rise-in px-corners grid flex-1 gap-[2px] border-2 border-border bg-border lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <aside className="bg-card">
-            <div className="flex flex-col lg:sticky lg:top-0">
+            <div className="relative flex flex-col lg:sticky lg:top-0">
+              {preview && (previewCar || previewTrail || previewUnderglow) && (
+                <span className="race-announcer pointer-events-none absolute top-2 left-3 z-10">
+                  Preview
+                </span>
+              )}
               <RaceTrack
                 racers={[
                   {
@@ -184,10 +200,10 @@ function GaragePage() {
                     progress: 0.5,
                     wpm: 60,
                     isYou: true,
-                    model: carModel,
-                    underglow,
+                    model: previewCar ?? carModel,
+                    underglow: underglow || previewUnderglow,
                     underglowColor,
-                    trail,
+                    trail: previewTrail ?? trail,
                   },
                 ]}
                 phase="ready"
@@ -417,12 +433,15 @@ function GaragePage() {
                     onEquip={() => setTrail(option.id)}
                     className="items-center gap-2 px-4 pt-4 pb-1 text-center"
                   >
-                    {/* Live preview, not just a name — the trail is rendered exactly like it is
-                    mid-race (see RaceTrack's Trail), anchored to a small dot standing in for
-                    the car so the effect has something to trail off of. */}
-                    <div className="flex h-7 w-16 items-center justify-end self-center">
-                      <span className="relative inline-block size-2 shrink-0 bg-foreground/70">
-                        <Trail variant={option.id} />
+                    {/* Live preview, not just a name: your own car on a strip of night road,
+                        with the trail rendered exactly as it is mid-race (RaceTrack's Trail). */}
+                    <div className="trail-preview">
+                      <span className="race-car-wrap trail-preview-car">
+                        <Trail variant={option.id} model={carModel} />
+                        <CarIcon
+                          model={carModel}
+                          className="race-car-svg w-20"
+                        />
                       </span>
                     </div>
                     <p className="text-sm font-bold">{option.label}</p>
