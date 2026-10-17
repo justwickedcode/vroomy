@@ -1,15 +1,57 @@
 import { Link } from '@tanstack/react-router'
-import { Medal, PlayCircle } from '#/components/ui/icons'
+import {
+  Check,
+  Clock,
+  Medal,
+  PlayCircle,
+  UserPlus,
+} from '#/components/ui/icons'
 import CarIcon from '#/components/typing/CarIcon'
 import PlayerAvatar from '#/components/social/PlayerAvatar'
 import { Badge } from '#/components/ui/badge'
 import { cn } from '#/lib/utils'
+import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import { useFriends } from '#/lib/social/useFriends'
 import type { Leaderboard, LeaderboardEntry } from '#/lib/api/types'
 
 const MEDAL_COLORS: Record<number, string | undefined> = {
   1: '#facc15',
   2: '#cbd5e1',
   3: '#c2703d',
+}
+
+// Add someone straight from the board, where you see who's racing — logged in only.
+function AddFriend({ userId, name }: { userId: string; name: string }) {
+  const { user } = useCurrentUser()
+  const { query, add } = useFriends(Boolean(user))
+  if (!user || !query.data) return null
+  const is = (list: Array<{ id: string }>) => list.some((f) => f.id === userId)
+  if (is(query.data.friends)) return null
+  if (is(query.data.outgoing)) {
+    return (
+      <Clock
+        className="size-3.5 shrink-0 text-muted-foreground"
+        aria-label="Friend request sent"
+      />
+    )
+  }
+  const sent = add.isSuccess && add.variables === userId
+  return (
+    <button
+      type="button"
+      onClick={() => add.mutate(userId)}
+      disabled={add.isPending || sent}
+      title={`Add ${name} as a friend`}
+      aria-label={`Add ${name} as a friend`}
+      className="shrink-0 text-muted-foreground hover:text-primary disabled:opacity-50"
+    >
+      {sent ? (
+        <Check className="size-3.5" />
+      ) : (
+        <UserPlus className="size-3.5" />
+      )}
+    </button>
+  )
 }
 
 function Row({
@@ -51,6 +93,12 @@ function Row({
           >
             you
           </Badge>
+        )}
+        {!entry.isMe && !compact && (
+          <AddFriend
+            userId={entry.userId}
+            name={entry.displayName || 'Racer'}
+          />
         )}
       </span>
       {!compact && (

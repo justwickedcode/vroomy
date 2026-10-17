@@ -112,14 +112,9 @@ func handleGetFriends(pool *pgxpool.Pool) http.HandlerFunc {
 	})
 }
 
-// escapeLike escapes LIKE's own wildcards so a search for "100%" matches that literal text.
-func escapeLike(s string) string {
-	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
-}
-
-// handleSearchUsers serves GET /api/users/search?q=... — case-insensitive substring match on
-// display name, excluding the caller, with each result's relationship to the caller. Exact
-// matches sort first so searching a full name finds that person even among many partial hits.
+// handleSearchUsers serves GET /api/users/search?q=... — a forgiving match on display name (or an
+// exact email or player id; see usersearch.go), excluding the caller, best matches first, with
+// each result's relationship to the caller.
 func handleSearchUsers(pool *pgxpool.Pool) http.HandlerFunc {
 	return withIdentity(func(w http.ResponseWriter, r *http.Request, id identity) {
 		q := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -128,26 +123,59 @@ func handleSearchUsers(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		rows, err := pool.Query(r.Context(), `
-			SELECT `+friendColumns+`
-			FROM users u
-			LEFT JOIN friendships f
-				ON (f.requester_id = $1 AND f.addressee_id = u.id)
-				OR (f.addressee_id = $1 AND f.requester_id = u.id)
-			WHERE u.id <> $1 AND LOWER(u.display_name) LIKE '%' || LOWER($2) || '%' ESCAPE '\'
-			ORDER BY LOWER(u.display_name) = LOWER($3) DESC, LOWER(u.display_name)
-			LIMIT $4
-		`, id.id, escapeLike(q), q, maxSearchResults)
+		// Every player is a candidate (see usersearch.go for how they're matched), then the best
+		// matches are loaded in full.
+		ctx := r.Context()
+		rows, err := pool.Query(ctx, `
+			SELECT id, display_name, COALESCE(email, '') FROM users
+			WHERE id <> $1 ORDER BY updated_at DESC LIMIT $2
+		`, id.id, maxSearchCandidates)
 		if err != nil {
 			log.Printf("search users failed: %s\n", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		results, err := scanFriends(rows)
+		candidates, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (searchCandidate, error) {
+			var c searchCandidate
+			err := row.Scan(&c.id, &c.displayName, &c.email)
+			return c, err
+		})
+		if err != nil {
+			log.Printf("scan search candidates failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		ids := rankSearch(candidates, q, maxSearchResults)
+
+		rows, err = pool.Query(ctx, `
+			SELECT `+friendColumns+`
+			FROM users u
+			LEFT JOIN friendships f
+				ON (f.requester_id = $1 AND f.addressee_id = u.id)
+				OR (f.addressee_id = $1 AND f.requester_id = u.id)
+			WHERE u.id = ANY($2)
+		`, id.id, ids)
+		if err != nil {
+			log.Printf("search users failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		found, err := scanFriends(rows)
 		if err != nil {
 			log.Printf("scan search results failed: %s\n", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 			return
+		}
+		// Back in match order.
+		byID := make(map[string]Friend, len(found))
+		for _, f := range found {
+			byID[f.ID] = f
+		}
+		results := make([]Friend, 0, len(ids))
+		for _, id := range ids {
+			if f, ok := byID[id]; ok {
+				results = append(results, f)
+			}
 		}
 		writeJSON(w, http.StatusOK, results)
 	})

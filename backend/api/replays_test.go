@@ -32,9 +32,3 @@ func TestValidateReplay(t *testing.T) {
 		}
 	}
 }
-
-func TestEscapeLike(t *testing.T) {
-	if got := escapeLike(`100%_a\b`); got != `100\%\_a\\b` {
-		t.Errorf("escapeLike = %q", got)
-	}
-}
