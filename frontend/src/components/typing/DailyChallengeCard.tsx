@@ -9,16 +9,14 @@ import {
   Sparkles,
   Trophy,
 } from '#/components/ui/icons'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceTrack from '#/components/typing/RaceTrack'
-import QuoteCredit from '#/components/typing/QuoteCredit'
+import RaceConsole from '#/components/typing/RaceConsole'
+import { PlaySection, StartButton } from '#/components/play/PlayKit'
 import Coins from '#/components/ui/Coins'
 import AchievementUnlocks from '#/components/ui/AchievementUnlocks'
 import type { UnlockedAchievement } from '#/lib/profile/useProfile'
-import Gauge from '#/components/typing/Gauge'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
 import { getDailyQuote, todayKey } from '#/lib/typing/sentences'
@@ -29,7 +27,6 @@ import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
-const WPM_GAUGE_MAX = 130
 // Matches TypingRace's own solo countdown length — long enough to get fingers on the keys,
 // short enough that clicking Start doesn't feel like a wait.
 const COUNTDOWN_START = 3
@@ -58,6 +55,7 @@ export default function DailyChallengeCard() {
     wpm,
     accuracy,
     progress,
+    elapsedMs,
     handleInputChange,
     start,
     reset,
@@ -165,24 +163,28 @@ export default function DailyChallengeCard() {
   }
 
   return (
-    <Card className="rise-in overflow-hidden">
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 py-6">
-        <div className="flex items-center gap-3">
-          <p className="kicker">Daily challenge</p>
-          {hydrated && streak > 0 && (
-            <Badge variant="outline" className="gap-1">
-              <Flame className="size-3" />
-              {streak} day{streak === 1 ? '' : 's'}
-            </Badge>
-          )}
-        </div>
-        <div className="flex gap-3">
-          <Gauge label="wpm" value={wpm} max={WPM_GAUGE_MAX} />
-          <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
-        </div>
-      </CardHeader>
+    // One connected panel, like a race: today's strip, the track and words, the dash console,
+    // then today's board and your history.
+    <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-card px-4 py-3">
+        <CalendarDays className="size-6" />
+        <span className="font-display text-xl uppercase">Daily challenge</span>
+        {hydrated && streak > 0 && (
+          <span className="flex items-center gap-1.5 font-mono text-xs text-signal">
+            <Flame className="size-4" />
+            {streak} day{streak === 1 ? '' : 's'}
+          </span>
+        )}
+        {hydrated && bestWpm > 0 && (
+          <span className="ml-auto flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+            <Trophy className="size-4" />
+            Best <span className="text-foreground">{bestWpm} wpm</span>
+            {result && <> · today {result.wpm}</>}
+          </span>
+        )}
+      </div>
 
-      <CardContent className="pt-6">
+      <div className="flex flex-col">
         <RaceTrack
           racers={[
             {
@@ -200,17 +202,7 @@ export default function DailyChallengeCard() {
           ]}
           phase="ready"
           epic
-          className="mb-5 overflow-hidden"
         />
-
-        {hydrated && bestWpm > 0 && !finished && (
-          <p className="pixel-text mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-            <Trophy className="size-4 shrink-0" />
-            Best <span className="text-foreground">{bestWpm} wpm</span>
-            {result && <> · today {result.wpm} wpm</>}
-          </p>
-        )}
-
         <TypingWords
           spans={spans}
           typed={typed}
@@ -219,37 +211,58 @@ export default function DailyChallengeCard() {
           locked={locked}
           onInputChange={handleInputChange}
           inputRef={inputRef}
-          className="mb-2"
           overlay={
             finished ? (
-              <div className="countdown-overlay gap-3">
-                <Button
-                  onClick={handleTryAgain}
-                  size="lg"
-                  className="pointer-events-auto"
-                >
-                  <RotateCcw />
-                  Try again
-                </Button>
-                {replayId && (
-                  <Button asChild size="lg" className="pointer-events-auto">
-                    <Link to="/replays/$replayId" params={{ replayId }}>
-                      <PlayCircle />
-                      Watch replay
-                    </Link>
+              <div className="race-results">
+                <div className="flex flex-col gap-1">
+                  <p className="font-display text-6xl leading-none text-signal [text-shadow:4px_4px_0_rgb(0_0_0/0.5)]">
+                    {wpm}
+                    <span className="ml-2 text-2xl text-[#8a7ca3]">wpm</span>
+                  </p>
+                  <p className="font-mono text-xs text-[#8a7ca3]">
+                    {accuracy}% accuracy
+                  </p>
+                </div>
+                <div className="flex min-w-0 flex-col gap-1.5 text-sm">
+                  {coinsEarned !== null && (
+                    <Coins
+                      amount={coinsEarned}
+                      prefix="+"
+                      className="font-bold text-signal"
+                    />
+                  )}
+                  {newBest && (
+                    <span className="flex items-center gap-2 font-semibold">
+                      <Sparkles className="size-4" />
+                      New daily best
+                    </span>
+                  )}
+                  <AchievementUnlocks unlocked={unlocks} />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button onClick={handleTryAgain}>
+                    <RotateCcw />
+                    Try again
                   </Button>
-                )}
+                  {replayId && (
+                    <Button asChild variant="outline">
+                      <Link to="/replays/$replayId" params={{ replayId }}>
+                        <PlayCircle />
+                        Replay
+                      </Link>
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : phase === 'idle' ? (
               <div className="countdown-overlay">
-                <Button
+                <StartButton
                   onClick={handleStart}
-                  size="lg"
-                  className="pointer-events-auto"
+                  className="pointer-events-auto w-auto px-10"
                 >
                   <Play />
                   Start
-                </Button>
+                </StartButton>
               </div>
             ) : phase === 'counting' ? (
               <div className="race-countdown-overlay" aria-live="assertive">
@@ -266,42 +279,19 @@ export default function DailyChallengeCard() {
             ) : null
           }
         />
+      </div>
 
-        <QuoteCredit {...credit} className="mb-5" />
-
-        {finished ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4">
-            <Trophy className="size-6 shrink-0 text-success" />
-            <div className="flex flex-col gap-1">
-              <p className="pixel-text text-sm leading-none">
-                {wpm} wpm · {accuracy}%
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                {coinsEarned !== null && (
-                  <Coins
-                    amount={coinsEarned}
-                    prefix="+"
-                    className="text-sm text-signal"
-                  />
-                )}
-                {newBest && (
-                  <Badge variant="success" className="w-fit gap-1">
-                    <Sparkles className="size-3" />
-                    New daily best
-                  </Badge>
-                )}
-              </div>
-              <AchievementUnlocks unlocked={unlocks} />
-            </div>
-          </div>
-        ) : null}
-      </CardContent>
+      <RaceConsole
+        wpm={wpm}
+        accuracy={accuracy}
+        elapsedMs={elapsedMs}
+        {...credit}
+      />
 
       {leaderboard.data && (
-        <>
-          <div className="glass-divider" />
-          <CardHeader className="flex-row items-center justify-between py-5">
-            <p className="kicker">Today's top racers</p>
+        <PlaySection
+          label="Today's top racers"
+          aside={
             <Link
               to="/leaderboards"
               search={{ board: 'daily' }}
@@ -309,54 +299,47 @@ export default function DailyChallengeCard() {
             >
               Full board
             </Link>
-          </CardHeader>
-          <CardContent className="pt-0 pb-6">
-            <LeaderboardTable
-              board={leaderboard.data}
-              compact
-              limit={5}
-              emptyText="No runs yet"
-            />
-          </CardContent>
-        </>
+          }
+        >
+          <LeaderboardTable
+            board={leaderboard.data}
+            compact
+            limit={5}
+            emptyText="No runs yet"
+          />
+        </PlaySection>
       )}
 
       {hydrated && history.length > 0 && (
-        <>
-          <div className="glass-divider" />
-          <CardHeader className="py-5">
-            <p className="kicker">History</p>
-          </CardHeader>
-          <CardContent className="pt-0 pb-6">
-            <div className="flex flex-col gap-1">
-              {history.map((entry) => (
-                <div
-                  key={entry.date}
-                  className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm"
-                >
-                  <span className="flex items-center gap-2 text-muted-foreground">
-                    <CalendarDays className="size-3.5" />
-                    {formatHistoryDate(entry.date)}
+        <PlaySection label="History">
+          <div className="flex flex-col">
+            {history.map((entry) => (
+              <div
+                key={entry.date}
+                className="flex items-center justify-between py-1.5 text-sm"
+              >
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <CalendarDays className="size-3.5" />
+                  {formatHistoryDate(entry.date)}
+                </span>
+                <span className="flex items-center gap-3 font-mono">
+                  <span
+                    className={cn(
+                      'font-bold',
+                      entry.wpm >= bestWpm && 'text-primary',
+                    )}
+                  >
+                    {entry.wpm} wpm
                   </span>
-                  <span className="flex items-center gap-3 font-mono">
-                    <span
-                      className={cn(
-                        'font-bold',
-                        entry.wpm >= bestWpm && 'text-primary',
-                      )}
-                    >
-                      {entry.wpm} wpm
-                    </span>
-                    <span className="text-muted-foreground">
-                      {entry.accuracy}% acc
-                    </span>
+                  <span className="text-muted-foreground">
+                    {entry.accuracy}% acc
                   </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </>
+                </span>
+              </div>
+            ))}
+          </div>
+        </PlaySection>
       )}
-    </Card>
+    </div>
   )
 }
