@@ -1,43 +1,42 @@
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import {
-  ArrowLeft,
-  ArrowRight,
-  Minus,
-  Plus,
-  SlidersHorizontal,
-} from '#/components/ui/icons'
+import { ArrowLeft, ArrowRight, Minus, Plus } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
-import { Input } from '#/components/ui/input'
 import PaceDial from '#/components/typing/PaceDial'
-import PixelMeter from '#/components/ui/PixelMeter'
+import PixelIcon from '#/components/ui/PixelIcon'
+import { PlaySection, StartButton } from '#/components/play/PlayKit'
 import { SPEED_RANGES } from '#/lib/typing/useBotRacers'
 import { useLastPace } from '#/lib/typing/useLastPace'
 import { useProfile } from '#/lib/profile/useProfile'
-import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
-import PixelIcon from '#/components/ui/PixelIcon'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
+import type { CSSProperties } from 'react'
 
-// Solo setup: pick a preset bot pace, or "Choose yourself" to dial in an exact WPM. Used in the
-// dashboard's Solo modal and on /race/solo.
+// Solo's part of the Play picker (see PlayPicker): the bot pace — one of the presets, or "Your
+// pace" to dial in an exact WPM — then off you go.
 
 const MIN_WPM = 10
 // Covers the fastest preset zone (Warp Speed tops out at 260) so the custom
-// dial and the preset tiles agree on what "full scale" means.
+// picker and the preset tiles agree on what "full scale" means.
 const MAX_WPM = SPEED_RANGES[SPEED_RANGES.length - 1].wpm[1]
 const CUSTOM_STEP = 5
 
-// Slow paces green, the fastest red — the same calm/working/redline idea as the gauges.
+// Slow paces green, the fastest red — the same calm/working/redline idea as the pace picker.
 const PACE_COLORS = [
-  'var(--color-success)',
-  'var(--color-success)',
-  'var(--color-success)',
-  'var(--color-signal)',
-  'var(--color-signal)',
-  'var(--color-destructive)',
-  'var(--color-destructive)',
+  '#4ade80',
+  '#4ade80',
+  '#4ade80',
+  '#facc15',
+  '#facc15',
+  '#f43f5e',
+  '#f43f5e',
 ]
 
+function abilitiesSearch(abilities: boolean) {
+  return abilities ? {} : { abilities: 'off' as const }
+}
+
+// One pace "gear": a pixel bar that climbs higher (and from green to red) gear by gear, with
+// the name and WPM range under it — the seven presets read as one rising staircase.
 function SpeedPresetTile({
   range,
   index,
@@ -51,40 +50,20 @@ function SpeedPresetTile({
     <Link
       to="/race/solo/$speed"
       params={{ speed: range.id }}
-      search={abilities ? {} : { abilities: 'off' as const }}
-      onMouseMove={handleTiltMove}
-      onMouseLeave={handleTiltLeave}
-      className="tilt-card glass-chip flex flex-col gap-3 p-4 text-left transition-colors hover:border-primary/50"
+      search={abilitiesSearch(abilities)}
+      className="pace-gear"
+      style={{ '--gear': PACE_COLORS[index] ?? '#f43f5e' } as CSSProperties}
     >
-      <div>
-        <span className="block text-base font-bold">{range.label}</span>
-        <span className="mt-0.5 block font-mono text-xs text-muted-foreground tabular-nums">
-          {range.wpm[0]}–{range.wpm[1]} wpm
-        </span>
-      </div>
-      <PixelMeter
-        frac={range.wpm[1] / MAX_WPM}
-        color={PACE_COLORS[index] ?? 'var(--color-destructive)'}
-        className="gap-[2px]"
-      />
+      <span className="pace-gear-bar" aria-hidden="true">
+        {Array.from({ length: SPEED_RANGES.length }, (_, i) => (
+          <span key={i} className={i <= index ? 'is-lit' : undefined} />
+        ))}
+      </span>
+      <span className="pace-gear-name">{range.label}</span>
+      <span className="pace-gear-wpm">
+        {range.wpm[0]}–{range.wpm[1]}
+      </span>
     </Link>
-  )
-}
-
-function CustomPaceTile({ onOpen }: { onOpen: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      onMouseMove={handleTiltMove}
-      onMouseLeave={handleTiltLeave}
-      className="tilt-card px-corners flex flex-col justify-between gap-3 border-2 border-dashed border-border p-4 text-left transition-colors hover:border-primary/60 hover:bg-secondary/30"
-    >
-      <SlidersHorizontal className="size-5 text-primary" strokeWidth={2.5} />
-      <div>
-        <span className="block text-base font-bold">Choose yourself</span>
-      </div>
-    </button>
   )
 }
 
@@ -115,136 +94,84 @@ function CustomPace({
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="self-start"
-        onClick={onBack}
-      >
-        <ArrowLeft />
-        Presets
-      </Button>
-      <div className="flex flex-col items-center gap-5 py-2">
-        <PaceDial
-          value={wpm}
-          min={MIN_WPM}
-          max={MAX_WPM}
-          zones={SPEED_RANGES}
-          markerValue={bestWpm}
-          onChange={apply}
-        />
-
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => apply(wpm - CUSTOM_STEP)}
-            aria-label="Decrease pace"
-          >
-            <Minus />
+    <>
+      <PlaySection
+        label="Your pace"
+        aside={
+          <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeft />
+            Presets
           </Button>
-          <Input
-            type="number"
-            inputMode="numeric"
+        }
+      >
+        <div className="flex flex-col items-center gap-4 pb-1">
+          <PaceDial
+            value={wpm}
             min={MIN_WPM}
             max={MAX_WPM}
-            value={draft ?? String(wpm)}
-            onChange={(event) => setDraft(event.target.value)}
-            onBlur={commitDraft}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') commitDraft()
-            }}
-            className="w-24 text-center font-mono text-lg font-bold tabular-nums"
-            aria-label="Words per minute"
+            zones={SPEED_RANGES}
+            markerValue={bestWpm}
+            onChange={apply}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            onClick={() => apply(wpm + CUSTOM_STEP)}
-            aria-label="Increase pace"
-          >
-            <Plus />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => apply(wpm - CUSTOM_STEP)}
+              aria-label="Decrease pace"
+            >
+              <Minus />
+            </Button>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={MIN_WPM}
+              max={MAX_WPM}
+              value={draft ?? String(wpm)}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={commitDraft}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') commitDraft()
+              }}
+              className="play-input w-24 text-center"
+              aria-label="Words per minute"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => apply(wpm + CUSTOM_STEP)}
+              aria-label="Increase pace"
+            >
+              <Plus />
+            </Button>
+          </div>
         </div>
-      </div>
-      <Button size="lg" className="w-full" asChild>
-        <Link
-          to="/race/solo/$speed"
-          params={{ speed: `custom-${wpm}` }}
-          search={abilities ? {} : { abilities: 'off' as const }}
-        >
-          Race at {wpm} wpm
-          <ArrowRight />
-        </Link>
-      </Button>
-    </div>
-  )
-}
-
-// With abilities: your equipped one recharges through the race, and the bots use them too.
-// Without: just typing.
-const MODES = [
-  {
-    id: 'on',
-    label: 'With abilities',
-    icon: 'overdrive',
-    blurb: 'Yours recharges — bots use them too',
-  },
-  { id: 'off', label: 'Without', icon: 'keyboard', blurb: 'Just typing' },
-] as const
-
-function ModeSwitch({
-  abilities,
-  onChange,
-}: {
-  abilities: boolean
-  onChange: (abilities: boolean) => void
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-[2px] border-2 border-border bg-border">
-      {MODES.map((mode) => {
-        const active = (mode.id === 'on') === abilities
-        return (
-          <button
-            key={mode.id}
-            type="button"
-            onClick={() => onChange(mode.id === 'on')}
-            className={cn(
-              'flex items-center gap-3 p-3 text-left transition-colors',
-              active
-                ? 'bg-[#2a1238] shadow-[inset_0_-3px_0_#ff2fb4]'
-                : 'bg-card hover:bg-accent',
-            )}
+      </PlaySection>
+      <div className="bg-card p-4">
+        <StartButton asChild>
+          <Link
+            to="/race/solo/$speed"
+            params={{ speed: `custom-${wpm}` }}
+            search={abilitiesSearch(abilities)}
           >
-            <PixelIcon name={mode.icon} className="size-7" />
-            <span className="flex flex-col leading-tight">
-              <span className="font-display text-lg uppercase">
-                {mode.label}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {mode.blurb}
-              </span>
-            </span>
-          </button>
-        )
-      })}
-    </div>
+            Race at {wpm} wpm
+            <ArrowRight />
+          </Link>
+        </StartButton>
+      </div>
+    </>
   )
 }
 
-export default function SoloPicker() {
+export default function SoloPicker({ abilities }: { abilities: boolean }) {
   const [custom, setCustom] = useState(false)
-  const [abilities, setAbilities] = useState(true)
   if (custom)
     return <CustomPace onBack={() => setCustom(false)} abilities={abilities} />
   return (
-    <div className="flex flex-col gap-4">
-      <ModeSwitch abilities={abilities} onChange={setAbilities} />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <PlaySection label="Bot pace">
+      <div className="grid grid-cols-8 border-2 border-border [&>*]:shadow-[0_0_0_1px_var(--color-border)]">
         {SPEED_RANGES.map((range, i) => (
           <SpeedPresetTile
             key={range.id}
@@ -253,8 +180,21 @@ export default function SoloPicker() {
             abilities={abilities}
           />
         ))}
-        <CustomPaceTile onOpen={() => setCustom(true)} />
+        <button
+          type="button"
+          onClick={() => setCustom(true)}
+          className="pace-gear"
+        >
+          <span
+            className="pace-gear-bar pace-gear-bar--custom"
+            aria-hidden="true"
+          >
+            <PixelIcon name="sliders" className="size-6" />
+          </span>
+          <span className="pace-gear-name">Your pace</span>
+          <span className="pace-gear-wpm">10–260</span>
+        </button>
       </div>
-    </div>
+    </PlaySection>
   )
 }

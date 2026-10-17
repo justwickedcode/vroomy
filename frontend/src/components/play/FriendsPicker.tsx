@@ -2,16 +2,14 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Link2 } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
-import LobbyModePicker from '#/components/multiplayer/LobbyModePicker'
+import { PlaySection, StartButton } from '#/components/play/PlayKit'
 import type { FormEvent } from 'react'
-import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 
-// Friends setup: create a private room (picking its lobby type) or join one by code. Used in
-// the dashboard's Friends modal and on /race/friends.
-export default function FriendsPicker() {
+// Friends' part of the Play picker (see PlayPicker): create a private room (with or without
+// abilities, as picked above) and share its code, or join one by code.
+export default function FriendsPicker({ abilities }: { abilities: boolean }) {
   const navigate = useNavigate()
   const [joinCode, setJoinCode] = useState('')
-  const [mode, setMode] = useState<LobbyMode>('classic')
 
   function handleCreate() {
     // "new" is a reserved sentinel — /race/$roomCode asks backend/ws to mint a real room and
@@ -19,7 +17,7 @@ export default function FriendsPicker() {
     void navigate({
       to: '/race/$roomCode',
       params: { roomCode: 'new' },
-      search: { mode },
+      search: { mode: abilities ? 'powerups' : 'classic' },
     })
   }
 
@@ -31,32 +29,29 @@ export default function FriendsPicker() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3">
-        <p className="kicker">Create a room</p>
-        <LobbyModePicker value={mode} onSelect={setMode} />
-        <Button onClick={handleCreate} className="self-start">
-          <Link2 />
-          Create room
-        </Button>
-      </div>
-      <div className="glass-divider" />
-      <div className="flex flex-col gap-3">
-        <p className="kicker">Join a room</p>
+    <>
+      <PlaySection label="Join a room">
         <form onSubmit={handleJoin} className="flex gap-2">
           <input
             value={joinCode}
             onChange={(event) => setJoinCode(event.target.value)}
-            placeholder="Room code"
+            placeholder="CODE"
             maxLength={6}
-            className="px-corners flex-1 border-2 border-border bg-secondary/40 px-3 py-2 font-[family-name:var(--font-code)] text-sm tracking-widest uppercase outline-none focus-visible:border-primary"
+            className="play-input flex-1 tracking-[0.3em] uppercase"
+            aria-label="Room code"
           />
           <Button type="submit" variant="outline" disabled={!joinCode.trim()}>
             Join
             <ArrowRight />
           </Button>
         </form>
+      </PlaySection>
+      <div className="bg-card p-4">
+        <StartButton onClick={handleCreate}>
+          <Link2 />
+          Create a room
+        </StartButton>
       </div>
-    </div>
+    </>
   )
 }

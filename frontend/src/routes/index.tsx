@@ -1,21 +1,13 @@
 import { useState } from 'react'
-import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
+import { Link, createFileRoute } from '@tanstack/react-router'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '#/components/ui/dialog'
-import SoloPicker from '#/components/play/SoloPicker'
-import FriendsPicker from '#/components/play/FriendsPicker'
-import LobbyModePicker from '#/components/multiplayer/LobbyModePicker'
-import {
-  CalendarDays,
-  ChevronRight,
-  Flag,
-  Link2,
-  Users,
-} from '#/components/ui/icons'
+import PlayPicker from '#/components/play/PlayPicker'
+import { CalendarDays, ChevronRight, Flag } from '#/components/ui/icons'
 import Coins from '#/components/ui/Coins'
 import PixelMeter from '#/components/ui/PixelMeter'
 import RaceTrack from '#/components/typing/RaceTrack'
@@ -32,28 +24,8 @@ export const Route = createFileRoute('/')({ component: Dashboard })
 // Where the WPM meters top out — a strong typist sits near the top, nobody is pinned at full.
 const WPM_METER_MAX = 130
 
-// Solo, Multiplayer and Friends open their setup as a modal over the dashboard; Daily has
-// nothing to pick, so it goes straight to the challenge.
-type PlayModal = 'solo' | 'multiplayer' | 'friends'
-
-const MODES: Array<{
-  icon: typeof Flag
-  title: string
-  modal?: PlayModal
-  to?: '/daily-challenge'
-}> = [
-  { icon: Flag, title: 'Solo', modal: 'solo' },
-  { icon: Users, title: 'Multiplayer', modal: 'multiplayer' },
-  { icon: Link2, title: 'Friends', modal: 'friends' },
-  { icon: CalendarDays, title: 'Daily', to: '/daily-challenge' },
-]
-
-const MODAL_TITLES: Record<PlayModal, string> = {
-  solo: 'Solo race',
-  multiplayer: 'Multiplayer',
-  friends: 'Race with friends',
-}
-
+// Two ways in: Play opens one modal with every race mode (see PlayPicker); Daily goes straight
+// to the challenge.
 // How many races the WPM trend chart and the recent-races list show.
 const TREND_RACES = 20
 const RECENT_RACES = 10
@@ -122,8 +94,7 @@ function Dashboard() {
     trail,
   } = useProfile()
   const { user } = useCurrentUser()
-  const navigate = useNavigate()
-  const [openModal, setOpenModal] = useState<PlayModal | null>(null)
+  const [playOpen, setPlayOpen] = useState(false)
   const hasRaced = hydrated && stats.racesPlayed > 0
   const unlocked = hydrated ? achievements : []
   // The next achievements to go for, in the catalog's own easiest-first order.
@@ -176,36 +147,40 @@ function Dashboard() {
             </h1>
           </div>
 
-          <div className="grid grid-cols-2 gap-[2px] lg:grid-cols-4">
-            {MODES.map(({ icon: Icon, title, modal, to }) => {
-              const tileClass = cn(
+          <div className="grid grid-cols-2 gap-[2px]">
+            <button
+              type="button"
+              onClick={() => setPlayOpen(true)}
+              className={cn(
                 CELL,
-                'group flex items-center gap-3 p-4 text-left transition-colors hover:bg-accent',
-              )
-              const inner = (
-                <>
-                  <Icon className="size-8 shrink-0 transition-transform duration-200 group-hover:scale-110" />
-                  <span className="font-display text-xl uppercase">
-                    {title}
-                  </span>
-                  <ChevronRight className="ml-auto size-4 opacity-0 transition-opacity group-hover:opacity-100" />
-                </>
-              )
-              return modal ? (
-                <button
-                  key={title}
-                  type="button"
-                  onClick={() => setOpenModal(modal)}
-                  className={tileClass}
-                >
-                  {inner}
-                </button>
-              ) : (
-                <Link key={title} to={to ?? '/'} className={tileClass}>
-                  {inner}
-                </Link>
-              )
-            })}
+                'group flex items-center gap-4 p-5 text-left transition-colors hover:bg-accent',
+              )}
+            >
+              <Flag className="size-10 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+              <span className="flex flex-col leading-tight">
+                <span className="font-display text-2xl uppercase">Play</span>
+                <span className="text-xs text-muted-foreground">
+                  Solo · Multiplayer · Friends
+                </span>
+              </span>
+              <ChevronRight className="ml-auto size-5 opacity-0 transition-opacity group-hover:opacity-100" />
+            </button>
+            <Link
+              to="/daily-challenge"
+              className={cn(
+                CELL,
+                'group flex items-center gap-4 p-5 text-left transition-colors hover:bg-accent',
+              )}
+            >
+              <CalendarDays className="size-10 shrink-0 transition-transform duration-200 group-hover:scale-110" />
+              <span className="flex flex-col leading-tight">
+                <span className="font-display text-2xl uppercase">Daily</span>
+                <span className="text-xs text-muted-foreground">
+                  Today's challenge
+                </span>
+              </span>
+              <ChevronRight className="ml-auto size-5 opacity-0 transition-opacity group-hover:opacity-100" />
+            </Link>
           </div>
 
           <div className="grid grid-cols-2 gap-[2px] lg:grid-cols-5">
@@ -332,29 +307,14 @@ function Dashboard() {
         </div>
       </div>
 
-      <Dialog
-        open={openModal !== null}
-        onOpenChange={(open) => {
-          if (!open) setOpenModal(null)
-        }}
-      >
-        <DialogContent
-          className={cn(openModal === 'solo' ? 'sm:max-w-3xl' : 'sm:max-w-xl')}
-        >
+      <Dialog open={playOpen} onOpenChange={setPlayOpen}>
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="font-display text-2xl uppercase">
-              {openModal ? MODAL_TITLES[openModal] : ''}
+              Play
             </DialogTitle>
           </DialogHeader>
-          {openModal === 'solo' && <SoloPicker />}
-          {openModal === 'multiplayer' && (
-            <LobbyModePicker
-              onSelect={(mode) =>
-                void navigate({ to: '/race/multiplayer', search: { mode } })
-              }
-            />
-          )}
-          {openModal === 'friends' && <FriendsPicker />}
+          <PlayPicker />
         </DialogContent>
       </Dialog>
     </main>

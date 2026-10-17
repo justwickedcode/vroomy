@@ -1,8 +1,7 @@
 import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
-import LobbyModePicker from '#/components/multiplayer/LobbyModePicker'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import PlayPicker from '#/components/play/PlayPicker'
 import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 import MultiplayerRace from '#/components/typing/MultiplayerRace'
 import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
@@ -36,27 +35,12 @@ function QuickMatchGate() {
 
 function QuickMatch() {
   const { mode } = Route.useSearch()
-  const navigate = useNavigate()
 
   if (!mode) {
     return (
       <main className="flex flex-1 flex-col justify-center px-4 py-8">
-        <div className="page-wrap max-w-xl">
-          <Card className="rise-in overflow-hidden">
-            <CardHeader className="py-5">
-              <p className="kicker">Pick a lobby</p>
-            </CardHeader>
-            <CardContent className="pt-0 pb-6">
-              <LobbyModePicker
-                onSelect={(picked) =>
-                  void navigate({
-                    to: '/race/multiplayer',
-                    search: { mode: picked },
-                  })
-                }
-              />
-            </CardContent>
-          </Card>
+        <div className="page-wrap rise-in max-w-3xl">
+          <PlayPicker initialMode="multiplayer" />
         </div>
       </main>
     )

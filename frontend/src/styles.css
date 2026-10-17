@@ -3103,3 +3103,95 @@ button:not(:disabled):hover .race-itembox--ready {
 .pace-ticks span:last-child {
   translate: -100% 0;
 }
+
+/* Text boxes on the play screens (room code, exact pace): a recessed dark LCD field. */
+.play-input {
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: #4ade80;
+  background: #050d08;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #241834;
+  outline: none;
+}
+
+.play-input::placeholder {
+  color: rgb(74 222 128 / 30%);
+}
+
+.play-input:focus-visible {
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #ff2fb4;
+}
+
+/* Solo's bot pace "gears" (see SoloPicker): equal cells in a row, each with a pixel bar that
+   climbs a step higher (green → yellow → red) than the one before. */
+.pace-gear {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem 0.4rem 0.6rem;
+  text-align: center;
+  background: var(--color-card);
+  outline: none;
+  transition: background-color 120ms;
+}
+
+.pace-gear:hover {
+  background: var(--color-accent);
+}
+
+.pace-gear:focus-visible {
+  box-shadow: inset 0 0 0 2px #22d3ee;
+}
+
+.pace-gear-bar {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  width: 1.4rem;
+  height: 4.6rem;
+}
+
+.pace-gear-bar > span {
+  flex: 1;
+  background: #1a1126;
+}
+
+.pace-gear-bar > span.is-lit {
+  background: var(--gear);
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 30%);
+}
+
+.pace-gear:hover .pace-gear-bar > span.is-lit {
+  box-shadow:
+    inset 0 -2px 0 rgb(0 0 0 / 30%),
+    0 0 6px color-mix(in oklab, var(--gear) 60%, transparent);
+}
+
+.pace-gear-bar--custom {
+  align-items: center;
+  justify-content: center;
+  width: auto;
+}
+
+.pace-gear-name {
+  display: flex;
+  align-items: center;
+  min-height: 2.1em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.pace-gear-wpm {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
