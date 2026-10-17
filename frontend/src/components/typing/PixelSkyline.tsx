@@ -81,12 +81,74 @@ function streetRects() {
     rect(0, H - GROUND, W, GROUND, STREET),
     rect(0, H - GROUND, W, 1, '#ff2fb4'),
   ]
+  // Palms between some of the streetlights (offset from them, so they never overlap).
+  for (const [x, h] of [
+    [36, 13],
+    [118, 16],
+    [196, 12],
+    [276, 15],
+  ]) {
+    parts.push(palm(x, h))
+  }
+  // Bushes and fire hydrants along the kerb, between the lamps and palms.
+  for (const x of [62, 150, 302]) {
+    parts.push(rect(x, H - GROUND - 2, 6, 2, '#166534'))
+    parts.push(rect(x + 1, H - GROUND - 3, 4, 1, '#22c55e'))
+  }
+  for (const x of [86, 246]) {
+    parts.push(rect(x, H - GROUND - 3, 2, 3, '#ef4444'))
+    parts.push(rect(x - 1, H - GROUND - 2, 4, 1, '#b91c1c'))
+  }
+  // Streetlights: a 2px pole, an arm reaching over the road, and a bright head in a soft halo
+  // (the track's light pools sit under the head — see .race-track-panel--epic in styles.css).
   for (let x = 18; x < W; x += LIGHT_SPACING) {
-    const top = H - GROUND - 14
-    parts.push(rect(x, top, 1, 14, '#3a2a4f'))
-    parts.push(rect(x, top, 4, 1, '#3a2a4f'))
-    parts.push(rect(x + 2, top - 1, 3, 3, 'rgba(34,211,238,0.3)'))
-    parts.push(rect(x + 3, top + 1, 1, 1, '#a5f3fc'))
+    const top = H - GROUND - 18
+    parts.push(rect(x - 2, top - 3, 13, 9, 'rgba(34,211,238,0.12)'))
+    parts.push(rect(x + 1, top - 2, 9, 6, 'rgba(34,211,238,0.22)'))
+    parts.push(rect(x, top, 2, 18, '#4a3a60'))
+    parts.push(rect(x, top, 7, 1, '#4a3a60'))
+    parts.push(rect(x + 4, top + 1, 3, 2, '#e0fbff'))
+  }
+  return parts.join('')
+}
+
+// A synthwave palm silhouette standing on the sidewalk: a leaning trunk and drooping fronds.
+function palm(x: number, height: number) {
+  const base = H - GROUND
+  const parts: Array<string> = []
+  for (let i = 0; i < height; i++) {
+    // The trunk leans a pixel right every few rows.
+    parts.push(rect(x + Math.floor(i / 5), base - 1 - i, 2, 1, '#6b4426'))
+  }
+  const tx = x + Math.floor(height / 5)
+  const ty = base - height
+  for (const [dx, dy, w] of [
+    [-6, 1, 5],
+    [-8, 2, 3],
+    [-9, 3, 2],
+    [2, 1, 5],
+    [6, 2, 3],
+    [8, 3, 2],
+    [-3, 0, 8],
+    [-4, -1, 3],
+    [2, -1, 3],
+  ]) {
+    // Teal fronds, lit along their top edge by the sunset.
+    parts.push(rect(tx + dx, ty + dy, w, 1, dy < 1 ? '#2dd4bf' : '#0f766e'))
+  }
+  return parts.join('')
+}
+
+// A rooftop neon billboard: a magenta frame around a few lit cyan "letters".
+function billboard(x: number, top: number) {
+  const parts = [
+    rect(x + 2, top + 7, 1, 4, '#12081f'),
+    rect(x + 11, top + 7, 1, 4, '#12081f'),
+    rect(x, top, 14, 7, '#ff2fb4'),
+    rect(x + 1, top + 1, 12, 5, '#1d0b2e'),
+  ]
+  for (const lx of [2, 5, 8, 10]) {
+    parts.push(rect(x + lx, top + 2, lx === 10 ? 1 : 2, 3, '#22d3ee'))
   }
   return parts.join('')
 }
@@ -97,7 +159,11 @@ function tile(body: string) {
 }
 
 const FAR_TILE = tile(cityRects(7, 14, 34, '#2a1240', 0))
-const NEAR_TILE = tile(cityRects(42, 8, 26, '#12081f', 0.22))
+const NEAR_TILE = tile(
+  cityRects(42, 8, 26, '#12081f', 0.22) +
+    billboard(64, 30) +
+    billboard(214, 26),
+)
 const STREET_TILE = tile(streetRects())
 
 // Stars scattered over the dark upper sky; every fifth one twinkles.

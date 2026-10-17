@@ -936,23 +936,23 @@ body::before {
    60px, the showcase's 112px -> 70px and 144px -> 90px). This is what ties the city to the road. */
 .race-track-panel--epic {
   --lamp-gap: 50px;
-  --lamp-x: 26px;
+  --lamp-x: 29px;
 }
 
 .race-track-panel--showcase {
   --lamp-gap: 70px;
-  --lamp-x: 37px;
+  --lamp-x: 40px;
 }
 
 @media (min-width: 640px) {
   .race-track-panel--epic {
     --lamp-gap: 60px;
-    --lamp-x: 32px;
+    --lamp-x: 35px;
   }
 
   .race-track-panel--showcase {
     --lamp-gap: 90px;
-    --lamp-x: 47px;
+    --lamp-x: 52px;
   }
 }
 
@@ -964,7 +964,7 @@ body::before {
   pointer-events: none;
   background-image: radial-gradient(
     ellipse 22% 38% at 50% 0%,
-    rgb(165 243 252 / 13%),
+    rgb(165 243 252 / 18%),
     transparent 100%
   );
   background-size: var(--lamp-gap) 100%;
@@ -1217,97 +1217,246 @@ body::before {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 16px;
-  transform: translateX(-8px);
-  /* Above the barriers (so its posts stand on them), below the cars (which drive over it). */
+  width: 24px;
+  transform: translateX(-12px);
+  /* Above the barriers (so its pylons stand on them), below the cars (which drive over it). */
   z-index: 3;
   pointer-events: none;
-  transition: left 300ms linear;
 }
 
-/* Hard-edged 8px checks, two columns, with a faint glow on the asphalt around them. */
+/* Three columns of hard 8px checks, with a band of light sweeping down them in steps. */
 .race-finish-strip {
   position: absolute;
-  inset: 0;
-  background-color: #0b0614;
-  background-image: conic-gradient(
-    #f4ecff 90deg,
-    transparent 90deg 180deg,
-    #f4ecff 180deg 270deg,
-    transparent 270deg
-  );
-  background-size: 16px 16px;
-  image-rendering: pixelated;
+  /* Across the asphalt only — the barriers (12px) stay intact; the pylons stand on them. */
+  inset: 12px 0;
+  background:
+    linear-gradient(
+        transparent 0 40%,
+        rgb(255 255 255 / 45%) 40% 50%,
+        transparent 50%
+      )
+      0 0 / 100% 300% no-repeat,
+    conic-gradient(
+        #f4ecff 90deg,
+        #0b0614 90deg 180deg,
+        #f4ecff 180deg 270deg,
+        #0b0614 270deg
+      )
+      0 0 / 16px 16px;
   box-shadow:
-    -3px 0 0 rgb(0 0 0 / 35%),
-    0 0 18px 4px rgb(244 236 255 / 18%);
+    -4px 0 0 rgb(0 0 0 / 40%),
+    0 0 24px 6px rgb(244 236 255 / 22%);
+  animation: race-finish-sheen 1.6s steps(12) infinite;
 }
 
-/* A light post on each barrier, its lamp blinking magenta/cyan like the rest of the street. */
+@keyframes race-finish-sheen {
+  from {
+    background-position:
+      0 100%,
+      0 0;
+  }
+  to {
+    background-position:
+      0 -50%,
+      0 0;
+  }
+}
+
+/* Laser beams down both edges of the line, flickering between magenta and cyan. */
+.race-finish-laser {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: #ff2fb4;
+  box-shadow: 0 0 8px 2px rgb(255 47 180 / 70%);
+  animation: race-finish-laser 0.5s steps(1) infinite;
+}
+
+.race-finish-laser--before {
+  left: -8px;
+}
+
+.race-finish-laser--after {
+  right: -8px;
+  animation-delay: 0.25s;
+}
+
+@keyframes race-finish-laser {
+  50% {
+    background: #22d3ee;
+    box-shadow: 0 0 8px 2px rgb(34 211 238 / 70%);
+    opacity: 0.7;
+  }
+}
+
+/* Pylons on both barriers, wrapped in marquee bulbs that chase upward. */
 .race-finish-post {
   position: absolute;
   left: 50%;
-  width: 8px;
-  height: 18px;
+  width: 10px;
   transform: translateX(-50%);
-  background: #3a2a4f;
-  box-shadow: inset -2px 0 0 rgb(0 0 0 / 40%);
-}
-
-.race-finish-post::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  width: 8px;
-  height: 6px;
-  background: #ff2fb4;
-  box-shadow: 0 0 10px 2px rgb(255 47 180 / 70%);
-  animation: race-finish-lamp 0.8s steps(1) infinite;
+  background:
+    repeating-linear-gradient(
+        #facc15 0 3px,
+        transparent 3px 6px,
+        #ff2fb4 6px 9px,
+        transparent 9px 12px
+      )
+      50% 0 / 4px 12px repeat-y,
+    #3a2a4f;
+  box-shadow:
+    inset -2px 0 0 rgb(0 0 0 / 45%),
+    0 0 10px rgb(250 204 21 / 35%);
+  animation: race-finish-bulbs 0.6s steps(4) infinite;
 }
 
 .race-finish-post--top {
   bottom: calc(100% - 12px);
-}
-
-.race-finish-post--top::after {
-  top: 0;
+  height: 34px;
 }
 
 .race-finish-post--bottom {
   top: calc(100% - 12px);
+  height: 18px;
 }
 
-.race-finish-post--bottom::after {
-  bottom: 0;
-}
-
-@keyframes race-finish-lamp {
-  50% {
-    background: #22d3ee;
-    box-shadow: 0 0 10px 2px rgb(34 211 238 / 70%);
+@keyframes race-finish-bulbs {
+  to {
+    background-position:
+      50% -12px,
+      0 0;
   }
 }
 
-/* The sign on top of the upper post, standing against the skyline. */
+/* The sign on top of the upper pylon: a marquee frame of chasing bulbs around a neon FINISH. */
 .race-finish-sign {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + 22px);
   left: 50%;
   transform: translateX(-50%);
-  padding: 2px 6px 3px;
+  padding: 3px;
+  background: repeating-linear-gradient(90deg, #facc15 0 3px, #3a2a4f 3px 6px) 0
+    0 / 12px 100%;
+  box-shadow: 0 0 16px rgb(255 47 180 / 55%);
+  animation: race-finish-marquee 0.5s steps(2) infinite;
+}
+
+.race-finish-sign > span {
+  display: block;
+  padding: 3px 8px 4px;
   font-family: var(--font-display);
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   line-height: 1;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
   color: #fff;
   background: #15101f;
-  border: 2px solid #ff2fb4;
+  text-shadow:
+    2px 2px 0 #ff2fb4,
+    0 0 8px rgb(255 47 180 / 90%);
+}
+
+@keyframes race-finish-marquee {
+  to {
+    background-position: 6px 0;
+  }
+}
+
+/* Two searchlights from the sign, sweeping the night sky behind the skyline's glow. */
+.race-finish-searchlight {
+  position: absolute;
+  bottom: calc(100% + 30px);
+  left: 50%;
+  width: 46px;
+  height: 160px;
+  margin-left: -23px;
+  transform-origin: 50% 100%;
+  background: linear-gradient(
+    to top,
+    rgb(165 243 252 / 34%),
+    rgb(165 243 252 / 0%)
+  );
+  clip-path: polygon(44% 100%, 56% 100%, 100% 0, 0 0);
+  mix-blend-mode: screen;
+  z-index: -1;
+}
+
+.race-finish-searchlight--a {
+  animation: race-finish-sweep 3.2s ease-in-out infinite alternate;
+}
+
+.race-finish-searchlight--b {
+  background: linear-gradient(
+    to top,
+    rgb(255 47 180 / 30%),
+    rgb(255 47 180 / 0%)
+  );
+  animation: race-finish-sweep 2.6s ease-in-out -1.3s infinite alternate-reverse;
+}
+
+@keyframes race-finish-sweep {
+  from {
+    transform: rotate(-34deg);
+  }
+  to {
+    transform: rotate(34deg);
+  }
+}
+
+/* You crossed: the whole gate flashes and fireworks burst over it. */
+.race-finish-gate--crossed .race-finish-strip {
+  animation:
+    race-finish-sheen 0.6s steps(8) infinite,
+    race-finish-flash 0.3s steps(1) 4;
+}
+
+@keyframes race-finish-flash {
+  50% {
+    filter: brightness(2.2);
+  }
+}
+
+/* A pixel firework: one pixel whose ring of box-shadow sparks bursts outward and fades, in
+   hard steps. */
+.race-firework {
+  position: absolute;
+  left: calc(50% + var(--fx));
+  bottom: calc(100% + 40px + var(--fy));
+  width: 4px;
+  height: 4px;
+  color: var(--fc);
+  background: #fff;
   box-shadow:
-    0 0 12px rgb(255 47 180 / 55%),
-    inset 0 -2px 0 rgb(0 0 0 / 50%);
-  text-shadow: 0 0 6px rgb(255 47 180 / 90%);
+    0 -20px 0 currentColor,
+    14px -14px 0 currentColor,
+    20px 0 0 currentColor,
+    14px 14px 0 currentColor,
+    0 20px 0 currentColor,
+    -14px 14px 0 currentColor,
+    -20px 0 0 currentColor,
+    -14px -14px 0 currentColor,
+    0 -10px 0 #fff,
+    10px 0 0 #fff,
+    0 10px 0 #fff,
+    -10px 0 0 #fff;
+  opacity: 0;
+  animation: race-firework 1.4s steps(7) infinite;
+}
+
+@keyframes race-firework {
+  0% {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 /* ── Car wrap & car ──────────────────────────────────────────────── */
@@ -1331,16 +1480,12 @@ body::before {
 }
 
 .race-follow {
-  left: calc(34% + (var(--p) - var(--cam, 0)) * 190%);
+  left: calc(26% + (var(--p) - var(--cam, 0)) * 400%);
   transition: none;
 }
 
 .race-lane--follow {
   transition: --p 450ms linear;
-}
-
-.race-lane--follow:has(.race-car-wrap--gone) {
-  transition: --p 2.4s cubic-bezier(0.55, 0, 1, 0.45);
 }
 
 /* A rival out of sight: a small tag pinned to the edge of their lane. */
@@ -1365,18 +1510,13 @@ body::before {
 .race-offscreen--ahead {
   right: 6px;
   box-shadow: 0 0 0 2px #ff2fb4;
-  /* Fades in as the car's position passes the right edge (screen % = 34 + gap * 190). */
-  opacity: clamp(0, ((var(--p) - var(--cam, 0)) * 190 + 34 - 100) / 4, 1);
+  /* Fades in as the car's position passes the right edge (screen % = 26 + gap * 400). */
+  opacity: clamp(0, ((var(--p) - var(--cam, 0)) * 400 + 26 - 100) / 4, 1);
 }
 
 .race-offscreen--behind {
   left: 6px;
-  opacity: clamp(0, (-1 * (var(--p) - var(--cam, 0)) * 190 - 34 - 4) / 4, 1);
-}
-
-/* A bot that's finished keeps driving: it accelerates off past the line and out of frame. */
-.race-car-wrap--gone {
-  transition: left 1.6s cubic-bezier(0.55, 0, 1, 0.45);
+  opacity: clamp(0, (-1 * (var(--p) - var(--cam, 0)) * 400 - 26 - 4) / 4, 1);
 }
 
 .race-car-svg {
@@ -2439,4 +2579,28 @@ button:not(:disabled):hover .race-itembox--ready {
   to {
     clip-path: inset(0 0 0 0);
   }
+}
+
+/* "Waiting for racers" on a multiplayer finish screen, with a blinking pixel ellipsis. */
+.race-waiting {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a7ca3;
+  text-align: center;
+}
+
+.race-waiting::after {
+  content: '...';
+  animation: race-caret-blink 1s steps(1) infinite;
+}
+
+/* Things painted on and lying in the road, scrolling past with it (see RoadDecals). */
+.race-road-decals {
+  position: absolute;
+  inset: 12px 0;
+  z-index: 1;
+  pointer-events: none;
+  image-rendering: pixelated;
 }

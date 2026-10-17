@@ -59,10 +59,12 @@ const GONE_X = 115
 const GATE_LEAD = 30
 
 // Chase camera (real races): your car holds this spot on screen and the street scrolls past
-// you forever; everyone else is drawn where they are relative to you, CAMERA_SCALE % of the track
-// per unit of progress apart — so a rival a third of the race ahead has driven out of sight.
-const CAMERA_X = 34
-const CAMERA_SCALE = 190
+// you forever. Everything on the street — rivals, the finish gate, the asphalt itself — is placed
+// on one world scale, CAMERA_SCALE % of the track's width per unit of progress, so they all move
+// together: a rival a fifth of the race ahead has driven out of sight, and a car that's finished
+// stays parked on the line, sliding past exactly as fast as the road.
+const CAMERA_X = 26
+const CAMERA_SCALE = 400
 
 function clamp01(n: number) {
   return Math.min(Math.max(n, 0), 1)
@@ -71,7 +73,6 @@ function clamp01(n: number) {
 function carLeft(racer: Racer, camera: number | null) {
   if (camera !== null) {
     if (racer.isYou) return CAMERA_X
-    if (racer.finished) return GONE_X
     return CAMERA_X + (clamp01(racer.progress) - camera) * CAMERA_SCALE
   }
   if (racer.finished) return racer.isYou ? FINISH_X : GONE_X
@@ -95,19 +96,140 @@ function gateLeft(player: Racer, camera: number | null) {
 
 // The finish as a place on the road: a pixel checkered strip across the lanes, a light post on
 // each barrier, and a neon FINISH sign standing over the top barrier against the skyline.
-function FinishGate({ left, follow }: { left: number; follow: boolean }) {
+// Searchlights sweep the sky from the top pylon while the gate's in view; when you cross, pixel
+// fireworks go off above it.
+const FIREWORKS = [
+  { x: -70, y: 34, c: '#ff2fb4', d: 0 },
+  { x: 46, y: 58, c: '#22d3ee', d: 280 },
+  { x: -10, y: 82, c: '#facc15', d: 560 },
+  { x: 90, y: 26, c: '#a3e635', d: 840 },
+  { x: -120, y: 66, c: '#c084fc', d: 1120 },
+]
+
+function FinishGate({
+  left,
+  follow,
+  celebrate,
+}: {
+  left: number
+  follow: boolean
+  celebrate: boolean
+}) {
   return (
     <div
-      className={cn('race-finish-gate', follow && 'race-follow')}
+      className={cn(
+        'race-finish-gate',
+        follow && 'race-follow',
+        celebrate && 'race-finish-gate--crossed',
+      )}
       style={follow ? followStyle(1) : { left: `${left}%` }}
       aria-hidden="true"
     >
+      <span className="race-finish-searchlight race-finish-searchlight--a" />
+      <span className="race-finish-searchlight race-finish-searchlight--b" />
+      <span className="race-finish-laser race-finish-laser--before" />
+      <span className="race-finish-laser race-finish-laser--after" />
       <span className="race-finish-strip" />
       <span className="race-finish-post race-finish-post--top" />
       <span className="race-finish-post race-finish-post--bottom" />
-      <span className="race-finish-sign">Finish</span>
+      <span className="race-finish-sign">
+        <span>Finish</span>
+      </span>
+      {celebrate &&
+        FIREWORKS.map((f) => (
+          <span
+            key={f.d}
+            className="race-firework"
+            style={
+              {
+                '--fx': `${f.x}px`,
+                '--fy': `${f.y}px`,
+                '--fc': f.c,
+                animationDelay: `${f.d}ms`,
+              } as CSSProperties
+            }
+          />
+        ))}
     </div>
   )
+}
+
+// ─── Road decals ────────────────────────────────────────────────────
+// Details on the asphalt that scroll past with the road, so the journey has landmarks: painted
+// chevrons, patched tarmac, manholes and puddles reflecting the neon. Each is a pixel SVG drawn
+// at the start of a wide transparent tile repeated along the road, so they come by now and then
+// rather than in a pattern you can see.
+
+function rect(x: number, y: number, w: number, h: number, fill: string) {
+  return `<rect x='${x}' y='${y}' width='${w}' height='${h}' fill='${fill}'/>`
+}
+
+// `tile` and `h` are in screen px; the body is drawn in 2px "pixels".
+function decal(tile: number, h: number, body: string) {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${tile}' height='${h}' viewBox='0 0 ${tile / 2} ${h / 2}' shape-rendering='crispEdges'>${body}</svg>`
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+}
+
+function chevrons() {
+  const parts: Array<string> = []
+  for (let c = 0; c < 3; c++) {
+    for (let i = 0; i < 5; i++) {
+      parts.push(rect(c * 7 + i, i, 2, 1, 'rgba(244,236,255,0.28)'))
+      parts.push(rect(c * 7 + i, 8 - i, 2, 1, 'rgba(244,236,255,0.28)'))
+    }
+  }
+  return parts.join('')
+}
+
+function patch() {
+  return [
+    rect(0, 1, 24, 5, '#1b1724'),
+    rect(2, 0, 18, 7, '#1b1724'),
+    rect(4, 3, 7, 1, '#322b3d'),
+    rect(11, 4, 6, 1, '#322b3d'),
+  ].join('')
+}
+
+function manhole() {
+  const rows = [3, 7, 9, 9, 9, 7, 3]
+  return rows
+    .map((w, y) =>
+      rect(5 - (w - 1) / 2, y, w, 1, y % 2 ? '#2d2737' : '#3b3447'),
+    )
+    .join('')
+}
+
+function puddle() {
+  const rows = [10, 18, 22, 18, 10]
+  return [
+    ...rows.map((w, y) => rect(11 - w / 2, y, w, 1, '#16202e')),
+    rect(6, 1, 6, 1, 'rgba(255,47,180,0.55)'),
+    rect(14, 2, 4, 1, 'rgba(34,211,238,0.55)'),
+    rect(9, 3, 3, 1, 'rgba(250,204,21,0.45)'),
+  ].join('')
+}
+
+const DECALS: Array<{
+  image: string
+  tile: number
+  h: number
+  y: number
+  shift: number
+}> = [
+  { image: decal(1200, 18, chevrons()), tile: 1200, h: 18, y: 28, shift: 300 },
+  { image: decal(760, 14, patch()), tile: 760, h: 14, y: 52, shift: 120 },
+  { image: decal(980, 14, manhole()), tile: 980, h: 14, y: 88, shift: 520 },
+  { image: decal(1400, 10, puddle()), tile: 1400, h: 10, y: 10, shift: 820 },
+  { image: decal(1700, 18, chevrons()), tile: 1700, h: 18, y: 72, shift: 1250 },
+]
+
+const DECALS_STYLE: CSSProperties = {
+  backgroundImage: DECALS.map((d) => d.image).join(','),
+  backgroundSize: DECALS.map((d) => `${d.tile}px ${d.h}px`).join(','),
+  backgroundRepeat: 'repeat-x',
+  backgroundPosition: DECALS.map(
+    (d) => `calc(var(--road-pos, 0px) * -1 + ${d.shift}px) ${d.y}%`,
+  ).join(','),
 }
 
 // ─── Trail effects ──────────────────────────────────────────────────
@@ -275,8 +397,8 @@ function Lane({
       className={cn('race-lane', follow && 'race-lane--follow')}
       style={
         follow
-          ? // A bot that's done keeps going: its --p eases on out past the edge of the screen.
-            followStyle(racer.finished ? 2 : clamp01(racer.progress))
+          ? // A bot that's done parks on the line (progress 1) and rides along with the road.
+            followStyle(racer.finished ? 1 : clamp01(racer.progress))
           : undefined
       }
     >
@@ -284,7 +406,6 @@ function Lane({
         className={cn(
           'race-car-wrap',
           impact && 'race-car-wrap--hit',
-          racer.finished && !racer.isYou && 'race-car-wrap--gone',
           racer.isYou && 'race-car-wrap--you',
           follow && 'race-follow',
         )}
@@ -316,7 +437,7 @@ function Lane({
       </div>
       {/* Out of sight up the road (or behind you): a marker on that edge of the lane says who.
           Shown from CSS, off the same --p/--cam as the car, so they never disagree. */}
-      {follow && !racer.finished && (
+      {follow && (
         <>
           <span
             className="race-offscreen race-offscreen--ahead"
@@ -403,6 +524,9 @@ export default function RaceTrack({
     // of your real progress to measure your pace from.
     let camPos = 0
     let camVel = 0
+    // The wind/exhaust level, eased on its own slower curve so gusts build and die down
+    // gradually instead of flicking on and off with each burst of typing.
+    let wind = 0
     let samples: Array<[number, number]> = []
 
     function tick(now: number) {
@@ -411,21 +535,33 @@ export default function RaceTrack({
 
       const target = cameraRef.current
       if (target !== null) {
-        // A new race: jump back to the start line.
-        if (target < camPos - 0.02) {
-          camPos = target
+        // A new race (progress back at the start): jump back to the start line. Nothing else
+        // ever moves the camera backward.
+        if (target < 0.001 && camPos > 0.01) {
+          camPos = 0
           camVel = 0
           samples = []
         }
-        // Your pace over the last 1.5s, so the camera glides between keystrokes instead of
-        // lurching on each one; a gentle pull toward your actual progress keeps it from drifting.
+        // Your pace over the last 2s, so the camera glides between keystrokes instead of
+        // lurching on each one.
         samples.push([now, target])
-        while (samples.length > 1 && now - samples[0][0] > 1500) samples.shift()
+        while (samples.length > 1 && now - samples[0][0] > 2000) samples.shift()
         const [t0, p0] = samples[0]
         const pace = now > t0 ? (target - p0) / ((now - t0) / 1000) : 0
-        camVel += (pace - camVel) * Math.min(dt * 4, 1)
-        camPos += camVel * dt + (target - camPos) * Math.min(dt * 1.5, 1)
-        camPos = Math.min(camPos, 1, target + 0.03)
+        // Accelerate toward that pace like a car would, not instantly.
+        camVel += (pace - camVel) * Math.min(dt * 3, 1)
+        let next = camPos + Math.max(camVel, 0) * dt
+        // Falling behind you: a gentle pull forward so the camera never drifts off you.
+        if (target > next) next += (target - next) * Math.min(dt * 0.8, 1)
+        // Running ahead of you (you paused): brake smoothly to a stop just past you — the
+        // further past, the harder the brakes — instead of hitting a wall or rolling back.
+        const over = next - target
+        if (over > 0)
+          next = camPos + (next - camPos) * Math.max(0, 1 - over / 0.012)
+        next = Math.min(Math.max(next, camPos), 1)
+        // The speed is what actually moved, so the wind dies exactly when the road does.
+        if (dt > 0) camVel = (next - camPos) / dt
+        camPos = next
         el.style.setProperty('--cam', camPos.toFixed(5))
         // The road is the same world the cars live in: one unit of progress is CAMERA_SCALE % of
         // the track's width, on the asphalt and on screen alike.
@@ -434,10 +570,11 @@ export default function RaceTrack({
         // How fast you're going right now, 0..1 (~1 around 100 wpm): fades the wind and your
         // exhaust in and out with your actual speed.
         const pxPerSec = ((camVel * CAMERA_SCALE) / 100) * el.clientWidth
-        el.style.setProperty(
-          '--speed',
-          Math.min(Math.max(pxPerSec / 90, 0), 1).toFixed(3),
-        )
+        const windTarget = Math.min(Math.max(pxPerSec / 180, 0), 1)
+        // Picks up in ~0.4s, dies down over ~0.7s.
+        wind +=
+          (windTarget - wind) * Math.min(dt * (windTarget > wind ? 5 : 3), 1)
+        el.style.setProperty('--speed', wind.toFixed(3))
         rafId = requestAnimationFrame(tick)
         return
       }
@@ -483,6 +620,13 @@ export default function RaceTrack({
       )}
       <div className="race-lanes-area">
         <div className="race-curb" aria-hidden="true" />
+        {epic && (
+          <div
+            className="race-road-decals"
+            style={DECALS_STYLE}
+            aria-hidden="true"
+          />
+        )}
         {racers.map((racer, index) => {
           // A racer can bring its own trail (you, or the dashboard's police); bots without one
           // cycle through BOT_TRAILS.
@@ -518,6 +662,7 @@ export default function RaceTrack({
           <FinishGate
             left={gateLeft(player, camera)}
             follow={camera !== null}
+            celebrate={Boolean(player.finished)}
           />
         )}
         {effect?.kind === 'emp' && (

@@ -5,7 +5,6 @@ import {
   Check,
   Copy,
   PlayCircle,
-  Trophy,
   Users,
 } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
@@ -13,21 +12,15 @@ import { Badge } from '#/components/ui/badge'
 import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
-import QuoteCredit from '#/components/typing/QuoteCredit'
-import PixelIcon from '#/components/ui/PixelIcon'
+import RaceConsole from '#/components/typing/RaceConsole'
+import RaceResults from '#/components/typing/RaceResults'
 import { POWERUPS } from '#/lib/powerups'
-import Coins from '#/components/ui/Coins'
-import AchievementUnlocks from '#/components/ui/AchievementUnlocks'
 import type { UnlockedAchievement } from '#/lib/profile/useProfile'
-import Gauge from '#/components/typing/Gauge'
-import DigitalReadout from '#/components/typing/DigitalReadout'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
-
-const WPM_GAUGE_MAX = 130
 
 function formatTime(ms: number) {
   const totalSeconds = ms / 1000
@@ -363,8 +356,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap flex flex-col">
-        <Card className="rise-in flex flex-col overflow-hidden">
-          <CardContent className="flex flex-col p-0">
+        {/* One connected panel, like solo: track, words, the dash console, then standings. */}
+        <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+          <div className="flex flex-col">
             <RaceTrack
               racers={racers}
               countdown={countdown}
@@ -385,23 +379,40 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               inputRef={inputRef}
               className="shrink-0"
               overlay={
-                // We've finished but race_end hasn't arrived yet — that only happens once
-                // everyone still connected has finished (or after 5 minutes), which has nothing
-                // to do with OUR rank: the server already told us that the instant we crossed
-                // the line (player_finished), so there's no reason to leave the screen blank
-                // while someone else is still typing.
+                // Our result shows the instant we cross the line (player_finished) — race_end
+                // only arrives once everyone still connected is done (or after 5 minutes), which
+                // has nothing to do with OUR rank.
                 <>
-                  {mp.myResult && mp.phase === 'racing' && (
-                    <div className="countdown-overlay">
-                      <div className="text-center">
-                        <p className="text-lg font-bold">
-                          Finished #{mp.myResult.rank} · {mp.myResult.wpm} wpm
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Waiting for other racers to finish…
-                        </p>
-                      </div>
-                    </div>
+                  {mp.myResult && (
+                    <RaceResults
+                      place={mp.myResult.rank}
+                      racerCount={Math.max(mp.racerCount, mp.myResult.rank)}
+                      elapsedMs={mp.myResult.elapsedMs}
+                      coinsEarned={coinsEarned}
+                      unlocks={unlocks}
+                      actions={
+                        <>
+                          {mp.phase !== 'finished' && (
+                            <p className="race-waiting">Waiting for racers</p>
+                          )}
+                          {replayId && (
+                            <Button asChild variant="outline">
+                              <Link
+                                to="/replays/$replayId"
+                                params={{ replayId }}
+                              >
+                                <PlayCircle />
+                                Replay
+                              </Link>
+                            </Button>
+                          )}
+                          <Button onClick={onLeave}>
+                            <ArrowLeft />
+                            Back
+                          </Button>
+                        </>
+                      }
+                    />
                   )}
                   {(mp.frozen || eventText) && !mp.finished && (
                     <div className="pointer-events-none absolute top-3 right-3 z-10">
@@ -420,127 +431,59 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 </>
               }
             />
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-3">
-              {powerupsOn && equippedDef && !mp.finished ? (
-                <button
-                  type="button"
-                  onClick={() => firePowerup(equippedPowerup)}
-                  disabled={!canFire}
-                  title={equippedDef.detail}
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-opacity',
-                    canFire ? 'hover:text-foreground' : 'opacity-40',
-                  )}
-                >
-                  <PixelIcon name={equippedPowerup} />
-                  {equippedDef.label}
-                  <span>{mp.powerupUsed ? '· used' : '· once per race'}</span>
-                  {!mp.powerupUsed && (
-                    <kbd className="rounded border border-border px-1 font-mono text-[0.65rem]">
-                      Tab
-                    </kbd>
-                  )}
-                </button>
-              ) : (
-                <span />
-              )}
-              <QuoteCredit
-                author={mp.quote?.author}
-                sourceUrl={mp.quote?.sourceUrl}
-              />
-            </div>
-          </CardContent>
+          </div>
 
-          {mp.phase === 'finished' && <div className="glass-divider" />}
+          <RaceConsole
+            wpm={mp.myResult ? Math.round(mp.myResult.wpm) : mp.wpm}
+            accuracy={mp.accuracy}
+            elapsedMs={mp.myResult ? mp.myResult.elapsedMs : mp.elapsedMs}
+            powerup={
+              powerupsOn && equippedDef
+                ? {
+                    kind: equippedPowerup,
+                    label: equippedDef.label,
+                    detail: equippedDef.detail,
+                    ready: !mp.powerupUsed && !mp.finished,
+                    canFire,
+                    onFire: () => firePowerup(equippedPowerup),
+                  }
+                : undefined
+            }
+            author={mp.quote?.author}
+            sourceUrl={mp.quote?.sourceUrl}
+          />
 
-          {mp.phase === 'finished' && (
-            <div className="flex flex-col gap-4 bg-success/10 p-6">
-              <div className="flex flex-wrap items-center gap-3">
-                <Trophy className="size-6 shrink-0 text-success" />
-                <p className="text-base leading-none">
-                  {mp.myResult ? (
-                    <>
-                      Finished <strong>#{mp.myResult.rank}</strong> in{' '}
-                      <strong>{formatTime(mp.myResult.elapsedMs)}</strong>
-                    </>
-                  ) : (
-                    'Race finished'
-                  )}
-                </p>
-                {coinsEarned !== null && (
-                  <Coins
-                    amount={coinsEarned}
-                    prefix="+"
-                    className="text-sm text-signal"
-                  />
-                )}
-              </div>
-              <AchievementUnlocks unlocked={unlocks} />
-
-              {mp.results && (
-                <div className="standings">
-                  <div className="standings-head">
-                    <span>Pos</span>
-                    <span>Racer</span>
-                    <span>Wpm</span>
-                    <span className="text-right">Time</span>
-                  </div>
-                  {mp.results.map((result) => (
-                    <div
-                      key={result.playerId}
-                      className={cn(
-                        'standings-row',
-                        result.playerId === mp.myId && 'is-you',
-                      )}
-                    >
-                      <span className="standings-pos">P{result.rank}</span>
-                      <span className="standings-name">
-                        {shortName(result.playerId, mp.myId, mp.names)}
-                      </span>
-                      <span className="standings-wpm">{result.wpm}</span>
-                      <span className="standings-time">
-                        {formatTime(result.elapsedMs)}
-                      </span>
-                    </div>
-                  ))}
+          {mp.phase === 'finished' && mp.results && (
+            <div className="bg-card p-4">
+              <div className="standings">
+                <div className="standings-head">
+                  <span>Pos</span>
+                  <span>Racer</span>
+                  <span>Wpm</span>
+                  <span className="text-right">Time</span>
                 </div>
-              )}
-
-              <div className="flex justify-end gap-3">
-                {replayId && (
-                  <Button asChild variant="outline">
-                    <Link to="/replays/$replayId" params={{ replayId }}>
-                      <PlayCircle />
-                      Watch replay
-                    </Link>
-                  </Button>
-                )}
-                <Button variant="outline" onClick={onLeave}>
-                  <ArrowLeft />
-                  Back to play
-                </Button>
+                {mp.results.map((result) => (
+                  <div
+                    key={result.playerId}
+                    className={cn(
+                      'standings-row',
+                      result.playerId === mp.myId && 'is-you',
+                    )}
+                  >
+                    <span className="standings-pos">P{result.rank}</span>
+                    <span className="standings-name">
+                      {shortName(result.playerId, mp.myId, mp.names)}
+                    </span>
+                    <span className="standings-wpm">{result.wpm}</span>
+                    <span className="standings-time">
+                      {formatTime(result.elapsedMs)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-
-          {mp.phase !== 'finished' && (
-            <div className="flex items-center justify-between gap-3 p-4">
-              <p className="kicker">
-                {mp.phase === 'racing' ? 'Racing…' : 'Get ready…'}
-              </p>
-              <div className="flex items-center gap-4">
-                <Gauge label="wpm" value={mp.wpm} max={WPM_GAUGE_MAX} />
-                <Gauge
-                  label="accuracy"
-                  value={mp.accuracy}
-                  max={100}
-                  suffix="%"
-                />
-                <DigitalReadout label="time" value={formatTime(mp.elapsedMs)} />
-              </div>
-            </div>
-          )}
-        </Card>
+        </div>
       </div>
     </main>
   )
