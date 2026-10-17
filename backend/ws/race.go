@@ -137,16 +137,27 @@ func newRoom(id string, mode lobbyMode, pool *pgxpool.Pool) *Room {
 // to a room that's already moved past that — see Matchmaker.join).
 func (r *Room) addClient(c *Client) {
 	r.mu.Lock()
-	// Nobody races against themselves: a second connection from someone already in the room
-	// (another tab, say) is turned away rather than given a seat.
+	// Nobody races against themselves: one person, one seat. While the room is still waiting,
+	// joining again (a new tab, or coming back after leaving before the old connection has gone)
+	// takes over the old seat — the newest tab wins. A seat that has already disconnected never
+	// counts. Only a race already underway with the old tab still in it turns the newcomer away.
 	if c.racer != "" {
-		for other := range r.players {
-			if other.racer == c.racer {
+		for other, state := range r.players {
+			if other.racer != c.racer || !state.connected {
+				continue
+			}
+			if r.state != roomWaiting {
 				r.mu.Unlock()
-				c.sendJSON(serverMessage{Type: "error", Message: "You're already in this race in another tab."})
+				c.sendJSON(serverMessage{Type: "error", Message: "You're already racing in another tab."})
 				c.closeSend()
 				return
 			}
+			delete(r.players, other)
+			if r.host == other {
+				r.host = c
+			}
+			other.sendJSON(serverMessage{Type: "error", Message: "You joined this race from another tab."})
+			other.closeSend()
 		}
 	}
 	r.players[c] = &playerState{client: c, connected: true}

@@ -333,9 +333,9 @@ func waitFor(t *testing.T, cond func() bool) {
 	t.Fatal("condition never became true within the deadline")
 }
 
-// One person can't take two seats in the same room (a second tab): the second connection is
-// turned away with an error instead.
-func TestRoom_SameRacerCantJoinTwice(t *testing.T) {
+// One person, one seat: joining a waiting room again (a second tab, or coming back after leaving)
+// takes over the old seat, and the old connection is told why it was dropped.
+func TestRoom_SameRacerTakesOverTheirSeat(t *testing.T) {
 	r := fakeRoom(TypingQuote{Text: "one two three"})
 	first, second := testClient("a"), testClient("b")
 	first.racer, second.racer = "user-1", "user-1"
@@ -343,13 +343,36 @@ func TestRoom_SameRacerCantJoinTwice(t *testing.T) {
 	r.addClient(second)
 
 	r.mu.Lock()
+	_, firstStill := r.players[first]
+	_, secondIn := r.players[second]
 	seats := len(r.players)
 	r.mu.Unlock()
-	if seats != 1 {
-		t.Fatalf("room has %d seats, want 1", seats)
+	if seats != 1 || firstStill || !secondIn {
+		t.Fatalf("seats=%d first=%v second=%v, want only the new tab seated", seats, firstStill, secondIn)
 	}
-	if msg, ok := lastOfType(drain(t, second), "error"); !ok || msg.Message == "" {
-		t.Errorf("second tab got %+v, want an error", msg)
+	if msg, ok := lastOfType(drain(t, first), "error"); !ok || msg.Message == "" {
+		t.Errorf("old tab got %+v, want an error", msg)
+	}
+}
+
+// A seat that has already disconnected (left mid-race) never blocks the same person.
+func TestRoom_DisconnectedSeatDoesNotBlock(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	old := testClient("a")
+	old.racer = "user-1"
+	r.addClient(old)
+	r.mu.Lock()
+	r.players[old].connected = false
+	r.mu.Unlock()
+
+	again := testClient("b")
+	again.racer = "user-1"
+	r.addClient(again)
+	r.mu.Lock()
+	_, seated := r.players[again]
+	r.mu.Unlock()
+	if !seated {
+		t.Error("coming back was refused because of a disconnected seat")
 	}
 }
 
@@ -384,5 +407,21 @@ func TestRoom_WaitingCarriesStartDeadline(t *testing.T) {
 	r.removeClient(b)
 	if msg, _ := lastOfType(drain(t, a), "waiting"); msg.StartsInMs != 0 {
 		t.Errorf("back to one: startsInMs = %d, want the clock stopped", msg.StartsInMs)
+	}
+}
+
+// Taking over your seat in a friends room keeps you the host.
+func TestRoom_TakeOverKeepsHost(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	first, second := testClient("a"), testClient("b")
+	first.racer, second.racer = "user-1", "user-1"
+	r.host = first
+	r.addClient(first)
+	r.addClient(second)
+	if r.host != second {
+		t.Error("the new tab didn't become host")
+	}
+	if _, ok := lastOfType(drain(t, second), "host_assigned"); !ok {
+		t.Error("the new tab wasn't told it's the host")
 	}
 }
