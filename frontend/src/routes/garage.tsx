@@ -172,7 +172,7 @@ function GaragePage() {
   // can see it before spending anything.
   const preview = shop.confirming
   const previewCar = preview?.startsWith('car:')
-    ? (preview.slice(4) as typeof carModel)
+    ? (preview.slice(4))
     : null
   const previewTrail = preview?.startsWith('trail:')
     ? (preview.slice(6) as typeof trail)
