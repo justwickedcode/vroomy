@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import PixelSkyline from '#/components/typing/PixelSkyline'
+import StartLights from '#/components/typing/StartLights'
 import PixelIcon from '#/components/ui/PixelIcon'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
@@ -359,11 +360,13 @@ function Lane({
   trailVariant,
   effect,
   camera,
+  arrive,
 }: {
   racer: Racer
   trailVariant: TrailVariant
   effect?: RaceEffect | null
   camera: number | null
+  arrive: boolean
 }) {
   const left = carLeft(racer, camera)
   const follow = camera !== null && !racer.isYou && !racer.empty
@@ -401,6 +404,7 @@ function Lane({
           'race-car-wrap',
           racer.overdrive && 'race-car-wrap--overdrive',
           racer.isYou && 'race-car-wrap--you',
+          arrive && 'race-car-wrap--arrive',
           follow && 'race-follow',
         )}
         style={follow ? undefined : { left: `${left}%` }}
@@ -415,7 +419,9 @@ function Lane({
             <span className="race-name-wpm">{racer.wpm}</span>
           )}
         </span>
-        {racing && <Trail variant={trailVariant} model={racer.model} />}
+        {(racing || arrive) && (
+          <Trail variant={trailVariant} model={racer.model} />
+        )}
         {racer.isYou && racer.finished && <FinishBurst />}
         {burst && <PowerupBurst key={burst.key} kind={burst.kind} />}
         {pop && (
@@ -465,6 +471,8 @@ export default function RaceTrack({
   finishLine = true,
   epic = false,
   showcase = false,
+  arrive = false,
+  lights = 3,
   className,
 }: {
   racers: Array<Racer>
@@ -479,6 +487,10 @@ export default function RaceTrack({
   // The dashboard's title screen on top of that: a taller skyline, bigger cars on taller lanes,
   // no WPM readouts, and the world running three times faster.
   showcase?: boolean
+  // A lobby: each car drives in from the left as it appears, and parks on the start line.
+  arrive?: boolean
+  // How many start lights the countdown gantry has (one per second of the countdown).
+  lights?: number
   className?: string
 }) {
   const player = racers.find((r) => r.isYou) ?? racers[0]
@@ -658,6 +670,7 @@ export default function RaceTrack({
           return (
             <Lane
               camera={camera}
+              arrive={arrive}
               key={racer.id}
               racer={racer}
               trailVariant={trailVariant}
@@ -676,16 +689,8 @@ export default function RaceTrack({
       </div>
 
       {phase === 'counting' && countdown !== undefined && (
-        <div className="race-countdown-overlay" aria-live="assertive">
-          <span
-            key={countdown}
-            className={cn(
-              'race-countdown-number',
-              countdown === 0 && 'race-countdown-number--go',
-            )}
-          >
-            {countdown === 0 ? 'GO!' : countdown}
-          </span>
+        <div className="race-countdown-overlay">
+          <StartLights remaining={countdown} total={lights} />
         </div>
       )}
     </div>

@@ -12,6 +12,7 @@ import {
 import { Button } from '#/components/ui/button'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceTrack from '#/components/typing/RaceTrack'
+import StartLights from '#/components/typing/StartLights'
 import RaceConsole from '#/components/typing/RaceConsole'
 import { PlaySection, StartButton } from '#/components/play/PlayKit'
 import Coins from '#/components/ui/Coins'
@@ -263,16 +264,8 @@ export default function DailyChallengeCard() {
                 </StartButton>
               </div>
             ) : phase === 'counting' ? (
-              <div className="race-countdown-overlay" aria-live="assertive">
-                <span
-                  key={countdown}
-                  className={cn(
-                    'race-countdown-number',
-                    countdown === 0 && 'race-countdown-number--go',
-                  )}
-                >
-                  {countdown === 0 ? 'GO!' : countdown}
-                </span>
+              <div className="race-countdown-overlay">
+                <StartLights remaining={countdown} total={COUNTDOWN_START} />
               </div>
             ) : null
           }

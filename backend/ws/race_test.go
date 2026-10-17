@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,7 +56,7 @@ func fakeRoom(quote TypingQuote) *Room {
 // startNow skips past lobbyWaitTimeout — the join/timeout/max-players mechanics are already
 // covered by TestRoom_WaitsForMinPlayers and TestRoom_StartsImmediatelyAtMaxPlayers, so tests
 // concerned with what happens once a race is underway trigger the countdown directly instead of
-// either waiting out the real 30s timer or padding the room to raceMaxPlayers with filler
+// either waiting out the real 4.5s timer or padding the room to raceMaxPlayers with filler
 // clients that would then also need to finish before finishRace ever fires.
 func startNow(r *Room) {
 	r.closeToNewJoiners()
@@ -250,7 +251,7 @@ func TestMatchmaker_FreshRoomAfterPreviousStarts(t *testing.T) {
 }
 
 // TestRoom_HostCanStartEarly verifies a private room's host can skip lobbyWaitTimeout once
-// raceMinPlayers has joined, without waiting the real 30s out.
+// raceMinPlayers has joined, without waiting the real 4.5s out.
 func TestRoom_HostCanStartEarly(t *testing.T) {
 	r := fakeRoom(TypingQuote{Text: "one two three four five"})
 	host := testClient("host")
@@ -330,4 +331,97 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("condition never became true within the deadline")
+}
+
+// One person, one seat: joining a waiting room again (a second tab, or coming back after leaving)
+// takes over the old seat, and the old connection is told why it was dropped.
+func TestRoom_SameRacerTakesOverTheirSeat(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	first, second := testClient("a"), testClient("b")
+	first.racer, second.racer = "user-1", "user-1"
+	r.addClient(first)
+	r.addClient(second)
+
+	r.mu.Lock()
+	_, firstStill := r.players[first]
+	_, secondIn := r.players[second]
+	seats := len(r.players)
+	r.mu.Unlock()
+	if seats != 1 || firstStill || !secondIn {
+		t.Fatalf("seats=%d first=%v second=%v, want only the new tab seated", seats, firstStill, secondIn)
+	}
+	if msg, ok := lastOfType(drain(t, first), "error"); !ok || msg.Message == "" {
+		t.Errorf("old tab got %+v, want an error", msg)
+	}
+}
+
+// A seat that has already disconnected (left mid-race) never blocks the same person.
+func TestRoom_DisconnectedSeatDoesNotBlock(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	old := testClient("a")
+	old.racer = "user-1"
+	r.addClient(old)
+	r.mu.Lock()
+	r.players[old].connected = false
+	r.mu.Unlock()
+
+	again := testClient("b")
+	again.racer = "user-1"
+	r.addClient(again)
+	r.mu.Lock()
+	_, seated := r.players[again]
+	r.mu.Unlock()
+	if !seated {
+		t.Error("coming back was refused because of a disconnected seat")
+	}
+}
+
+func TestSanitizeRacerID(t *testing.T) {
+	for raw, want := range map[string]string{
+		"user-1_A":              "user-1_A",
+		"":                      "",
+		"has space":             "",
+		"<script>":              "",
+		strings.Repeat("a", 65): "",
+	} {
+		if got := sanitizeRacerID(raw); got != want {
+			t.Errorf("sanitizeRacerID(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+// Once a second player joins, every "waiting" update says how long until the race starts on
+// its own; dropping back to one player stops that clock.
+func TestRoom_WaitingCarriesStartDeadline(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	a, b := testClient("a"), testClient("b")
+	r.addClient(a)
+	if msg, _ := lastOfType(drain(t, a), "waiting"); msg.StartsInMs != 0 {
+		t.Errorf("alone: startsInMs = %d, want none", msg.StartsInMs)
+	}
+	r.addClient(b)
+	msg, _ := lastOfType(drain(t, a), "waiting")
+	if msg.StartsInMs <= 0 || msg.StartsInMs > lobbyWaitTimeout.Milliseconds() {
+		t.Errorf("two players: startsInMs = %d, want within the wait", msg.StartsInMs)
+	}
+	r.removeClient(b)
+	if msg, _ := lastOfType(drain(t, a), "waiting"); msg.StartsInMs != 0 {
+		t.Errorf("back to one: startsInMs = %d, want the clock stopped", msg.StartsInMs)
+	}
+}
+
+// Taking over your seat in a friends room keeps you the host.
+func TestRoom_TakeOverKeepsHost(t *testing.T) {
+	r := fakeRoom(TypingQuote{Text: "one two three"})
+	first, second := testClient("a"), testClient("b")
+	first.racer, second.racer = "user-1", "user-1"
+	r.host = first
+	r.addClient(first)
+	r.addClient(second)
+	if r.host != second {
+		t.Error("the new tab didn't become host")
+	}
+	if _, ok := lastOfType(drain(t, second), "host_assigned"); !ok {
+		t.Error("the new tab wasn't told it's the host")
+	}
 }

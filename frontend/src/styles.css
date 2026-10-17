@@ -2199,54 +2199,97 @@ body::before {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  /* golden radial burst behind the number */
-  background: radial-gradient(
-    ellipse 30% 55% at 50% 50%,
-    oklch(0.88 0.25 82 / 0.28) 0%,
-    transparent 70%
-  );
 }
 
-.race-countdown-number {
-  font-family: var(--font-display);
-  font-size: clamp(5rem, 16vw, 9rem);
-  font-weight: 700;
-  line-height: 1;
-  color: #fff;
-  /* Hard pixel drop shadow in the barrier's neon, plus a glow onto the road. */
-  text-shadow:
-    6px 6px 0 #ff2fb4,
-    0 0 40px rgb(255 47 180 / 55%);
-  animation: race-countdown-pop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+/* ── Start lights (see StartLights) ──────────────────────────────── */
+
+.start-lights {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
 }
 
-.race-countdown-number--go {
-  color: #facc15;
-  text-shadow:
-    6px 6px 0 #c2410c,
-    0 0 48px rgb(250 204 21 / 60%);
-  animation: race-countdown-go 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+/* The gantry: a dark steel bar holding the lamps, with a neon underline like the barriers. */
+.start-lights-gantry {
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #0b0614;
+  box-shadow:
+    0 0 0 3px #241834,
+    inset 0 -4px 0 rgb(0 0 0 / 50%),
+    0 4px 0 #ff2fb4,
+    0 10px 24px rgb(0 0 0 / 60%);
+  animation: start-lights-drop 0.35s steps(4) both;
 }
 
-@keyframes race-countdown-pop {
+@keyframes start-lights-drop {
   from {
-    transform: scale(2.2);
+    transform: translateY(-40px);
     opacity: 0;
   }
-  to {
-    transform: scale(1);
-    opacity: 1;
+}
+
+/* A lamp: a dark pixel housing that lights up hard red, its glow spilling onto the gantry. */
+.start-light {
+  width: 42px;
+  height: 42px;
+  background: #2a1414;
+  box-shadow:
+    inset 0 -4px 0 rgb(0 0 0 / 45%),
+    inset 0 3px 0 rgb(255 255 255 / 5%);
+  transition:
+    background-color 80ms steps(1),
+    box-shadow 80ms steps(1);
+}
+
+.start-light.is-on {
+  background: #ef4444;
+  box-shadow:
+    inset 0 -4px 0 #991b1b,
+    inset 4px 4px 0 rgb(255 255 255 / 35%),
+    0 0 18px 4px rgb(239 68 68 / 60%);
+}
+
+/* GO: every lamp snaps to green and the gantry flashes. */
+.start-lights--go .start-light.is-on {
+  background: #22c55e;
+  box-shadow:
+    inset 0 -4px 0 #15803d,
+    inset 4px 4px 0 rgb(255 255 255 / 40%),
+    0 0 22px 6px rgb(34 197 94 / 70%);
+}
+
+.start-lights--go .start-lights-gantry {
+  animation: start-lights-flash 0.5s steps(2) 2;
+}
+
+@keyframes start-lights-flash {
+  50% {
+    box-shadow:
+      0 0 0 3px #4ade80,
+      inset 0 -4px 0 rgb(0 0 0 / 50%),
+      0 4px 0 #4ade80,
+      0 0 40px rgb(74 222 128 / 60%);
   }
 }
 
-@keyframes race-countdown-go {
+.start-lights-go {
+  font-family: var(--font-display);
+  font-size: 2.75rem;
+  line-height: 1;
+  color: #4ade80;
+  text-shadow:
+    4px 4px 0 #14532d,
+    0 0 24px rgb(74 222 128 / 60%);
+  animation: start-lights-go 0.4s steps(4) both;
+}
+
+@keyframes start-lights-go {
   from {
     transform: scale(0.4);
     opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
   }
 }
 
@@ -3152,4 +3195,34 @@ input[type='range'].replay-scrub::-moz-range-thumb {
   border-radius: 0;
   background: #f4ecff;
   box-shadow: inset 0 -3px 0 #8a7ca3;
+}
+
+/* A lobby's cars (RaceTrack's `arrive`): each one drives in from off the left edge when its
+   player joins, slowing as it rolls up to the start line. */
+.race-car-wrap--arrive {
+  animation: race-arrive 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes race-arrive {
+  from {
+    translate: -70vw 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+/* …with its exhaust lit on the way in, dying out as it parks. */
+.race-car-wrap--arrive .trail {
+  animation: race-arrive-exhaust 2.2s steps(6) forwards;
+}
+
+@keyframes race-arrive-exhaust {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
