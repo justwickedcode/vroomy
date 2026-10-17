@@ -37,7 +37,7 @@ export default function PlayPicker({
 }) {
   const navigate = useNavigate()
   const [mode, setMode] = useState<PlayMode>(initialMode)
-  const [abilities, setAbilities] = useState(false)
+  const [abilities, setAbilities] = useState(true)
 
   return (
     <PlayPanel>

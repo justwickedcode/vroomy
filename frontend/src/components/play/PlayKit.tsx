@@ -81,16 +81,16 @@ export function AbilitiesSwitch({
   const { equippedPowerup } = useProfile()
   const options = [
     {
-      value: false,
-      title: 'Without',
-      blurb: 'Just typing',
-      icon: 'keyboard',
-    },
-    {
       value: true,
       title: 'With abilities',
       blurb: 'Yours recharges through the race',
       icon: equippedPowerup,
+    },
+    {
+      value: false,
+      title: 'Without',
+      blurb: 'Just typing',
+      icon: 'keyboard',
     },
   ] as const
   return (
