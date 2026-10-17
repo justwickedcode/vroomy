@@ -1,6 +1,6 @@
 # Vroomy
 
-A multiplayer typing-race game. Quotes come from [`quotes-crawler`](../quotes-crawler) via a shared Postgres.
+A multiplayer typing-race game. Quotes come from the separate `quotes-crawler` project through a shared Postgres.
 
 ## Run locally
 
