@@ -221,7 +221,12 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         mp.lobbyStartsAt !== null ? mp.lobbyStartsAt + RACE_COUNTDOWN_MS : null,
       )
     } else if (mp.phase === 'countdown') {
-      setGoAt(Date.now() + mp.startsInMs)
+      // Already counting from the lobby: keep that GO time unless the server's differs by more
+      // than a beat, so the numbers never repeat or skip at the handoff.
+      const fresh = Date.now() + mp.startsInMs
+      setGoAt((current) =>
+        current !== null && Math.abs(current - fresh) < 1200 ? current : fresh,
+      )
     } else {
       setGoAt(null)
     }
