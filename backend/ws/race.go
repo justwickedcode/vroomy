@@ -16,13 +16,13 @@ const (
 	// upper bound keeps a single lobby's broadcast fan-out small and matches a "small lobby"
 	// typing-race feel rather than an open-ended free-for-all.
 	raceMinPlayers = 2
-	raceMaxPlayers = 6
+	raceMaxPlayers = 5
 
 	// lobbyWaitTimeout: once raceMinPlayers is reached, the lobby waits this long for more
 	// players before starting anyway — long enough to give a real chance for the lobby to fill
 	// toward raceMaxPlayers, short enough that the first two players don't wait forever for a
 	// third. Never applies before raceMinPlayers is reached; a lone player just waits.
-	lobbyWaitTimeout = 15 * time.Second
+	lobbyWaitTimeout = 30 * time.Second
 
 	// raceCountdown: time between the quote being announced and the race actually starting —
 	// gives every client's UI a chance to render the quote and show a "get ready" countdown in

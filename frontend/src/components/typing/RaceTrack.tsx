@@ -23,6 +23,8 @@ export interface Racer {
   trail?: TrailVariant
   // Overdrive is on: the car burns hot.
   overdrive?: boolean
+  // A seat nobody filled: the lane stays, with no car in it.
+  empty?: boolean
 }
 
 // One-shot ability effect (see useSoloPowerups / MultiplayerRace) — `key` changes on every use,
@@ -364,7 +366,8 @@ function Lane({
   camera: number | null
 }) {
   const left = carLeft(racer, camera)
-  const follow = camera !== null && !racer.isYou
+  const follow = camera !== null && !racer.isYou && !racer.empty
+  if (racer.empty) return <div className="race-lane" />
   const racing = racer.progress > 0 && !racer.finished
 
   // An ability plays on whoever used it: its icon pops over the car, with an exhaust burst for

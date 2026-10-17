@@ -1,6 +1,6 @@
 # quotes-ws
 
-A small Go WebSocket service that runs the real-time multiplayer typing race: auto-matchmaking into small lobbies (2-6 players) or a private lobby you share with specific friends by code, a synchronized countdown, live opponent progress, and final rankings — all in-memory, no persistence beyond picking each race's quote.
+A small Go WebSocket service that runs the real-time multiplayer typing race: auto-matchmaking into small lobbies (2-5 players) or a private lobby you share with specific friends by code, a synchronized countdown, live opponent progress, and final rankings — all in-memory, no persistence beyond picking each race's quote.
 
 ## Relationship to backend/api and quotes-crawler
 
@@ -66,8 +66,8 @@ In ability rooms each player may fire their ability whenever it has recharged (1
 ## Matchmaking rules
 
 - A room needs at least 2 players to race, and holds at most 6.
-- Once 2 players have joined, the room waits up to 15s for more before starting anyway — or the private room's host can send `start` to begin immediately instead of waiting.
-- Reaching 6 players starts the room immediately, without waiting.
+- Once 2 players have joined, the room waits up to 30s for more before starting anyway — or the private room's host can send `start` to begin immediately instead of waiting.
+- Reaching 5 players starts the room immediately, without waiting.
 - A player who disconnects during the wait is removed outright; a player who disconnects mid-race stays in the final results as unfinished, and stops blocking the race from ending once everyone still connected has finished.
 - A private room's share code stops resolving (`/ws/private/join` returns "room not found") as soon as the room stops accepting new joiners — whether because it started or because everyone left — so a stale link can't seat someone into a race already underway.
 

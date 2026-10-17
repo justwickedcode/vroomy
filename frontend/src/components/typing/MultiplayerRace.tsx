@@ -8,9 +8,14 @@ import {
   Users,
 } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
-import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
+import {
+  PlayPanel,
+  PlaySection,
+  StartButton,
+  TileGrid,
+  tileClass,
+} from '#/components/play/PlayKit'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceConsole from '#/components/typing/RaceConsole'
 import RaceResults from '#/components/typing/RaceResults'
@@ -78,111 +83,111 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   }))
 
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-xl">
-        <Card className="rise-in overflow-hidden">
-          <CardContent className="flex flex-col gap-5 pt-6">
-            <Badge variant="outline" className="w-fit">
-              {mp.code ? 'Private room' : 'Quick match'}
-              {mp.mode === 'powerups' ? ' · abilities' : ' · no abilities'} ·
-              waiting
-            </Badge>
-
-            {mp.code && (
-              <div>
-                <div className="license-plate">
-                  <span>{mp.code}</span>
-                  <span className="license-plate-tab">Share to invite</span>
-                </div>
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
-                  <span className="flex-1 truncate font-mono text-xs text-muted-foreground">
-                    {shareLink}
-                  </span>
-                  <Button size="sm" variant="outline" onClick={handleCopy}>
-                    {copied ? <Check className="text-success" /> : <Copy />}
-                    {copied ? 'Copied' : 'Copy link'}
-                  </Button>
-                </div>
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+      {/* The same play panel as the Play picker: the room, the starting grid, then go. */}
+      <div className="page-wrap rise-in max-w-3xl">
+        <PlayPanel>
+          <PlaySection
+            label={`${mp.code ? 'Private room' : 'Quick match'} · ${
+              mp.mode === 'powerups' ? 'with abilities' : 'without abilities'
+            }`}
+            aside={
+              <Button variant="ghost" size="sm" onClick={onLeave}>
+                <ArrowLeft />
+                Leave
+              </Button>
+            }
+          >
+            {mp.code ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="play-input flex items-center px-4 text-2xl tracking-[0.35em]">
+                  {mp.code}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+                  {shareLink}
+                </span>
+                <Button variant="outline" onClick={handleCopy}>
+                  {copied ? <Check className="text-success" /> : <Copy />}
+                  {copied ? 'Copied' : 'Copy link'}
+                </Button>
               </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Finding racers for you…
+              </p>
             )}
+          </PlaySection>
 
-            <div className="starting-grid">
+          <PlaySection
+            label="Starting grid"
+            aside={
+              <span className="font-mono text-xs text-muted-foreground">
+                {mp.playersInRoom}/{mp.maxPlayers}
+              </span>
+            }
+          >
+            <TileGrid className="grid-cols-2 sm:grid-cols-5">
               {seats.map((seat) => (
                 <div
                   key={seat.pos}
                   className={cn(
-                    'starting-grid-slot',
-                    seat.isYou && 'is-you',
-                    !seat.filled && 'is-empty',
+                    tileClass(seat.isYou),
+                    !seat.filled && 'opacity-50',
                   )}
                 >
-                  <span className="starting-grid-pos">P{seat.pos}</span>
-                  <span
-                    className={cn(
-                      'starting-grid-dot',
-                      seat.isYou && 'is-you',
-                      seat.filled && !seat.isYou && 'is-filled',
-                    )}
-                  />
-                  <span className="starting-grid-name">
-                    {seat.isYou ? (
-                      <>
-                        You
-                        {mp.isHost && (
-                          <span className="starting-grid-flag">HOST</span>
-                        )}
-                      </>
-                    ) : seat.filled ? (
-                      (seat.name ?? 'Racer')
-                    ) : (
-                      'Open seat'
-                    )}
+                  <span className="font-display text-lg text-muted-foreground">
+                    P{seat.pos}
                   </span>
-                  <span
-                    className={cn(
-                      'starting-grid-state',
-                      !seat.filled && 'is-waiting',
-                    )}
-                  >
-                    {seat.filled ? 'Ready' : 'Waiting'}
+                  <span className="flex min-w-0 flex-col leading-tight">
+                    <span className="truncate text-sm font-bold">
+                      {seat.isYou
+                        ? 'You'
+                        : seat.filled
+                          ? (seat.name ?? 'Racer')
+                          : 'Open seat'}
+                      {seat.isYou && mp.isHost && (
+                        <span className="ml-1.5 font-mono text-[0.6rem] text-signal">
+                          HOST
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className={cn(
+                        'font-mono text-[0.6rem] tracking-widest uppercase',
+                        seat.filled
+                          ? 'text-[#4ade80]'
+                          : 'text-muted-foreground',
+                      )}
+                    >
+                      {seat.filled ? 'Ready' : 'Waiting'}
+                    </span>
                   </span>
                 </div>
               ))}
-            </div>
+            </TileGrid>
+          </PlaySection>
 
+          <div className="flex flex-col items-center gap-2 bg-card p-4">
             {mp.isHost ? (
-              <div className="flex flex-col items-center gap-2">
-                <Button
-                  className="w-full"
-                  onClick={mp.startNow}
-                  disabled={!canStart}
-                >
+              <>
+                <StartButton onClick={mp.startNow} disabled={!canStart}>
                   <Users />
                   Start now
-                </Button>
+                </StartButton>
                 <p className="text-xs text-muted-foreground">
                   {canStart
                     ? 'Starts automatically soon, or start right now'
                     : `Waiting for at least ${mp.minPlayers} players`}
                 </p>
-              </div>
+              </>
             ) : (
-              <p className="text-center text-xs text-muted-foreground">
+              <p className="py-2 text-center text-sm text-muted-foreground">
                 Waiting for {mp.code ? 'the host to start, or for' : ''} the
                 lobby to fill…
               </p>
             )}
-
-            <button
-              type="button"
-              onClick={onLeave}
-              className="text-center text-xs font-semibold text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="mr-1 inline size-3" />
-              Leave
-            </button>
-          </CardContent>
-        </Card>
+          </div>
+        </PlayPanel>
       </div>
     </main>
   )
@@ -342,6 +347,17 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       model: CAR_MODELS[(index + 1) % CAR_MODELS.length].id,
     })),
   ]
+  // A full room's worth of lanes, always: seats nobody filled stay on the track as empty lanes
+  // rather than the road shrinking to fit whoever showed up.
+  for (let seat = racers.length; seat < (mp.maxPlayers || 5); seat++) {
+    racers.push({
+      id: `empty-${seat}`,
+      name: '',
+      progress: 0,
+      wpm: 0,
+      empty: true,
+    })
+  }
 
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-6">
