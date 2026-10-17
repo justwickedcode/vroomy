@@ -30,7 +30,7 @@ For a production deployment see the "Deployment" section of the root `README.md`
 
 ## Rate limiting
 
-The endpoints a logged-out visitor can reach (`/api/quotes/random`, `/api/quotes/daily`, `/api/leaderboards`, `/api/replays/{id}`) are each limited to 30 requests/minute per IP (burst of 10) — see `ratelimit.go`. This API has no accounts or API keys (it's called directly from any visitor's browser), so per-IP limiting is the only practical abuse control available; it's sized generously for real gameplay (one new sentence per race, roughly every 10-60+ seconds) and exists to stop a script hammering the endpoint, not to throttle real players. `/health` is exempt, since an orchestrator's own healthcheck polling it every few seconds shouldn't be able to trip a limit meant for abuse.
+The endpoints a logged-out visitor can reach (`/api/quotes/random`, `/api/quotes/daily`, `/api/leaderboards`, `/api/replays/{id}`) are each limited to 30 requests/minute per IP (burst of 10) — see `ratelimit.go`. Asking for race tickets, saving races and importing them is limited to 12/minute per player (burst of 6). This API has no accounts or API keys (it's called directly from any visitor's browser), so per-IP limiting is the only practical abuse control available; it's sized generously for real gameplay (one new sentence per race, roughly every 10-60+ seconds) and exists to stop a script hammering the endpoint, not to throttle real players. `/health` is exempt, since an orchestrator's own healthcheck polling it every few seconds shouldn't be able to trip a limit meant for abuse.
 
 Prefers `X-Forwarded-For`'s first entry when present (set this correctly in your reverse proxy), falling back to the direct connection's address for local dev where there's no proxy in front.
 
@@ -88,6 +88,7 @@ Returns the daily challenge passage: one quote per calendar day, identical for e
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /api/users/me`               | Creates the user row on first call, then returns identity, cosmetics, the 50 most recent races, and lifetime stats (`racesPlayed`, `bestWpm`, `avgWpm`, `avgAccuracy`, `wins`) |
 | `PUT /api/users/me/cosmetics`     | Saves car, underglow, trail and power-up                                                                                                                                       |
+| `POST /api/users/me/race-tickets` | `{"mode": "solo"\|"daily", "passage", "dailyDate"}` → `{"ticket"}`: asked for before a race starts (see below)                                                                 |
 | `POST /api/users/me/races`        | Records one finished race (see below)                                                                                                                                          |
 | `POST /api/users/me/races/import` | Bulk-uploads up to 50 races a guest played before logging in                                                                                                                   |
 | `POST /api/users/me/purchases`    | `{"itemId": "car:lambo"}`: buys a garage item at its catalog price (`shop_prices.json`). `402` without enough coins, `409` if already owned                                    |
@@ -110,12 +111,15 @@ A race body:
     [310, 4, 0],
     [9120, 214, 0]
   ],
-  "dailyDate": "2026-10-16"
+  "dailyDate": "2026-10-16",
+  "ticket": "4b3562564655e9b79e55a948acaad80c"
 }
 ```
 
 - `mode` is `solo`, `multiplayer` or `daily`.
-- `replay` is optional. Each event is `[msSinceStart, typedLength, rejected]`. The game only accepts correct characters, so what the player had typed at any moment is `passage[:typedLength]`, which keeps a whole race to a few KB. `rejected` is `1` for a keystroke the game refused (a typo). The server checks that timestamps never go backwards, lengths stay inside the passage, and the timeline ends on the last character (`replays.go`).
+- `ticket` is required: the race ticket it's saved against, once (`tickets.go`). A solo or daily race asks for one when its passage appears; the race is refused if it's for another passage, mode or day, more than 2 hours old, or if the replay says the race took longer than the time since the ticket was issued (a replay made up after the fact). A multiplayer race's ticket is the `receipt` the ws server sends the finisher; it carries the server's own WPM, placement and racer count, which replace whatever the browser sent.
+- `replay` is required (except for a multiplayer race, where the server measured the result). Each event is `[msSinceStart, typedLength, rejected]`. The game only accepts correct characters, so what the player had typed at any moment is `passage[:typedLength]`, which keeps a whole race to a few KB. `rejected` is `1` for a keystroke the game refused (a typo). The server checks that timestamps never go backwards, lengths stay inside the passage, and the timeline ends on the last character (`replays.go`).
+- The replay has to back the score up (`anticheat.go`): the WPM must match it, hand-typed speed stays under 300 WPM (and 30 characters in any one second), text that appeared in jumps is limited to what abilities could skip, and machine-regular keystroke timing is refused.
 - `dailyDate` (with `mode: "daily"`) also records the run as that day's daily-challenge result, in the same transaction, keeping only the player's best run per day.
 
 ### Coins and the garage shop
@@ -135,7 +139,7 @@ Prices live in `shop_prices.json`, embedded into the binary. The frontend render
 | `scope`  | `global`, `friends`        | `global`    |
 | `date`   | `YYYY-MM-DD` (daily board) | today (UTC) |
 
-`speed` ranks each player's single best race in a rolling window (24 hours, 7 days or all time); `daily` ranks one day's daily-challenge results. Tied players share a rank. The response has the top 50 `entries` plus `me`, the caller's own row when they're ranked below the cut. Each entry includes `replayId` when the run that earned it has a replay. `scope=friends` limits the board to the caller and their accepted friends and needs an identity.
+`speed` ranks each player's single best race in a rolling window (24 hours, 7 days or all time); `daily` ranks one day's daily-challenge results. Tied players share a rank. The response has the top 50 `entries` plus `me`, the caller's own row when they're ranked below the cut. Each entry includes `replayId` when the run that earned it has a replay. Only verified races are ranked: ones saved against a ticket, plus races from before tickets whose stored replay still passes the checks (re-checked once at startup, `backfill.go`). Imported races count for the player's own history only. `scope=friends` limits the board to the caller and their accepted friends and needs an identity.
 
 ### Friends
 

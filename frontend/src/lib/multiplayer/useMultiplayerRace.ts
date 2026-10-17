@@ -64,6 +64,9 @@ export interface RaceResult {
   rank: number
   elapsedMs: number
   wpm: number
+  // Our own result only: the receipt the server sent with it, to save the race to our account
+  // against (see backend/ws/receipts.go).
+  ticket?: string
 }
 
 // Mirrors backend/ws's serverMessage (see ws_messages.go) — only the fields this client actually
@@ -88,6 +91,7 @@ interface ServerMessage {
   mode?: LobbyMode
   powerup?: PowerupKind
   targets?: Array<string>
+  ticket?: string
 }
 
 const GUEST_RACER_KEY = 'vroomy:racer-id:v1'
@@ -348,6 +352,8 @@ export function useMultiplayerRace() {
   // connection. A ref, updated synchronously in the same 'welcome' handler that sets myId
   // state, is what lets later messages in that same closure compare against the current value.
   const myIdRef = useRef<string | null>(null)
+  // Our receipt for this race, which arrives just before our own player_finished.
+  const receiptRef = useRef<string | undefined>(undefined)
 
   const send = useCallback((message: Record<string, unknown>) => {
     const ws = socketRef.current
@@ -372,6 +378,7 @@ export function useMultiplayerRace() {
     overdriveRef.current = { until: 0, left: 0, landedOn: -1 }
     setResults(null)
     setMyResult(null)
+    receiptRef.current = undefined
     setErrorMessage(null)
     finishSentRef.current = false
     setTyped('')
@@ -498,6 +505,9 @@ export function useMultiplayerRace() {
               },
             }))
             break
+          case 'receipt':
+            receiptRef.current = msg.ticket
+            break
           case 'player_finished':
             if (!msg.playerId) break
             // Unlike player_progress, this one IS relayed to the whole room including the
@@ -510,6 +520,7 @@ export function useMultiplayerRace() {
                 rank: msg.rank ?? 0,
                 elapsedMs: msg.elapsedMs ?? 0,
                 wpm: msg.wpm ?? 0,
+                ticket: receiptRef.current,
               })
               break
             }

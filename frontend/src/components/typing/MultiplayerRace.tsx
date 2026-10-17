@@ -276,6 +276,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         racerCount: Math.max(mp.racerCount, myResult.rank),
         mode: 'multiplayer',
         replay: getReplay(),
+        ticket: myResult.ticket,
       })
       .then((saved) => {
         setReplayId(saved.replayId)

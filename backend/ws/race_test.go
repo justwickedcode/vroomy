@@ -527,3 +527,40 @@ func TestAntiCheat_BurstAfterIdlingDisqualified(t *testing.T) {
 		t.Error("30 words in an instant after idling 8s was accepted")
 	}
 }
+
+// A finisher gets a receipt carrying the server's own result, before their player_finished.
+func TestRace_FinisherGetsReceipt(t *testing.T) {
+	r, a, _ := raceOf(t)
+	var got raceReceipt
+	r.issueReceipt = func(rc raceReceipt) (string, error) { got = rc; return "ticket-1", nil }
+	r.mu.Lock()
+	r.startedAt = time.Now().Add(-time.Minute)
+	r.mu.Unlock()
+	for w := 10; w <= 80; w += 10 {
+		r.mu.Lock()
+		r.players[a].pace = nil // spread out over the minute, as far as the burst check knows
+		r.mu.Unlock()
+		r.handleMessage(a, clientMessage{Type: "progress", WordIndex: w})
+	}
+	r.handleMessage(a, clientMessage{Type: "finish", ElapsedMs: 60000})
+
+	msgs := drain(t, a)
+	receiptAt, finishedAt := -1, -1
+	for i, m := range msgs {
+		switch m.Type {
+		case "receipt":
+			receiptAt = i
+			if m.Ticket != "ticket-1" {
+				t.Errorf("receipt ticket = %q", m.Ticket)
+			}
+		case "player_finished":
+			finishedAt = i
+		}
+	}
+	if receiptAt < 0 || finishedAt < 0 || receiptAt > finishedAt {
+		t.Fatalf("receipt at %d, player_finished at %d: want the receipt first", receiptAt, finishedAt)
+	}
+	if got.placement != 1 || got.racerCount != 2 || got.wpm < 50 || got.wpm > 100 {
+		t.Errorf("receipt = %+v, want 1st of 2 at the server's measured pace", got)
+	}
+}

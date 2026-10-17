@@ -96,3 +96,18 @@ func TestReplayIntegrity_AbilitySkipsAllowed(t *testing.T) {
 		t.Errorf("a run using two abilities was flagged: %s", msg)
 	}
 }
+
+// Races from before tickets keep their spot if their stored replay still holds up.
+func TestBackfill_StoredRaceHoldsUp(t *testing.T) {
+	passage, events, wpm := honestRun(t)
+	raw, _ := json.Marshal(events)
+	if !storedRaceHoldsUp(wpm, passage, raw) {
+		t.Error("an honest stored race wasn't verified")
+	}
+	if storedRaceHoldsUp(wpm, passage, nil) {
+		t.Error("a race with no replay was verified")
+	}
+	if storedRaceHoldsUp(wpm*3, passage, raw) {
+		t.Error("a race claiming three times its replay's speed was verified")
+	}
+}

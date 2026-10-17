@@ -351,6 +351,12 @@ type raceRequest struct {
 	// LocalHour is the hour (0-23) on the player's own clock when they finished, for the Early
 	// bird / Night owl achievements. Optional.
 	LocalHour *int `json:"localHour"`
+	// Ticket is the race ticket this race is saved against (see tickets.go).
+	Ticket string `json:"ticket"`
+
+	// serverResult is set once the result has been replaced with the ws server's own measurement
+	// (a multiplayer ticket) — then there's no claimed WPM left to check against the replay.
+	serverResult bool
 }
 
 // normalize fills in defaults before validation — kept separate from validate so validate stays
@@ -381,18 +387,26 @@ func (req raceRequest) validate() string {
 	if req.LocalHour != nil && (*req.LocalHour < 0 || *req.LocalHour > 23) {
 		return "localHour out of range"
 	}
-	// Every race comes with its replay, and the replay has to back the score up (see
-	// anticheat.go) — a race without one can't be checked, so it isn't accepted.
+	if req.WPM < 0 || req.WPM > maxWPM {
+		return "wpm out of range"
+	}
+	// A race comes with its replay, and the replay has to back the score up (see anticheat.go).
+	// Only a result the ws server measured itself stands without one (a replay too long to
+	// record), and its WPM is the server's, not a claim to check.
 	if len(req.Replay) == 0 {
+		if req.serverResult {
+			return ""
+		}
 		return "replay required"
 	}
 	if msg := validateReplay(req.Passage, req.Replay); msg != "" {
 		return msg
 	}
-	if req.WPM < 0 || req.WPM > maxWPM {
-		return "wpm out of range"
+	claimed := req.WPM
+	if req.serverResult {
+		claimed = -1
 	}
-	if msg := checkReplayIntegrity(req.Passage, req.Replay, req.WPM); msg != "" {
+	if msg := checkReplayIntegrity(req.Passage, req.Replay, claimed); msg != "" {
 		return msg
 	}
 	if req.Accuracy < 0 || req.Accuracy > 100 {
@@ -416,8 +430,8 @@ func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		req.normalize()
-		if msg := req.validate(); msg != "" {
-			writeError(w, http.StatusBadRequest, msg)
+		if !raceModes[req.Mode] {
+			writeError(w, http.StatusBadRequest, "unknown mode")
 			return
 		}
 
@@ -425,12 +439,6 @@ func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 		if err := upsertIdentity(ctx, pool, id); err != nil {
 			log.Printf("upsertIdentity failed: %s\n", err)
 			writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-
-		passage, replay, err := req.replayColumns()
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid replay")
 			return
 		}
 
@@ -452,11 +460,31 @@ func handlePostRace(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		defer tx.Rollback(ctx) //nolint:errcheck // no-op once Commit succeeds
 
+		// The ticket first: for a multiplayer race it supplies the result that's then checked.
+		msg, err := claimTicket(ctx, tx, id.id, &req, time.Now())
+		if err != nil {
+			log.Printf("claimTicket failed: %s\n", err)
+			writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if msg == "" {
+			msg = req.validate()
+		}
+		if msg != "" {
+			writeError(w, http.StatusBadRequest, msg)
+			return
+		}
+		passage, replay, err := req.replayColumns()
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid replay")
+			return
+		}
+
 		var result RaceResult
 		var createdAt time.Time
 		err = tx.QueryRow(ctx, `
-			INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, local_hour)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, local_hour, verified)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
 			RETURNING id, mode, wpm, accuracy, placement, racer_count, replay IS NOT NULL, created_at
 		`, id.id, req.WPM, req.Accuracy, req.Placement, req.RacerCount, req.Mode, passage, replay, req.LocalHour).
 			Scan(&result.ID, &result.Mode, &result.WPM, &result.Accuracy, &result.Placement, &result.RacerCount, &result.HasReplay, &createdAt)
@@ -518,7 +546,9 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		// Only races that hold up — with a replay that passes the same checks as a live one — are
 		// carried over; anything else (an old race saved before replays existed, or a forged one)
-		// is left behind rather than failing the whole import.
+		// is left behind rather than failing the whole import. Even those count for the player's own
+		// history only: nothing vouches that they ran when and as the browser says (no ticket), so
+		// they're stored unverified and stay off the leaderboards.
 		kept := entries[:0]
 		for i := range entries {
 			entries[i].normalize()
@@ -556,8 +586,8 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 				return
 			}
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, local_hour, created_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				INSERT INTO race_results (user_id, wpm, accuracy, placement, racer_count, mode, passage, replay, local_hour, created_at, verified)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, FALSE)
 			`, id.id, e.WPM, e.Accuracy, e.Placement, e.RacerCount, e.Mode, passage, replay, e.LocalHour, createdAt); err != nil {
 				log.Printf("insert imported race failed: %s\n", err)
 				writeError(w, http.StatusInternalServerError, "internal error")

@@ -37,17 +37,27 @@ type visitor struct {
 type rateLimiter struct {
 	mu       sync.Mutex
 	visitors map[string]*visitor
+	every    time.Duration
+	burst    int
 }
 
 func newRateLimiter() *rateLimiter {
-	return &rateLimiter{visitors: make(map[string]*visitor)}
+	return newRateLimiterOf(requestsPerMinute, burstSize)
+}
+
+func newRateLimiterOf(perMinute, burst int) *rateLimiter {
+	return &rateLimiter{
+		visitors: make(map[string]*visitor),
+		every:    time.Minute / time.Duration(perMinute),
+		burst:    burst,
+	}
 }
 
 func (rl *rateLimiter) allow(ip string) bool {
 	rl.mu.Lock()
 	v, ok := rl.visitors[ip]
 	if !ok {
-		v = &visitor{limiter: rate.NewLimiter(rate.Every(time.Minute/requestsPerMinute), burstSize)}
+		v = &visitor{limiter: rate.NewLimiter(rate.Every(rl.every), rl.burst)}
 		rl.visitors[ip] = v
 	}
 	v.lastSeen = time.Now()
@@ -89,7 +99,30 @@ func clientIP(r *http.Request) string {
 // isn't wired up here deliberately — this runs for the lifetime of the process, same as the
 // server itself; there's nothing else for it to be scoped to.
 func withRateLimit(next http.Handler) http.Handler {
-	rl := newRateLimiter()
+	return withRateLimitBy(clientIP, newRateLimiter(), next)
+}
+
+// Saving races and asking for tickets: one per race, and a race takes a good few seconds, so a
+// player never gets near this — a script flooding the anti-cheat with attempts does.
+const (
+	raceWritesPerMinute = 12
+	raceWritesBurst     = 6
+)
+
+// withUserRateLimit is withRateLimit keyed by the logged-in player rather than their IP (every
+// caller of these endpoints has an identity; one without falls back to their IP, and is then
+// turned away by withIdentity anyway).
+func withUserRateLimit(next http.Handler) http.Handler {
+	key := func(r *http.Request) string {
+		if id := r.Header.Get(headerUserID); id != "" {
+			return "user:" + id
+		}
+		return clientIP(r)
+	}
+	return withRateLimitBy(key, newRateLimiterOf(raceWritesPerMinute, raceWritesBurst), next)
+}
+
+func withRateLimitBy(key func(*http.Request) string, rl *rateLimiter, next http.Handler) http.Handler {
 	go func() {
 		for range time.Tick(visitorTTL) {
 			rl.cleanupStale()
@@ -97,7 +130,7 @@ func withRateLimit(next http.Handler) http.Handler {
 	}()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !rl.allow(clientIP(r)) {
+		if !rl.allow(key(r)) {
 			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}

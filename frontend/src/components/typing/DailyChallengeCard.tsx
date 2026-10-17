@@ -23,6 +23,7 @@ import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
 import { getDailyQuote, todayKey } from '#/lib/typing/sentences'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 import { useProfile } from '#/lib/profile/useProfile'
+import { useRaceTicket } from '#/lib/profile/useRaceTicket'
 import { cn } from '#/lib/utils'
 import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
@@ -49,6 +50,7 @@ export default function DailyChallengeCard() {
   const { hydrated, result, complete, history, bestWpm, streak } =
     useDailyChallenge()
   const {
+    text,
     spans,
     typed,
     activeWordIndex,
@@ -84,6 +86,12 @@ export default function DailyChallengeCard() {
   const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
   const [unlocks, setUnlocks] = useState<Array<UnlockedAchievement>>([])
   const recordedAttemptRef = useRef<number | null>(null)
+  const getTicket = useRaceTicket({
+    mode: 'daily',
+    passage: text,
+    attempt,
+    dailyDate: todayKey(),
+  })
   const latestAttemptRef = useRef(attempt)
   latestAttemptRef.current = attempt
 
@@ -127,6 +135,7 @@ export default function DailyChallengeCard() {
         mode: 'daily',
         dailyDate: todayKey(),
         replay: getReplay(),
+        ticket: getTicket(),
       })
       .then((saved) => {
         // Ignore a save that lands after the player already hit "Try again".
@@ -144,6 +153,7 @@ export default function DailyChallengeCard() {
     bestWpm,
     profile.addRace,
     getReplay,
+    getTicket,
   ])
 
   function handleStart() {

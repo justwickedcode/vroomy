@@ -94,6 +94,9 @@ type Room struct {
 	// race_test.go injects a fake one so the room lifecycle (join, countdown, race, results)
 	// can be exercised without a real Postgres connection.
 	selectQuote func(ctx context.Context) (TypingQuote, error)
+	// issueReceipt records a finisher's result for their account (see receipts.go); nil in tests
+	// that don't care, where finishers simply get no receipt.
+	issueReceipt func(raceReceipt) (string, error)
 
 	mu      sync.Mutex
 	state   roomState
@@ -128,9 +131,14 @@ type Room struct {
 }
 
 func newRoom(id string, mode lobbyMode, pool *pgxpool.Pool) *Room {
+	var issueReceipt func(raceReceipt) (string, error)
+	if pool != nil {
+		issueReceipt = issueReceiptTo(pool)
+	}
 	return &Room{
-		id:   id,
-		mode: mode,
+		issueReceipt: issueReceipt,
+		id:           id,
+		mode:         mode,
 		selectQuote: func(ctx context.Context) (TypingQuote, error) {
 			return RandomTypingQuote(ctx, pool, raceLanguage, raceMinWords, raceMaxWords, "")
 		},
@@ -456,8 +464,18 @@ func (r *Room) handleFinish(c *Client, clientElapsedMs int64) {
 	allDone := r.allFinishedLocked()
 	rank := state.rank
 	wpm := state.wpm
+	receipt := raceReceipt{passage: r.quote.Text, wpm: wpm, placement: rank, racerCount: len(r.players)}
 	r.mu.Unlock()
 
+	// The receipt goes to the finisher before their result does, so it's in hand by the time the
+	// browser saves the race.
+	if r.issueReceipt != nil {
+		if ticket, err := r.issueReceipt(receipt); err != nil {
+			log.Printf("[race %s] could not issue a receipt: %s\n", r.id, err)
+		} else {
+			c.sendJSON(serverMessage{Type: "receipt", Ticket: ticket})
+		}
+	}
 	r.broadcast(serverMessage{
 		Type:      "player_finished",
 		PlayerID:  c.id,
