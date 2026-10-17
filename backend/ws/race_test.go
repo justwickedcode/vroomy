@@ -56,7 +56,7 @@ func fakeRoom(quote TypingQuote) *Room {
 // startNow skips past lobbyWaitTimeout — the join/timeout/max-players mechanics are already
 // covered by TestRoom_WaitsForMinPlayers and TestRoom_StartsImmediatelyAtMaxPlayers, so tests
 // concerned with what happens once a race is underway trigger the countdown directly instead of
-// either waiting out the real 2s timer or padding the room to raceMaxPlayers with filler
+// either waiting out the real 4.5s timer or padding the room to raceMaxPlayers with filler
 // clients that would then also need to finish before finishRace ever fires.
 func startNow(r *Room) {
 	r.closeToNewJoiners()
@@ -251,7 +251,7 @@ func TestMatchmaker_FreshRoomAfterPreviousStarts(t *testing.T) {
 }
 
 // TestRoom_HostCanStartEarly verifies a private room's host can skip lobbyWaitTimeout once
-// raceMinPlayers has joined, without waiting the real 2s out.
+// raceMinPlayers has joined, without waiting the real 4.5s out.
 func TestRoom_HostCanStartEarly(t *testing.T) {
 	r := fakeRoom(TypingQuote{Text: "one two three four five"})
 	host := testClient("host")

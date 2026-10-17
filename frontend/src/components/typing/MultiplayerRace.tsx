@@ -47,6 +47,11 @@ type Mp = ReturnType<typeof useMultiplayerRace>
 
 // The race's own countdown after the lobby wait (backend/ws's raceCountdown).
 const RACE_COUNTDOWN_MS = 3000
+// One start light per second for the last five seconds to GO (the end of backend/ws's lobby
+// wait, after the newcomer's car has driven in, plus its race countdown).
+const START_LIGHTS = 5
+// How long "GO!" stays up once the race has started.
+const GO_HOLD_MS = 800
 
 // How long a lone racer waits in quick match before being offered a solo race instead.
 const ALONE_WAIT_MS = 30000
@@ -215,7 +220,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   // second racer joins (the server's short wait, plus the race's own countdown after it) and
   // carries straight on through the race countdown — never two countdowns in a row.
   const [goAt, setGoAt] = useState<number | null>(null)
+  const [clock, setClock] = useState(() => Date.now())
   useEffect(() => {
+    setClock(Date.now())
     if (mp.phase === 'lobby') {
       setGoAt(
         mp.lobbyStartsAt !== null ? mp.lobbyStartsAt + RACE_COUNTDOWN_MS : null,
@@ -227,19 +234,22 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       setGoAt((current) =>
         current !== null && Math.abs(current - fresh) < 1200 ? current : fresh,
       )
-    } else {
+    } else if (mp.phase !== 'racing') {
+      // Racing keeps the GO time, so "GO!" stays up for a beat after the start (below).
       setGoAt(null)
     }
   }, [mp.phase, mp.lobbyStartsAt, mp.startsInMs])
-  const [clock, setClock] = useState(() => Date.now())
+  const showingCountdown = goAt !== null && clock < goAt + GO_HOLD_MS
   useEffect(() => {
-    if (goAt === null) return
+    if (!showingCountdown) return
     const id = setInterval(() => setClock(Date.now()), 100)
     return () => clearInterval(id)
-  }, [goAt])
-  const counting = goAt !== null
-  const countdown =
-    goAt !== null ? Math.max(0, Math.ceil((goAt - clock) / 1000)) : 0
+  }, [showingCountdown])
+  // The lights only come on once there are five seconds to go — before that, the newcomer's
+  // car is still driving onto the grid.
+  const toGo = goAt !== null ? goAt - clock : Infinity
+  const counting = showingCountdown && toGo <= START_LIGHTS * 1000
+  const countdown = Math.max(0, Math.ceil(toGo / 1000))
 
   // Saved to history the moment our own result arrives (player_finished), not at race_end — the
   // rank is final then, and the player may leave before everyone else finishes. WPM is the
@@ -400,6 +410,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               phase={counting ? 'counting' : 'ready'}
               epic
               arrive={inLobby}
+              lights={START_LIGHTS}
               effect={effect}
               className="flex-shrink-0"
             />

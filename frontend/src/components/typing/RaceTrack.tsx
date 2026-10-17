@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import PixelSkyline from '#/components/typing/PixelSkyline'
+import StartLights from '#/components/typing/StartLights'
 import PixelIcon from '#/components/ui/PixelIcon'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
@@ -471,6 +472,7 @@ export default function RaceTrack({
   epic = false,
   showcase = false,
   arrive = false,
+  lights = 3,
   className,
 }: {
   racers: Array<Racer>
@@ -487,6 +489,8 @@ export default function RaceTrack({
   showcase?: boolean
   // A lobby: each car drives in from the left as it appears, and parks on the start line.
   arrive?: boolean
+  // How many start lights the countdown gantry has (one per second of the countdown).
+  lights?: number
   className?: string
 }) {
   const player = racers.find((r) => r.isYou) ?? racers[0]
@@ -685,16 +689,8 @@ export default function RaceTrack({
       </div>
 
       {phase === 'counting' && countdown !== undefined && (
-        <div className="race-countdown-overlay" aria-live="assertive">
-          <span
-            key={countdown}
-            className={cn(
-              'race-countdown-number',
-              countdown === 0 && 'race-countdown-number--go',
-            )}
-          >
-            {countdown === 0 ? 'GO!' : countdown}
-          </span>
+        <div className="race-countdown-overlay">
+          <StartLights remaining={countdown} total={lights} />
         </div>
       )}
     </div>

@@ -66,7 +66,7 @@ In ability rooms each player may fire their ability whenever it has recharged (1
 ## Matchmaking rules
 
 - A room needs at least 2 players to race, and holds at most 6.
-- Once 2 players are in a public room, it waits 2s for more before the 3s countdown (5s to GO in all) (`waiting` carries `startsInMs` while that clock runs). A private room starts when its host sends `start`.
+- Once 2 players are in a public room, it waits 4.5s for more (the newcomer's car drives in, then the start lights begin) before the 3s countdown (`waiting` carries `startsInMs` while that clock runs). A private room starts when its host sends `start`.
 - Reaching 5 players starts the room immediately, without waiting.
 - A player who disconnects during the wait is removed outright; a player who disconnects mid-race stays in the final results as unfinished, and stops blocking the race from ending once everyone still connected has finished.
 - A private room's share code stops resolving (`/ws/private/join` returns "room not found") as soon as the room stops accepting new joiners — whether because it started or because everyone left — so a stale link can't seat someone into a race already underway.
