@@ -242,7 +242,7 @@ function GaragePage() {
                       ids: SORTED_TRAILS.map((t) => trailItem(t.id)),
                     },
                     {
-                      label: 'Power-ups',
+                      label: 'Abilities',
                       ids: SORTED_POWERUPS.map((p) => powerupItem(p.id)),
                     },
                   ]

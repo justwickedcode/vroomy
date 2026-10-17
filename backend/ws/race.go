@@ -70,11 +70,9 @@ type playerState struct {
 	elapsedMs int64
 	wpm       float64
 	rank      int
-	// usedPowerup is set once this player fires their powerup — one per race (see
-	// handlePowerup).
-	usedPowerup bool
-	// ghostUntil: until then, this player fired Ghost and powerups pass right through them.
-	ghostUntil time.Time
+	// lastPowerupAt is when this player last fired their ability (zero: not yet this race); it
+	// recharges after abilityRecharge (see handlePowerup).
+	lastPowerupAt time.Time
 }
 
 // Room is one race: a fixed set of players racing the same quote from the same start signal.

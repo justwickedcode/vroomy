@@ -3,7 +3,6 @@ import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import PixelSkyline from '#/components/typing/PixelSkyline'
 import PixelIcon from '#/components/ui/PixelIcon'
-import { TARGETING } from '#/lib/powerups'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
 import type { TrailVariant } from '#/lib/trails'
@@ -22,30 +21,17 @@ export interface Racer {
   underglow?: boolean
   underglowColor?: string
   trail?: TrailVariant
-  // Fired Ghost: see-through, and attacks pass through it.
-  ghost?: boolean
+  // Overdrive is on: the car burns hot.
+  overdrive?: boolean
 }
 
-// One-shot powerup activation effect (see TypingRace.tsx's usePowerup) — `key` changes on every
-// use, even reusing the same kind back-to-back, so consumers can remount the animated element
-// instead of it no-op'ing because its own props didn't change. `targetId` names which bot a
-// shell/magnet hit landed on; boost/nitro (no target — the effect plays on the player's own car)
-// and emp/nuke (play on every lane at once) leave it unset.
+// One-shot ability effect (see useSoloPowerups / MultiplayerRace) — `key` changes on every use,
+// even the same kind back-to-back, so the animated element remounts and replays. Abilities only
+// ever help whoever used them, so it plays on one car: `sourceId`'s, or yours when unset.
 export interface RaceEffect {
   kind: PowerupKind
-  targetId?: string
-  // Everyone it hit, and who fired it (when that isn't simply "you"): each of their lanes pops
-  // the ability's icon over the car.
-  targetIds?: Array<string>
   sourceId?: string
   key: number
-}
-
-// Lanes an effect lands on: whoever it hit, or for a self ability, whoever fired it.
-function effectLanes(effect: RaceEffect): Array<string> {
-  if (TARGETING[effect.kind] === 'self')
-    return effect.sourceId ? [effect.sourceId] : []
-  return effect.targetIds ?? (effect.targetId ? [effect.targetId] : [])
 }
 
 // Cars start at 12% and cross the line at 92%.
@@ -359,18 +345,6 @@ function PowerupBurst({ kind }: { kind: 'boost' | 'nitro' }) {
   )
 }
 
-function PowerupImpact({ kind }: { kind: 'shell' | 'magnet' }) {
-  return (
-    <span
-      className={cn('race-powerup-impact', `race-powerup-impact--${kind}`)}
-      aria-hidden="true"
-    >
-      <span />
-      <span />
-    </span>
-  )
-}
-
 // ─── Lane ───────────────────────────────────────────────────────────
 
 function Lane({
@@ -388,33 +362,24 @@ function Lane({
   const follow = camera !== null && !racer.isYou
   const racing = racer.progress > 0 && !racer.finished
 
-  // Boost/nitro/slipstream play on whoever fired them (you, unless a bot did); shell/magnet play
-  // on whoever the hit landed on; every ability pops its icon over the cars it touched, and an
-  // oil slick spins them out. Narrowed into {kind, key} pairs up front so the JSX below doesn't
-  // need to re-check `effect` is non-null just to read its fields.
+  // An ability plays on whoever used it: its icon pops over the car, with an exhaust burst for
+  // the ones that move it forward. Narrowed into {kind, key} pairs up front so the JSX below
+  // doesn't need to re-check `effect` is non-null just to read its fields.
   const mine = effect
     ? effect.sourceId
       ? effect.sourceId === racer.id
       : Boolean(racer.isYou)
     : false
+  // Every ability moves its user forward: Boost gets the small burst, the bigger ones nitro's.
   const burst =
-    effect &&
-    mine &&
-    (effect.kind === 'boost' ||
-      effect.kind === 'nitro' ||
-      effect.kind === 'slipstream')
+    effect && mine
       ? {
-          kind: effect.kind === 'slipstream' ? 'nitro' : effect.kind,
+          kind:
+            effect.kind === 'boost' ? ('boost' as const) : ('nitro' as const),
           key: effect.key,
         }
       : null
-  const landed = effect ? effectLanes(effect).includes(racer.id) : false
-  const impact =
-    effect && landed && (effect.kind === 'shell' || effect.kind === 'magnet')
-      ? { kind: effect.kind, key: effect.key }
-      : null
-  const pop = effect && landed ? { kind: effect.kind, key: effect.key } : null
-  const spin = effect?.kind === 'oil' && landed
+  const pop = effect && mine ? { kind: effect.kind, key: effect.key } : null
 
   return (
     <div
@@ -426,9 +391,7 @@ function Lane({
       <div
         className={cn(
           'race-car-wrap',
-          impact && 'race-car-wrap--hit',
-          spin && 'race-car-wrap--spin',
-          racer.ghost && 'race-car-wrap--ghost',
+          racer.overdrive && 'race-car-wrap--overdrive',
           racer.isYou && 'race-car-wrap--you',
           follow && 'race-follow',
         )}
@@ -452,7 +415,6 @@ function Lane({
             <PixelIcon name={pop.kind} className="size-7" />
           </span>
         )}
-        {impact && <PowerupImpact key={impact.key} kind={impact.kind} />}
         <CarIcon
           model={racer.model ?? 'sport'}
           underglow={racer.underglow}
@@ -649,7 +611,6 @@ export default function RaceTrack({
       className={cn(
         'race-track-panel',
         epic && 'race-track-panel--epic',
-        effect?.kind === 'quake' && 'race-track-panel--quake',
         showcase && 'race-track-panel--showcase',
         className,
       )}
@@ -691,32 +652,6 @@ export default function RaceTrack({
             celebrate={Boolean(player.finished)}
           />
         )}
-        {effect?.kind === 'emp' && (
-          <span
-            key={effect.key}
-            className="race-emp-flash"
-            aria-hidden="true"
-          />
-        )}
-        {effect?.kind === 'nuke' && (
-          <span
-            key={effect.key}
-            className="race-nuke-flash"
-            aria-hidden="true"
-          />
-        )}
-        {effect &&
-          (effect.kind === 'ink' ||
-            effect.kind === 'disco' ||
-            effect.kind === 'timewarp' ||
-            effect.kind === 'quake' ||
-            effect.kind === 'mirror') && (
-            <span
-              key={effect.key}
-              className={cn('race-flash', `race-flash--${effect.kind}`)}
-              aria-hidden="true"
-            />
-          )}
       </div>
 
       {phase === 'counting' && countdown !== undefined && (

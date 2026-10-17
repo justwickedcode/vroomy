@@ -8,15 +8,15 @@ import type { PowerupKind } from '#/lib/powerups'
 // readouts in the middle, and the quote's author and source on the car radio on the right.
 
 export interface ConsolePowerup {
-  // What the box shows; null for an empty box (chaos, recharging).
-  kind: PowerupKind | null
+  kind: PowerupKind
   label: string
   detail: string
-  // Loaded and unused.
+  // Charged and ready to fire.
   ready: boolean
-  // Chaos: the roulette is spinning, and how far the empty box has recharged (0..1).
-  rolling?: boolean
-  charge?: number
+  // How far it has recharged since its last use (0..1); the box fills up from the bottom.
+  charge: number
+  // What it's doing right now, when something's running ("Armed", "Overdrive!"...).
+  status?: string
   // Can be fired right now (ready, and the race is on).
   canFire: boolean
   onFire: () => void
@@ -42,7 +42,7 @@ function safeSource(sourceUrl?: string | null): URL | null {
 }
 
 function ItemBox({ powerup }: { powerup: ConsolePowerup }) {
-  const { kind, label, detail, ready, rolling, charge, canFire, onFire } =
+  const { kind, label, detail, ready, charge, status, canFire, onFire } =
     powerup
   return (
     <button
@@ -55,18 +55,12 @@ function ItemBox({ powerup }: { powerup: ConsolePowerup }) {
       <span
         className={cn(
           'race-itembox',
-          ready && 'race-itembox--ready',
-          rolling && 'race-itembox--rolling',
-          !ready && !rolling && 'race-itembox--used',
+          ready ? 'race-itembox--ready' : 'race-itembox--used',
         )}
       >
-        {kind ? (
-          <PixelIcon name={kind} className="size-8" />
-        ) : (
-          <span className="race-itembox-q">?</span>
-        )}
-        {/* Chaos: the empty box fills back up from the bottom. */}
-        {!ready && !rolling && charge !== undefined && charge < 1 && (
+        <PixelIcon name={kind} className="size-8" />
+        {/* Recharging: the box fills back up from the bottom. */}
+        {!ready && (
           <span
             className="race-itembox-charge"
             style={{ height: `${Math.round(charge * 100)}%` }}
@@ -75,20 +69,14 @@ function ItemBox({ powerup }: { powerup: ConsolePowerup }) {
         {ready && <kbd className="race-keycap">Tab</kbd>}
       </span>
       <span className="flex flex-col leading-tight">
-        <span className="text-sm font-bold">{rolling ? 'Rolling' : label}</span>
+        <span className="text-sm font-bold">{label}</span>
         <span
           className={cn(
             'font-mono text-[0.65rem] tracking-widest uppercase',
-            ready ? 'text-signal' : 'text-muted-foreground',
+            status || ready ? 'text-signal' : 'text-muted-foreground',
           )}
         >
-          {ready
-            ? 'Ready'
-            : rolling
-              ? '...'
-              : charge !== undefined
-                ? 'Charging'
-                : 'Used'}
+          {status ?? (ready ? 'Ready' : 'Charging')}
         </span>
       </span>
     </button>

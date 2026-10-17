@@ -7,8 +7,6 @@ import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
 import { powerupDef } from '#/lib/powerups'
 import { useSoloPowerups } from '#/lib/typing/useSoloPowerups'
-import InkSplats from '#/components/typing/InkSplats'
-import { cn } from '#/lib/utils'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceConsole from '#/components/typing/RaceConsole'
@@ -24,11 +22,11 @@ const RACE_COUNTDOWN_START = 3
 
 export default function TypingRace({
   speedRange,
-  chaos = false,
+  abilities = true,
 }: {
   speedRange: SpeedRange
-  // Chaos mode: item roulette for everyone, and the bots fight back.
-  chaos?: boolean
+  // Abilities on: your equipped one recharges, and the bots use them too (useSoloPowerups).
+  abilities?: boolean
 }) {
   const {
     text,
@@ -53,7 +51,7 @@ export default function TypingRace({
 
   const profile = useProfile()
 
-  const { bots, hitBot, delayBot } = useBotRacers({
+  const { bots, hitBot } = useBotRacers({
     raceKey: text,
     started,
     startedAt,
@@ -115,26 +113,20 @@ export default function TypingRace({
   // Classic: the equipped one, once per race. Chaos: an item roulette for you and the bots,
   // who fire theirs at you (see useSoloPowerups).
   const powers = useSoloPowerups({
-    chaos,
+    enabled: abilities,
     equipped: profile.equippedPowerup,
     raceKey: text,
     startedAt,
     finished,
     locked,
     progress,
+    activeWordIndex,
     textLength: text.length,
     bots,
     hitBot,
-    delayBot,
     skipWord,
   })
   const { fire, slot } = powers
-
-  // A hit that freezes you swallows keystrokes until it wears off.
-  const onInputChange = (value: string) => {
-    if (powers.frozen) return
-    handleInputChange(value)
-  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -163,7 +155,7 @@ export default function TypingRace({
       underglow: profile.underglow,
       underglowColor: profile.underglowColor,
       trail: profile.trail,
-      ghost: powers.ghostYou,
+      overdrive: powers.overdrive,
     },
     ...bots.map((bot) => ({
       id: bot.id,
@@ -172,7 +164,6 @@ export default function TypingRace({
       wpm: bot.wpm,
       finished: bot.finished,
       model: bot.model,
-      ghost: powers.ghostBots.has(bot.id),
     })),
   ]
 
@@ -228,20 +219,20 @@ export default function TypingRace({
     profile.stats.racesPlayed,
   ])
 
-  // The item box shows whatever's in your slot (or spinning in it); in classic, the equipped
-  // ability stays on show, spent or not, so the box never pops in and out.
-  const boxKind = powers.face ?? (chaos ? null : profile.equippedPowerup)
+  const ability = profile.equippedPowerup
+  // What the item box says under the ability's name.
+  const abilityStatus = powers.overdrive ? 'Overdrive!' : undefined
 
   return (
     // One connected panel: the track, the words, a slim status bar, then the results.
     <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
-      <div
-        className={cn(
-          'flex flex-col',
-          powers.screen && `race-hit race-hit--${powers.screen.screen}`,
-          powers.frozen && 'race-hit--frozen',
+      <div className="relative flex flex-col">
+        {/* What just happened, up in the sky over the track — never over your words. */}
+        {!finished && powers.event && (
+          <div className="pointer-events-none absolute top-2 right-3 z-10">
+            <span className="race-announcer">{powers.event}</span>
+          </div>
         )}
-      >
         <RaceTrack
           racers={racers}
           countdown={countdown}
@@ -258,7 +249,7 @@ export default function TypingRace({
           finished={finished}
           locked={locked}
           errorSeq={errorSeq}
-          onInputChange={onInputChange}
+          onInputChange={handleInputChange}
           inputRef={inputRef}
           className="shrink-0"
           overlay={
@@ -289,17 +280,6 @@ export default function TypingRace({
                   }
                 />
               )}
-              {!finished && powers.screen?.screen === 'ink' && (
-                <InkSplats key={powers.screen.key} />
-              )}
-              {!finished && powers.frozen && (
-                <span className="race-frozen-tag">Frozen</span>
-              )}
-              {!finished && powers.event && (
-                <div className="pointer-events-none absolute top-3 right-3 z-10">
-                  <span className="race-announcer">{powers.event}</span>
-                </div>
-              )}
             </>
           }
         />
@@ -308,16 +288,20 @@ export default function TypingRace({
         wpm={wpm}
         accuracy={accuracy}
         elapsedMs={elapsedMs}
-        powerup={{
-          kind: boxKind,
-          label: boxKind ? powerupDef(boxKind).label : 'Item box',
-          detail: boxKind ? powerupDef(boxKind).detail : '',
-          ready: Boolean(slot),
-          rolling: powers.rolling,
-          charge: chaos ? powers.charge : undefined,
-          canFire: Boolean(slot) && !locked && !finished,
-          onFire: fire,
-        }}
+        powerup={
+          abilities
+            ? {
+                kind: ability,
+                label: powerupDef(ability).label,
+                detail: powerupDef(ability).detail,
+                ready: Boolean(slot),
+                charge: powers.charge,
+                status: abilityStatus,
+                canFire: Boolean(slot) && !locked && !finished,
+                onFire: fire,
+              }
+            : undefined
+        }
         {...credit}
       />
     </div>

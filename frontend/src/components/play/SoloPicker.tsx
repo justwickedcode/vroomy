@@ -41,17 +41,17 @@ const PACE_COLORS = [
 function SpeedPresetTile({
   range,
   index,
-  chaos,
+  abilities,
 }: {
   range: SpeedRange
   index: number
-  chaos: boolean
+  abilities: boolean
 }) {
   return (
     <Link
       to="/race/solo/$speed"
       params={{ speed: range.id }}
-      search={chaos ? { chaos: true } : {}}
+      search={abilities ? {} : { abilities: 'off' as const }}
       onMouseMove={handleTiltMove}
       onMouseLeave={handleTiltLeave}
       className="tilt-card glass-chip flex flex-col gap-3 p-4 text-left transition-colors hover:border-primary/50"
@@ -88,7 +88,13 @@ function CustomPaceTile({ onOpen }: { onOpen: () => void }) {
   )
 }
 
-function CustomPace({ onBack, chaos }: { onBack: () => void; chaos: boolean }) {
+function CustomPace({
+  onBack,
+  abilities,
+}: {
+  onBack: () => void
+  abilities: boolean
+}) {
   const { hydrated, stats } = useProfile()
   const bestWpm = hydrated && stats.bestWpm > 0 ? stats.bestWpm : undefined
   const [wpm, setWpm] = useLastPace()
@@ -166,7 +172,7 @@ function CustomPace({ onBack, chaos }: { onBack: () => void; chaos: boolean }) {
         <Link
           to="/race/solo/$speed"
           params={{ speed: `custom-${wpm}` }}
-          search={chaos ? { chaos: true } : {}}
+          search={abilities ? {} : { abilities: 'off' as const }}
         >
           Race at {wpm} wpm
           <ArrowRight />
@@ -176,38 +182,34 @@ function CustomPace({ onBack, chaos }: { onBack: () => void; chaos: boolean }) {
   )
 }
 
-// Classic: your equipped ability, once. Chaos: an item roulette for everyone, bots included.
+// With abilities: your equipped one recharges through the race, and the bots use them too.
+// Without: just typing.
 const MODES = [
   {
-    id: 'classic',
-    label: 'Classic',
-    icon: 'flag',
-    blurb: 'Your ability, once',
+    id: 'on',
+    label: 'With abilities',
+    icon: 'overdrive',
+    blurb: 'Yours recharges — bots use them too',
   },
-  {
-    id: 'chaos',
-    label: 'Chaos',
-    icon: 'disco',
-    blurb: 'Random abilities for everyone — bots fight back',
-  },
+  { id: 'off', label: 'Without', icon: 'keyboard', blurb: 'Just typing' },
 ] as const
 
 function ModeSwitch({
-  chaos,
+  abilities,
   onChange,
 }: {
-  chaos: boolean
-  onChange: (chaos: boolean) => void
+  abilities: boolean
+  onChange: (abilities: boolean) => void
 }) {
   return (
     <div className="grid grid-cols-2 gap-[2px] border-2 border-border bg-border">
       {MODES.map((mode) => {
-        const active = (mode.id === 'chaos') === chaos
+        const active = (mode.id === 'on') === abilities
         return (
           <button
             key={mode.id}
             type="button"
-            onClick={() => onChange(mode.id === 'chaos')}
+            onClick={() => onChange(mode.id === 'on')}
             className={cn(
               'flex items-center gap-3 p-3 text-left transition-colors',
               active
@@ -233,19 +235,19 @@ function ModeSwitch({
 
 export default function SoloPicker() {
   const [custom, setCustom] = useState(false)
-  const [chaos, setChaos] = useState(false)
+  const [abilities, setAbilities] = useState(true)
   if (custom)
-    return <CustomPace onBack={() => setCustom(false)} chaos={chaos} />
+    return <CustomPace onBack={() => setCustom(false)} abilities={abilities} />
   return (
     <div className="flex flex-col gap-4">
-      <ModeSwitch chaos={chaos} onChange={setChaos} />
+      <ModeSwitch abilities={abilities} onChange={setAbilities} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {SPEED_RANGES.map((range, i) => (
           <SpeedPresetTile
             key={range.id}
             range={range}
             index={i}
-            chaos={chaos}
+            abilities={abilities}
           />
         ))}
         <CustomPaceTile onOpen={() => setCustom(true)} />

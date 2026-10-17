@@ -20,9 +20,9 @@ function parseCustomSpeed(id: string): SpeedRange | null {
 }
 
 export const Route = createFileRoute('/race/solo/$speed')({
-  // ?chaos=true: the item-roulette mode where the bots fire abilities too.
-  validateSearch: (search: Record<string, unknown>): { chaos?: boolean } =>
-    search.chaos === true || search.chaos === 'true' ? { chaos: true } : {},
+  // ?abilities=off: a pure typing race, no abilities for anyone (they're on by default).
+  validateSearch: (search: Record<string, unknown>): { abilities?: 'off' } =>
+    search.abilities === 'off' ? { abilities: 'off' } : {},
   loader: ({ params }) => {
     const range =
       SPEED_RANGES.find((r) => r.id === params.speed) ??
@@ -35,7 +35,7 @@ export const Route = createFileRoute('/race/solo/$speed')({
 
 function SoloRace() {
   const speedRange = Route.useLoaderData()
-  const { chaos } = Route.useSearch()
+  const abilities = Route.useSearch().abilities !== 'off'
   const isDesktop = useIsDesktopViewport()
 
   if (isDesktop === false) return <DesktopOnlyRace />
@@ -45,9 +45,9 @@ function SoloRace() {
     <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap flex flex-col">
         <TypingRace
-          key={chaos ? 'chaos' : 'classic'}
+          key={abilities ? 'abilities' : 'plain'}
           speedRange={speedRange}
-          chaos={chaos ?? false}
+          abilities={abilities}
         />
       </div>
     </main>

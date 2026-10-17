@@ -1,8 +1,8 @@
 package main
 
 import (
-	"slices"
 	"testing"
+	"time"
 )
 
 func TestParseLobbyMode(t *testing.T) {
@@ -64,61 +64,29 @@ func lastPowerup(t *testing.T, c *Client) (serverMessage, bool) {
 	return lastOfType(drain(t, c), "powerup_used")
 }
 
-func TestPowerup_ShellHitsLeader(t *testing.T) {
-	r, a, b, _ := powerupRace(t, 2, 7, 4)
-	r.handlePowerup(a, "shell")
-
-	msg, ok := lastPowerup(t, b)
-	if !ok {
-		t.Fatal("expected a powerup_used broadcast")
-	}
-	if msg.PlayerID != "a" || msg.Powerup != "shell" || !slices.Equal(msg.Targets, []string{"b"}) {
-		t.Errorf("got %+v, want a's shell hitting b (the leader)", msg)
-	}
-	if msg.FreezeMs != powerupFreezeMs["shell"] {
-		t.Errorf("freezeMs = %d", msg.FreezeMs)
-	}
-}
-
-func TestPowerup_MagnetHitsWhoeverIsJustAhead(t *testing.T) {
-	r, a, _, _ := powerupRace(t, 2, 7, 4)
-	r.handlePowerup(a, "magnet")
-
-	msg, ok := lastPowerup(t, a)
-	if !ok || !slices.Equal(msg.Targets, []string{"c"}) {
-		t.Errorf("got %+v, want c (directly ahead of a at word 4)", msg)
-	}
-}
-
-func TestPowerup_NukeHitsEveryoneElse(t *testing.T) {
-	r, a, _, _ := powerupRace(t, 2, 7, 4)
-	r.handlePowerup(a, "nuke")
-
-	msg, ok := lastPowerup(t, a)
-	if !ok {
-		t.Fatal("expected a powerup_used broadcast")
-	}
-	got := slices.Clone(msg.Targets)
-	slices.Sort(got)
-	if !slices.Equal(got, []string{"b", "c"}) || msg.FreezeMs != 3000 {
-		t.Errorf("got %+v, want b and c frozen for 3s", msg)
-	}
-}
-
-func TestPowerup_OncePerRace(t *testing.T) {
+func TestPowerup_RechargesBetweenUses(t *testing.T) {
 	r, a, b, _ := powerupRace(t, 2, 7, 4)
 	r.handlePowerup(a, "boost")
 	drain(t, b)
-	r.handlePowerup(a, "nuke")
+	r.handlePowerup(a, "overdrive")
 	if _, ok := lastPowerup(t, b); ok {
-		t.Error("a second powerup in the same race was allowed")
+		t.Error("an ability fired again before it recharged")
+	}
+
+	// Once abilityRecharge has passed, it's ready again.
+	r.mu.Lock()
+	r.players[a].lastPowerupAt = time.Now().Add(-abilityRecharge)
+	r.mu.Unlock()
+	r.handlePowerup(a, "overdrive")
+	if _, ok := lastPowerup(t, b); !ok {
+		t.Error("a recharged ability couldn't be fired")
 	}
 }
 
 func TestPowerup_IgnoredInClassicRooms(t *testing.T) {
 	r, a, b, _ := powerupRace(t, 2, 7, 4)
 	r.mode = modeClassic
-	r.handlePowerup(a, "nuke")
+	r.handlePowerup(a, "overdrive")
 	if _, ok := lastPowerup(t, b); ok {
 		t.Error("a classic room accepted a powerup")
 	}
@@ -131,40 +99,20 @@ func TestPowerup_UnknownKindIgnored(t *testing.T) {
 		t.Error("an unknown powerup was broadcast")
 	}
 	// ...and it didn't use up the real one.
-	r.handlePowerup(a, "shell")
+	r.handlePowerup(a, "nitro")
 	if _, ok := lastPowerup(t, b); !ok {
 		t.Error("a bogus powerup used up the player's real one")
 	}
 }
 
-func TestPowerup_OilHitsWhoeverIsRightBehind(t *testing.T) {
-	r, _, b, _ := powerupRace(t, 2, 7, 4)
-	r.handlePowerup(b, "oil")
-
-	msg, ok := lastPowerup(t, b)
-	if !ok || !slices.Equal(msg.Targets, []string{"c"}) || msg.FreezeMs != 1200 {
-		t.Errorf("got %+v, want c (right behind b) frozen 1.2s", msg)
-	}
-}
-
-func TestPowerup_MirrorHitsLeaderWithScreenEffectOnly(t *testing.T) {
-	r, a, _, _ := powerupRace(t, 2, 7, 4)
-	r.handlePowerup(a, "mirror")
-
-	msg, ok := lastPowerup(t, a)
-	if !ok || !slices.Equal(msg.Targets, []string{"b"}) || msg.FreezeMs != 0 {
-		t.Errorf("got %+v, want b targeted with no freeze", msg)
-	}
-}
-
-func TestPowerup_GhostDodgesHits(t *testing.T) {
+func TestPowerup_AnnouncedToEveryone(t *testing.T) {
 	r, a, b, c := powerupRace(t, 2, 7, 4)
-	r.handlePowerup(b, "ghost")
-	drain(t, a)
-	r.handlePowerup(a, "ink")
+	r.handlePowerup(a, "slipstream")
 
-	msg, ok := lastPowerup(t, c)
-	if !ok || !slices.Equal(msg.Targets, []string{"c"}) {
-		t.Errorf("got %+v, want only c hit — b is ghosted", msg)
+	for _, cl := range []*Client{a, b, c} {
+		msg, ok := lastPowerup(t, cl)
+		if !ok || msg.PlayerID != "a" || msg.Powerup != "slipstream" {
+			t.Errorf("%s got %+v, want a's slipstream", cl.id, msg)
+		}
 	}
 }

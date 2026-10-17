@@ -1,11 +1,11 @@
-import { Keyboard } from '#/components/ui/icons'
 import PixelIcon from '#/components/ui/PixelIcon'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 
-// The two kinds of multiplayer room. Shown before quick match and when creating a friends room;
-// players are only matched with others who picked the same.
+// The two kinds of multiplayer room, styled like the Solo picker's switch: with abilities (your
+// equipped one recharges through the race) or without. Shown before quick match and when
+// creating a friends room; players are only matched with others who picked the same.
 export default function LobbyModePicker({
   value,
   onSelect,
@@ -15,37 +15,46 @@ export default function LobbyModePicker({
 }) {
   const { equippedPowerup } = useProfile()
 
-  const options: Array<{
-    mode: LobbyMode
-    title: string
-    icon: React.ReactNode
-  }> = [
-    {
-      mode: 'classic',
-      title: 'Classic',
-      icon: <Keyboard className="size-7 text-muted-foreground" />,
-    },
+  const options = [
     {
       mode: 'powerups',
-      title: 'Power-ups',
+      title: 'With abilities',
+      blurb: 'Yours recharges through the race',
       icon: <PixelIcon name={equippedPowerup} className="size-8" />,
     },
-  ]
+    {
+      mode: 'classic',
+      title: 'Without',
+      blurb: 'Just typing',
+      icon: <PixelIcon name="keyboard" className="size-8" />,
+    },
+  ] as const satisfies ReadonlyArray<
+    { mode: LobbyMode } & Record<string, unknown>
+  >
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-[2px] border-2 border-border bg-border sm:grid-cols-2">
       {options.map((option) => (
         <button
           key={option.mode}
           type="button"
           onClick={() => onSelect(option.mode)}
           className={cn(
-            'glass-chip flex items-center gap-4 rounded-xl p-4 text-left transition-colors',
-            value === option.mode && 'border-primary bg-primary/12',
+            'flex items-center gap-3 p-4 text-left transition-colors',
+            value === option.mode
+              ? 'bg-[#2a1238] shadow-[inset_0_-3px_0_#ff2fb4]'
+              : 'bg-card hover:bg-accent',
           )}
         >
           {option.icon}
-          <p className="pixel-text text-base">{option.title}</p>
+          <span className="flex flex-col leading-tight">
+            <span className="font-display text-lg uppercase">
+              {option.title}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {option.blurb}
+            </span>
+          </span>
         </button>
       ))}
     </div>

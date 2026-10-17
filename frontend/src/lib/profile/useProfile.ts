@@ -38,6 +38,7 @@ import type {
 import type { CarModel } from '#/components/typing/CarIcon'
 import { toTrailVariant } from '#/lib/trails'
 import type { TrailVariant } from '#/lib/trails'
+import { asPowerup } from '#/lib/powerups'
 import type { PowerupKind } from '#/lib/powerups'
 
 const STORAGE_KEY = 'vroomy:profile:v1'
@@ -159,7 +160,7 @@ function readProfile(): Profile {
       underglow: parsed.underglow ?? false,
       underglowColor: parsed.underglowColor ?? DEFAULT_UNDERGLOW_COLOR,
       trail: toTrailVariant(parsed.trail ?? DEFAULT_TRAIL),
-      equippedPowerup: parsed.equippedPowerup ?? DEFAULT_POWERUP,
+      equippedPowerup: asPowerup(parsed.equippedPowerup),
     }
     const profile: Profile = {
       ...cosmetics,
@@ -676,7 +677,7 @@ export function useProfile() {
         underglow: remote.underglow,
         underglowColor: remote.underglowColor,
         trail: toTrailVariant(remote.trail),
-        equippedPowerup: remote.equippedPowerup as PowerupKind,
+        equippedPowerup: asPowerup(remote.equippedPowerup),
         races: remote.races.map(raceFromApi),
         racesPlayedTotal: remote.stats.racesPlayed,
         coins: remote.coins,

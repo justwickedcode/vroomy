@@ -22,7 +22,7 @@ package main
 //	← player_finished {playerId, rank, elapsedMs, wpm}              relayed to the whole room, including the finisher
 //	← player_left    {playerId}                                    an opponent disconnected mid-race
 //	→ powerup        {powerup}                                     powerup rooms only: fire your powerup (once per race)
-//	← powerup_used   {playerId, powerup, targets, freezeMs}         to the whole room: who it hit and for how long
+//	← powerup_used   {playerId, powerup}                           to the whole room: who fired what
 //	← race_end       {results}                                     final standings; connection closes shortly after
 //	← error          {message}                                     something went wrong (e.g. quote selection failed, unknown room code)
 type serverMessage struct {
@@ -57,11 +57,9 @@ type serverMessage struct {
 	// "race_start".
 	Mode string `json:"mode,omitempty"`
 
-	// Powerup, Targets and FreezeMs describe a "powerup_used" event: who fired what (PlayerID,
-	// Powerup), whose keyboards it freezes (Targets) and for how long.
-	Powerup  string   `json:"powerup,omitempty"`
-	Targets  []string `json:"targets,omitempty"`
-	FreezeMs int64    `json:"freezeMs,omitempty"`
+	// Powerup describes a "powerup_used" event: who fired what (PlayerID, Powerup).
+	Powerup string   `json:"powerup,omitempty"`
+	Targets []string `json:"targets,omitempty"`
 
 	Message string `json:"message,omitempty"`
 }

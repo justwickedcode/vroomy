@@ -1,36 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  GHOST_MS,
-  HIT_EFFECTS,
+  ABILITY_RECHARGE_MS,
+  OVERDRIVE_MAX_WORDS,
+  OVERDRIVE_MS,
   POWERUPS,
-  SELF_SKIP_WORDS,
   SLIPSTREAM_MAX_WORDS,
-  TARGETING,
-  pickTargets,
   powerupLabel,
 } from '#/lib/powerups'
-import type { PowerupKind, ScreenEffect } from '#/lib/powerups'
+import type { PowerupKind } from '#/lib/powerups'
 import type { BotRacer } from '#/lib/typing/useBotRacers'
 import type { RaceEffect } from '#/components/typing/RaceTrack'
 
-// Abilities in a solo race (see TypingRace.tsx).
-//
-// Classic: your equipped ability, once per race; the bots never fire anything.
-// Chaos: an item roulette — every few seconds your empty slot spins up a random ability, and
-// every bot runs the same roulette on its own clock and fires what it gets, mostly at you. Ghost
-// makes anyone (you or a bot) immune for a while; whatever hits you shows up on your screen.
+// Abilities in a solo race with abilities on (see TypingRace.tsx). Every one only helps whoever
+// fires it. Your equipped ability is ready at GO and recharges ABILITY_RECHARGE_MS after each use;
+// every bot uses random abilities on its own clock.
 
 const TICK_MS = 100
-// Chaos timings.
-const FIRST_ROLL_MS = 2500
-const ROLL_SPIN_MS = 1100
-const RECHARGE_MS = 8000
-const BOT_FIRST_FIRE_MS: [number, number] = [5000, 12000]
-const BOT_REFIRE_MS: [number, number] = [8000, 15000]
+const BOT_FIRST_FIRE_MS: [number, number] = [6000, 12000]
+const BOT_REFIRE_MS: [number, number] = [10000, 18000]
 const EFFECT_MS = 900
 const EVENT_MS = 2000
 // An average word is ~6 characters with its space, for turning a progress gap into words.
 const CHARS_PER_WORD = 6
+// What a bot's ability is worth to it, in words.
+const BOT_WORDS: Record<PowerupKind, number> = {
+  boost: 1,
+  nitro: 2,
+  slipstream: 0, // worked out from the gap ahead
+  overdrive: OVERDRIVE_MAX_WORDS,
+}
 
 const KINDS = POWERUPS.map((p) => p.id)
 
@@ -42,55 +40,46 @@ function randomIn([min, max]: [number, number]) {
   return min + Math.random() * (max - min)
 }
 
-// A visual effect on your typing screen, from something that hit you. `key` changes per hit so
-// the same effect twice in a row replays.
-export interface ScreenHit {
-  screen: ScreenEffect
-  key: number
-}
-
 export function useSoloPowerups({
-  chaos,
+  enabled,
   equipped,
   raceKey,
   startedAt,
   finished,
   locked,
   progress,
+  activeWordIndex,
   textLength,
   bots,
   hitBot,
-  delayBot,
   skipWord,
 }: {
-  chaos: boolean
+  // Abilities on for this race (else this hook does nothing).
+  enabled: boolean
   equipped: PowerupKind
   raceKey: string
   startedAt: number | null
   finished: boolean
   locked: boolean
   progress: number
+  activeWordIndex: number
   textLength: number
   bots: Array<BotRacer>
   hitBot: (id: string, words?: number) => void
-  delayBot: (id: string, ms: number) => void
   skipWord: (count?: number) => void
 }) {
   const [now, setNow] = useState(() => Date.now())
   const racing = startedAt !== null && !finished
 
-  // Your slot. Classic: the equipped ability until used. Chaos: filled by the roulette.
-  const [used, setUsed] = useState(false)
-  const [rolled, setRolled] = useState<PowerupKind | null>(null)
-  const nextRollAtRef = useRef<number | null>(null)
+  // When your ability was last used (null: not yet this race — it's ready).
+  const [usedAt, setUsedAt] = useState<number | null>(null)
 
   const [effect, setEffect] = useState<RaceEffect | null>(null)
   const [event, setEvent] = useState<string | null>(null)
-  const [screen, setScreen] = useState<ScreenHit | null>(null)
-  const screenUntilRef = useRef(0)
-  const frozenUntilRef = useRef(0)
-  const ghostYouUntilRef = useRef(0)
-  const ghostBotsRef = useRef<Record<string, number>>({})
+  // Overdrive: until when, how many bonus words are left, and the word our own last bonus skip
+  // landed on (so that skip doesn't count as "a word you finished" and chain on itself).
+  const overdriveRef = useRef({ until: 0, left: 0, landedOn: -1 })
+  const lastWordRef = useRef(activeWordIndex)
   const botNextAtRef = useRef<Record<string, number>>({})
   const keyRef = useRef(0)
   const effectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -98,16 +87,10 @@ export function useSoloPowerups({
 
   // A new passage is a new race: everything resets.
   useEffect(() => {
-    setUsed(false)
-    setRolled(null)
+    setUsedAt(null)
     setEffect(null)
     setEvent(null)
-    setScreen(null)
-    nextRollAtRef.current = null
-    screenUntilRef.current = 0
-    frozenUntilRef.current = 0
-    ghostYouUntilRef.current = 0
-    ghostBotsRef.current = {}
+    overdriveRef.current = { until: 0, left: 0, landedOn: -1 }
     botNextAtRef.current = {}
   }, [raceKey])
 
@@ -118,7 +101,7 @@ export function useSoloPowerups({
     }
   }, [])
 
-  // The race clock for everything time-based here: roulette, recharge, freezes, ghosts, bots.
+  // The race clock for everything time-based here: roulette, recharge, timers, bots.
   useEffect(() => {
     if (!racing) return
     const id = setInterval(() => setNow(Date.now()), TICK_MS)
@@ -131,21 +114,12 @@ export function useSoloPowerups({
     eventTimer.current = setTimeout(() => setEvent(null), EVENT_MS)
   }, [])
 
-  const showEffect = useCallback(
-    (kind: PowerupKind, sourceId: string, targetIds: Array<string>) => {
-      keyRef.current += 1
-      setEffect({
-        kind,
-        sourceId,
-        targetIds,
-        targetId: targetIds[0],
-        key: keyRef.current,
-      })
-      if (effectTimer.current) clearTimeout(effectTimer.current)
-      effectTimer.current = setTimeout(() => setEffect(null), EFFECT_MS)
-    },
-    [],
-  )
+  const showEffect = useCallback((kind: PowerupKind, sourceId: string) => {
+    keyRef.current += 1
+    setEffect({ kind, sourceId, key: keyRef.current })
+    if (effectTimer.current) clearTimeout(effectTimer.current)
+    effectTimer.current = setTimeout(() => setEffect(null), EFFECT_MS)
+  }, [])
 
   // Words to the car directly ahead of someone at `from`, for Slipstream.
   const slipstreamWords = useCallback(
@@ -161,202 +135,100 @@ export function useSoloPowerups({
     [textLength],
   )
 
+  // Overdrive in action: each word you finish yourself carries you one word further.
+  useEffect(() => {
+    const prev = lastWordRef.current
+    lastWordRef.current = activeWordIndex
+    const od = overdriveRef.current
+    if (activeWordIndex <= prev || activeWordIndex === od.landedOn) return
+    if (od.left <= 0 || Date.now() > od.until) return
+    od.left -= 1
+    od.landedOn = activeWordIndex + 1
+    skipWord(1)
+  }, [activeWordIndex, skipWord])
+
   // ── You fire ──────────────────────────────────────────────────────
   const fireAs = useCallback(
     (kind: PowerupKind) => {
       const t = Date.now()
-      const label = powerupLabel(kind)
-      if (TARGETING[kind] === 'self') {
-        if (kind === 'ghost') ghostYouUntilRef.current = t + GHOST_MS
-        else if (kind === 'slipstream') {
-          skipWord(
-            slipstreamWords(
-              progress,
-              bots.filter((b) => !b.finished).map((b) => b.progress),
-            ),
-          )
-        } else skipWord(SELF_SKIP_WORDS[kind] ?? 1)
-        showEffect(kind, 'you', ['you'])
-        announce(`${label}!`)
-        return
-      }
-      const rivals = bots
-        .filter((b) => !b.finished)
-        .map((b) => ({ id: b.id, progress: b.progress }))
-      const targets = pickTargets(kind, progress, rivals)
-      const hits = targets.filter((id) => (ghostBotsRef.current[id] ?? 0) <= t)
-      const dodged = targets.length - hits.length
-      const hit = HIT_EFFECTS[kind]
-      for (const id of hits) {
-        if (hit?.botWords) hitBot(id, hit.botWords)
-        // Half speed for botSlowMs costs half of it.
-        if (hit?.botSlowMs) delayBot(id, hit.botSlowMs / 2)
-      }
-      showEffect(kind, 'you', hits)
-      const nameOf = (id: string) => bots.find((b) => b.id === id)?.name ?? ''
-      if (hits.length === 0) {
-        announce(dodged > 0 ? `${label} — ghosted through!` : `${label}!`)
-      } else if (TARGETING[kind] === 'all') {
-        announce(`${label}!`)
+      if (kind === 'boost') skipWord(1)
+      else if (kind === 'nitro') skipWord(2)
+      else if (kind === 'slipstream') {
+        skipWord(
+          slipstreamWords(
+            progress,
+            bots.filter((b) => !b.finished).map((b) => b.progress),
+          ),
+        )
       } else {
-        announce(`${label}: ${nameOf(hits[0])}!`)
+        overdriveRef.current = {
+          until: t + OVERDRIVE_MS,
+          left: OVERDRIVE_MAX_WORDS,
+          landedOn: -1,
+        }
       }
+      showEffect(kind, 'you')
+      announce(`${powerupLabel(kind)}!`)
     },
-    [
-      bots,
-      progress,
-      hitBot,
-      delayBot,
-      skipWord,
-      slipstreamWords,
-      showEffect,
-      announce,
-    ],
+    [bots, progress, skipWord, slipstreamWords, showEffect, announce],
   )
 
-  const slot: PowerupKind | null = finished
-    ? null
-    : chaos
-      ? rolled
-      : used
-        ? null
-        : equipped
+  const ready =
+    enabled &&
+    !finished &&
+    (usedAt === null || now - usedAt >= ABILITY_RECHARGE_MS)
+  const slot: PowerupKind | null = ready ? equipped : null
 
   const fire = useCallback(() => {
     if (!slot || locked || finished) return
     fireAs(slot)
-    if (chaos) {
-      setRolled(null)
-      nextRollAtRef.current = Date.now() + RECHARGE_MS
-    } else {
-      setUsed(true)
-    }
-  }, [slot, locked, finished, fireAs, chaos])
+    setUsedAt(Date.now())
+    setNow(Date.now())
+  }, [slot, locked, finished, fireAs])
 
-  // ── Something hits you ────────────────────────────────────────────
-  const hitYou = useCallback(
-    (kind: PowerupKind, byName: string, byId: string) => {
-      const t = Date.now()
-      const label = powerupLabel(kind)
-      if (ghostYouUntilRef.current > t) {
-        showEffect('ghost', byId, ['you'])
-        announce(`Ghosted through ${byName}'s ${label}!`)
-        return
-      }
-      const hit = HIT_EFFECTS[kind]
-      if (!hit) return
-      if (hit.freezeMs > 0) {
-        frozenUntilRef.current = Math.max(
-          frozenUntilRef.current,
-          t + hit.freezeMs,
-        )
-      }
-      if (hit.screen) {
-        keyRef.current += 1
-        setScreen({ screen: hit.screen, key: keyRef.current })
-        screenUntilRef.current = t + (hit.screenMs ?? 1000)
-      }
-      showEffect(kind, byId, ['you'])
-      announce(`${byName} hit you with ${label}!`)
-    },
-    [showEffect, announce],
-  )
-
-  // ── Chaos: the roulette and the bots ──────────────────────────────
+  // ── The bots ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!racing) return
+    if (!racing || !enabled) return
     const t = now
 
-    // Your screen effect wears off.
-    if (screen && t >= screenUntilRef.current) setScreen(null)
-
-    if (!chaos) return
-
-    // Your roulette.
-    if (nextRollAtRef.current === null) {
-      nextRollAtRef.current = startedAt + FIRST_ROLL_MS
-    }
-    if (!rolled && t >= nextRollAtRef.current + ROLL_SPIN_MS) {
-      setRolled(randomKind())
-    }
-
-    // The bots: each on its own clock.
+    // The bots: each on its own clock, using what it rolls on itself.
     for (const bot of bots) {
       if (bot.finished) continue
       const due = (botNextAtRef.current[bot.id] ??=
         startedAt + randomIn(BOT_FIRST_FIRE_MS))
       if (t < due) continue
       botNextAtRef.current[bot.id] = t + randomIn(BOT_REFIRE_MS)
-
       const kind = randomKind()
-      const label = powerupLabel(kind)
-      if (TARGETING[kind] === 'self') {
-        if (kind === 'ghost') ghostBotsRef.current[bot.id] = t + GHOST_MS
-        else {
-          const words =
-            kind === 'slipstream'
-              ? slipstreamWords(bot.progress, [
-                  progress,
-                  ...bots
-                    .filter((b) => b.id !== bot.id && !b.finished)
-                    .map((b) => b.progress),
-                ])
-              : (SELF_SKIP_WORDS[kind] ?? 1)
-          hitBot(bot.id, -words)
-        }
-        showEffect(kind, bot.id, [bot.id])
-        announce(`${bot.name}: ${label}!`)
-      } else {
-        // Bots gang up on you — that's the point of chaos.
-        hitYou(kind, bot.name, bot.id)
-      }
+      const words =
+        kind === 'slipstream'
+          ? slipstreamWords(bot.progress, [
+              progress,
+              ...bots
+                .filter((b) => b.id !== bot.id && !b.finished)
+                .map((b) => b.progress),
+            ])
+          : BOT_WORDS[kind]
+      hitBot(bot.id, -words)
+      showEffect(kind, bot.id)
+      announce(`${bot.name}: ${powerupLabel(kind)}!`)
     }
     // `now` drives this; everything else is read fresh each tick.
   }, [now])
 
-  const rolling =
-    chaos &&
-    racing &&
-    !rolled &&
-    nextRollAtRef.current !== null &&
-    now >= nextRollAtRef.current
-  // While rolling, the item box flicks through random faces.
-  const face: PowerupKind | null = rolling
-    ? KINDS[Math.floor(now / TICK_MS) % KINDS.length]
-    : slot
+  // How far your ability has recharged, 0..1.
   const charge =
-    !chaos || rolled || rolling || nextRollAtRef.current === null
-      ? 1
-      : Math.min(
-          1,
-          Math.max(
-            0,
-            1 -
-              (nextRollAtRef.current - now) /
-                (startedAt !== null &&
-                nextRollAtRef.current === startedAt + FIRST_ROLL_MS
-                  ? FIRST_ROLL_MS
-                  : RECHARGE_MS),
-          ),
-        )
+    usedAt === null ? 1 : Math.min(1, (now - usedAt) / ABILITY_RECHARGE_MS)
 
-  const ghostBots = new Set(
-    Object.entries(ghostBotsRef.current)
-      .filter(([, until]) => until > now)
-      .map(([id]) => id),
-  )
+  // What's running on you right now, for the car and the console.
+  const overdrive =
+    overdriveRef.current.until > now && overdriveRef.current.left > 0
 
   return {
     slot,
-    face,
-    rolling,
     charge,
     fire,
     effect,
     event,
-    screen,
-    frozen: frozenUntilRef.current > now,
-    ghostYou: ghostYouUntilRef.current > now,
-    ghostBots,
+    overdrive,
   }
 }

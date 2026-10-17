@@ -14,9 +14,7 @@ import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceConsole from '#/components/typing/RaceConsole'
 import RaceResults from '#/components/typing/RaceResults'
-import { GHOST_MS, HIT_EFFECTS, POWERUPS, powerupLabel } from '#/lib/powerups'
-import InkSplats from '#/components/typing/InkSplats'
-import type { ScreenHit } from '#/lib/typing/useSoloPowerups'
+import { POWERUPS, powerupLabel } from '#/lib/powerups'
 import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
 import { useProfile } from '#/lib/profile/useProfile'
@@ -86,7 +84,8 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
           <CardContent className="flex flex-col gap-5 pt-6">
             <Badge variant="outline" className="w-fit">
               {mp.code ? 'Private room' : 'Quick match'}
-              {mp.mode === 'powerups' ? ' · power-ups' : ' · classic'} · waiting
+              {mp.mode === 'powerups' ? ' · abilities' : ' · no abilities'} ·
+              waiting
             </Badge>
 
             {mp.code && (
@@ -275,7 +274,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const { equippedPowerup } = profile
   const equippedDef = POWERUPS.find((p) => p.id === equippedPowerup)
   const canFire =
-    powerupsOn && !mp.powerupUsed && mp.phase === 'racing' && !mp.finished
+    powerupsOn && mp.powerupReady && mp.phase === 'racing' && !mp.finished
   const { firePowerup } = mp
 
   // Tab fires the powerup, same as solo. Swallowed during any race so it never moves focus off
@@ -292,58 +291,24 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [mp.phase, mp.finished, canFire, firePowerup, equippedPowerup])
 
-  // Plays each announced ability: its icon pops over the cars it touched (a burst on the user's
-  // own car for boost/nitro/slipstream), track-wide flashes for the ones that hit everyone, a
-  // screen effect over our words when it hit us, and a see-through car while someone's ghosted.
+  // Plays each announced ability on the car that used it, and says who used what. Abilities only
+  // ever help their user (see #/lib/powerups), so nothing here touches anyone else.
   const [effect, setEffect] = useState<RaceEffect | null>(null)
   const [eventText, setEventText] = useState<string | null>(null)
-  const [screenHit, setScreenHit] = useState<ScreenHit | null>(null)
-  const [ghosts, setGhosts] = useState<ReadonlySet<string>>(new Set())
   const { lastPowerup, myId, names } = mp
   useEffect(() => {
     if (!lastPowerup) return
-    const { powerup, playerId, targets, key } = lastPowerup
+    const { powerup, playerId, key } = lastPowerup
     const mine = playerId === myId
-    setEffect({
-      kind: powerup,
-      sourceId: playerId,
-      targetIds: targets,
-      targetId: targets[0],
-      key,
-    })
+    setEffect({ kind: powerup, sourceId: playerId, key })
     const label = powerupLabel(powerup)
-    const by = mine ? 'You' : shortName(playerId, myId, names)
-    const hitMe = myId !== null && targets.includes(myId)
     setEventText(
-      hitMe
-        ? `${by} hit you with ${label}!`
-        : mine
-          ? `${label}!`
-          : `${by} used ${label}`,
+      mine ? `${label}!` : `${shortName(playerId, myId, names)}: ${label}!`,
     )
     const timers = [
       setTimeout(() => setEffect(null), 900),
       setTimeout(() => setEventText(null), 2200),
     ]
-    const hit = HIT_EFFECTS[powerup]
-    if (hitMe && hit?.screen) {
-      setScreenHit({ screen: hit.screen, key })
-      timers.push(setTimeout(() => setScreenHit(null), hit.screenMs ?? 1000))
-    }
-    if (powerup === 'ghost') {
-      setGhosts((prev) => new Set(prev).add(playerId))
-      timers.push(
-        setTimeout(
-          () =>
-            setGhosts((prev) => {
-              const next = new Set(prev)
-              next.delete(playerId)
-              return next
-            }),
-          GHOST_MS,
-        ),
-      )
-    }
     return () => {
       for (const t of timers) clearTimeout(t)
     }
@@ -352,7 +317,6 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const racers: Array<Racer> = [
     {
       id: mp.myId ?? 'you',
-      ghost: mp.myId !== null && ghosts.has(mp.myId),
       name: 'You',
       progress: mp.progress,
       wpm: mp.wpm,
@@ -365,7 +329,6 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     },
     ...mp.opponents.map((opponent, index) => ({
       id: opponent.id,
-      ghost: ghosts.has(opponent.id),
       name:
         shortName(opponent.id, mp.myId, mp.names) +
         (opponent.left ? ' (left)' : ''),
@@ -385,13 +348,13 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       <div className="page-wrap flex flex-col">
         {/* One connected panel, like solo: track, words, the dash console, then standings. */}
         <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
-          <div
-            className={cn(
-              'flex flex-col',
-              screenHit && `race-hit race-hit--${screenHit.screen}`,
-              mp.frozen && 'race-hit--frozen',
+          <div className="relative flex flex-col">
+            {/* What just happened, up in the sky over the track — never over your words. */}
+            {eventText && !mp.finished && (
+              <div className="pointer-events-none absolute top-2 right-3 z-10">
+                <span className="race-announcer">{eventText}</span>
+              </div>
             )}
-          >
             <RaceTrack
               racers={racers}
               countdown={countdown}
@@ -447,23 +410,6 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                       }
                     />
                   )}
-                  {screenHit?.screen === 'ink' && !mp.finished && (
-                    <InkSplats key={screenHit.key} />
-                  )}
-                  {(mp.frozen || eventText) && !mp.finished && (
-                    <div className="pointer-events-none absolute top-3 right-3 z-10">
-                      <span
-                        className={cn(
-                          'px-corners pixel-text px-3 py-1 text-[0.7rem] font-semibold',
-                          mp.frozen
-                            ? 'bg-sky-500/90 text-white'
-                            : 'bg-secondary/80 text-muted-foreground',
-                        )}
-                      >
-                        {mp.frozen ? `Frozen! ${eventText ?? ''}` : eventText}
-                      </span>
-                    </div>
-                  )}
                 </>
               }
             />
@@ -479,7 +425,8 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                     kind: equippedPowerup,
                     label: equippedDef.label,
                     detail: equippedDef.detail,
-                    ready: !mp.powerupUsed && !mp.finished,
+                    ready: mp.powerupReady && !mp.finished,
+                    charge: mp.powerupCharge,
                     canFire,
                     onFire: () => firePowerup(equippedPowerup),
                   }
