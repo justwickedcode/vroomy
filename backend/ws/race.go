@@ -78,6 +78,8 @@ type playerState struct {
 	disqualified bool
 	// pace is this player's recent progress, for the burst check.
 	pace []pacePoint
+	// seat is the token that lets this player back into the race after dropping out (rejoin.go).
+	seat string
 	// lastPowerupAt is when this player last fired their ability (zero: not yet this race); it
 	// recharges after abilityRecharge (see handlePowerup).
 	lastPowerupAt time.Time
@@ -107,6 +109,8 @@ type Room struct {
 	// there's no ambiguity between however the client itself tokenizes words.
 	wordCount int
 	startedAt time.Time
+	// goAt is when the countdown ends, for a player rejoining during it.
+	goAt      time.Time
 	waitTimer *time.Timer
 	// waitDeadline is when waitTimer fires (zero while it isn't running), so every "waiting"
 	// message can tell clients how long until the race starts on its own.
@@ -325,7 +329,9 @@ func (r *Room) startCountdown() {
 	r.mu.Lock()
 	r.quote = quote
 	r.wordCount = wordCount
+	r.goAt = time.Now().Add(raceCountdown)
 	players := r.playerListLocked()
+	seatsOut := r.handOutSeatsLocked()
 	r.mu.Unlock()
 
 	r.broadcast(serverMessage{
@@ -336,6 +342,9 @@ func (r *Room) startCountdown() {
 		StartsInMs: raceCountdown.Milliseconds(),
 		Players:    players,
 	})
+	for c, seat := range seatsOut {
+		c.sendJSON(serverMessage{Type: "seat", Seat: seat})
+	}
 
 	time.AfterFunc(raceCountdown, r.beginRacing)
 }
@@ -517,6 +526,7 @@ func (r *Room) finishRace() {
 	if r.raceTimer != nil {
 		r.raceTimer.Stop()
 	}
+	r.dropSeatsLocked()
 	results := make([]playerResult, 0, len(r.players))
 	unfinished := make([]playerResult, 0)
 	for c, state := range r.players {

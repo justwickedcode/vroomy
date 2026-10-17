@@ -405,10 +405,17 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
           <div className="relative flex flex-col">
             {/* What just happened, up in the sky over the track — never over your words. */}
-            {eventText && !mp.finished && (
+            {mp.reconnecting ? (
               <div className="pointer-events-none absolute top-2 right-3 z-10">
-                <span className="race-announcer">{eventText}</span>
+                <span className="race-announcer race-waiting">Reconnecting</span>
               </div>
+            ) : (
+              eventText &&
+              !mp.finished && (
+                <div className="pointer-events-none absolute top-2 right-3 z-10">
+                  <span className="race-announcer">{eventText}</span>
+                </div>
+              )
             )}
             <RaceTrack
               racers={racers}

@@ -6,7 +6,7 @@ A small Go WebSocket service that runs the real-time multiplayer typing race: au
 
 This is a **separate Go module** (its own `go.mod`), same pattern as `backend/api` — a small, independent service rather than a package inside a larger one.
 
-- **Database**: points at the _same_ Postgres instance the separate quotes-crawler project writes to and `backend/api` reads from (see `.env` — `DATABASE_URL`). This service only ever reads the `quotes` table (one query per race, to pick that race's passage) and never runs migrations.
+- **Database**: points at the _same_ Postgres instance the separate quotes-crawler project writes to and `backend/api` reads from (see `.env` — `DATABASE_URL`). This service reads the `quotes` table (one query per race, to pick that race's passage), writes one `race_tickets` row per finisher (a receipt, see below — the table belongs to `backend/api`, which migrates it), and never runs migrations.
 - **Why a separate service from backend/api, not just another route there**: a WebSocket connection is long-lived (a whole lobby wait plus race, potentially several minutes) and stateful (each connection belongs to exactly one in-memory `Room`), which is a fundamentally different lifecycle from `backend/api`'s stateless, one-shot HTTP reads. Keeping them separate means either can be restarted, scaled, or deployed independently without the other's concerns leaking in (e.g. `backend/api`'s per-request rate limiter and this service's per-IP concurrent-connection cap are different problems with different shapes).
 - **Process-local state**: matchmaking and room state live entirely in this process's memory. Running more than one replica of this service without a shared matchmaking layer in front would split players across independent instances that can never match each other — fine for a single instance, a real constraint if this ever needs to scale horizontally.
 
@@ -32,19 +32,23 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 
 ### Server → client messages
 
-| `type`            | Fields                                                         | When                                                                                                                      |
-| ----------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `welcome`         | `playerId`                                                     | Immediately after the WebSocket upgrade completes                                                                         |
-| `host_assigned`   | —                                                              | Sent once, only to the client that created a private room — the only client whose `start` message has any effect          |
-| `waiting`         | `code`, `playersInRoom`, `minPlayers`, `maxPlayers`, `players` | On join, and whenever the room's player count changes while waiting (`code` empty for a public room)                      |
-| `race_start`      | `quote`, `wordCount`, `startsInMs`, `players`                  | Once the room has enough players and stops accepting new joiners                                                          |
-| `go`              | —                                                              | `startsInMs` after `race_start` — the race actually begins                                                                |
-| `player_progress` | `playerId`, `wordIndex`                                        | An opponent's live progress (never echoed back to that player)                                                            |
-| `player_finished` | `playerId`, `rank`, `elapsedMs`, `wpm`                         | A player finishes typing the quote                                                                                        |
-| `player_left`     | `playerId`                                                     | A player disconnects mid-race                                                                                             |
-| `powerup_used`    | `playerId`, `powerup`                                          | Ability rooms: someone fired their ability — sent to everyone, including the user                                         |
-| `race_end`        | `results` (`[{playerId, rank, elapsedMs, wpm}]`)               | Every connected player has finished, or `raceMaxDuration` elapses                                                         |
-| `error`           | `message`                                                      | The room couldn't start (e.g. no eligible quote found), or a private-room join failed (e.g. unknown/already-started code) |
+| `type`            | Fields                                                                                        | When                                                                                                                      |
+| ----------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `welcome`         | `playerId`                                                                                    | Immediately after the WebSocket upgrade completes                                                                         |
+| `host_assigned`   | —                                                                                             | Sent once, only to the client that created a private room — the only client whose `start` message has any effect          |
+| `waiting`         | `code`, `playersInRoom`, `minPlayers`, `maxPlayers`, `players`                                | On join, and whenever the room's player count changes while waiting (`code` empty for a public room)                      |
+| `race_start`      | `quote`, `wordCount`, `startsInMs`, `players`                                                 | Once the room has enough players and stops accepting new joiners                                                          |
+| `seat`            | `seat`                                                                                        | To each player alone, with `race_start`: their token to rejoin the race with (see below)                                  |
+| `go`              | —                                                                                             | `startsInMs` after `race_start` — the race actually begins                                                                |
+| `resume`          | `playerId`, `quote`, `wordCount`, `wordIndex`, `players`, `startsInMs` or `elapsedMs`, `seat` | Instead of `welcome`, when connecting with a valid `?seat=`; followed by everyone else's progress                         |
+| `player_back`     | `playerId`, `wordIndex`                                                                       | An opponent who'd dropped out rejoined                                                                                    |
+| `receipt`         | `ticket`                                                                                      | To the finisher alone, just before their `player_finished`: the race ticket to save the race to their account against     |
+| `player_progress` | `playerId`, `wordIndex`                                                                       | An opponent's live progress (never echoed back to that player)                                                            |
+| `player_finished` | `playerId`, `rank`, `elapsedMs`, `wpm`                                                        | A player finishes typing the quote                                                                                        |
+| `player_left`     | `playerId`                                                                                    | A player disconnects mid-race                                                                                             |
+| `powerup_used`    | `playerId`, `powerup`                                                                         | Ability rooms: someone fired their ability — sent to everyone, including the user                                         |
+| `race_end`        | `results` (`[{playerId, rank, elapsedMs, wpm}]`)                                              | Every connected player has finished, or `raceMaxDuration` elapses                                                         |
+| `error`           | `message`                                                                                     | The room couldn't start (e.g. no eligible quote found), or a private-room join failed (e.g. unknown/already-started code) |
 
 ### Client → server messages
 
@@ -55,7 +59,17 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 | `start`    | —           | Private-room host only: skip the wait and start now (requires at least `minPlayers` already joined; ignored from anyone else, on a public room, or before `minPlayers` is met) |
 | `powerup`  | `powerup`   | Ability rooms only: fire your ability (`boost`, `nitro`, `slipstream`, `overdrive`); it recharges 12s after each use                                                           |
 
-`wpm` is always computed server-side from the room's own authoritative word count and the client-reported `elapsedMs` — never trusted as a value the client sends directly.
+`wpm` is always computed server-side, from the passage and the server's own clock since `go` (the client's `elapsedMs` only counts when it's slower) — never trusted as a value the client sends directly.
+
+## Anti-cheat
+
+`anticheat.go`: progress only moves forward and never faster than 300 WPM, measured from `go` and over every stretch of the last 5 seconds (words an ability skipped don't count); finishing needs the last word. A player who breaks either rule is disqualified: an `error` starting `Disqualified:` to them, `player_left` to the others, and no rank.
+
+When a player finishes, the server writes their result (WPM, placement, racer count) as a race ticket in `race_tickets` and sends them its id as a `receipt`. Their browser saves the race to their account against it, and `backend/api` takes the result from the ticket rather than from the browser.
+
+## Rejoining
+
+With `race_start` every player gets a `seat` token, sent to them alone. Connecting to any of the endpoints again with `?seat=<token>` while that race is still running (and the player hadn't finished) puts them back in the same car under the same `playerId`: they get `resume` instead of `welcome`, the others get `player_back`. The frontend keeps the token in the browser, so a dropped connection reconnects on its own and a reload lands back in the race. Without a valid token the connection just joins the normal way.
 
 ## Lobby modes
 
@@ -65,10 +79,10 @@ In ability rooms each player may fire their ability whenever it has recharged (1
 
 ## Matchmaking rules
 
-- A room needs at least 2 players to race, and holds at most 6.
+- A room needs at least 2 players to race, and holds at most 5.
 - Once 2 players are in a public room, it waits 4.5s for more (the newcomer's car drives in, then the start lights begin) before the 3s countdown (`waiting` carries `startsInMs` while that clock runs). A private room starts when its host sends `start`.
 - Reaching 5 players starts the room immediately, without waiting.
-- A player who disconnects during the wait is removed outright; a player who disconnects mid-race stays in the final results as unfinished, and stops blocking the race from ending once everyone still connected has finished.
+- A player who disconnects during the wait is removed outright; a player who disconnects mid-race stays in the final results as unfinished (unless they rejoin), and stops blocking the race from ending once everyone still connected has finished.
 - A private room's share code stops resolving (`/ws/private/join` returns "room not found") as soon as the room stops accepting new joiners — whether because it started or because everyone left — so a stale link can't seat someone into a race already underway.
 
 ## Concurrent-connection limiting
