@@ -1,20 +1,17 @@
 import { useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { RotateCcw } from '#/components/ui/icons'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import WordStream from '#/components/guide/WordStream'
-import Gauge from '#/components/typing/Gauge'
 import Keyboard from '#/components/guide/Keyboard'
 import RaceTrack from '#/components/typing/RaceTrack'
 import { useWordStream } from '#/lib/guide/useWordStream'
 import { useProfile } from '#/lib/profile/useProfile'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
+import { cn } from '#/lib/utils'
 
 export const Route = createFileRoute('/guide')({ component: GuidePage })
-
-const WPM_GAUGE_MAX = 130
 
 function Practice() {
   const { queue, typed, wpm, accuracy, handleInputChange, reset } =
@@ -46,18 +43,12 @@ function Practice() {
   }
 
   return (
-    <Card className="rise-in overflow-hidden">
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-4 py-6">
-        <p className="kicker">Practice</p>
-        <div className="flex gap-3">
-          <Gauge label="wpm" value={wpm} max={WPM_GAUGE_MAX} />
-          <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
-        </div>
-      </CardHeader>
-
-      <CardContent className="pt-6">
-        {/* The drill never ends, so there's no finish to drive toward: the car pulls off the line
-            once you start typing and then cruises, with the road scrolling at your current WPM. */}
+    // One connected panel, like a race: the track, the words, a dashboard console, then the
+    // keyboard showing which key (and finger) comes next.
+    <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+      {/* The drill never ends, so there's no finish to drive toward: the car pulls off the line
+          once you start typing and then cruises, with the road scrolling at your current WPM. */}
+      <div className="flex flex-col">
         <RaceTrack
           racers={[
             {
@@ -75,34 +66,60 @@ function Practice() {
           phase="ready"
           finishLine={false}
           epic
-          className="mb-4 overflow-hidden"
         />
-
         <WordStream
           queue={queue}
           typed={typed}
           onInputChange={handleInputChange}
           inputRef={inputRef}
         />
+      </div>
 
-        <div className="mt-6 mb-6 flex items-center justify-between">
-          <span />
+      <div className="race-console">
+        <div className="flex min-w-0 flex-col leading-tight">
+          <span className="font-display text-xl uppercase">Practice</span>
+          <span className="font-mono text-[0.65rem] tracking-widest text-muted-foreground uppercase">
+            Endless drill
+          </span>
+        </div>
+        <div className="race-lcd">
+          <Lcd value={wpm} label="wpm" big />
+          <Lcd value={`${accuracy}%`} label="acc" />
+        </div>
+        <div className="flex justify-end">
           <Button variant="outline" size="sm" onClick={handleReset}>
             <RotateCcw />
             Restart
           </Button>
         </div>
+      </div>
 
-        <Keyboard activeKey={nextKey} />
-      </CardContent>
-    </Card>
+      <Keyboard activeKey={nextKey} />
+    </div>
+  )
+}
+
+function Lcd({
+  value,
+  label,
+  big,
+}: {
+  value: string | number
+  label: string
+  big?: boolean
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 py-1.5">
+      <span className={cn('race-lcd-value', big && 'text-3xl')}>{value}</span>
+      <span className="race-lcd-label">{label}</span>
+    </div>
   )
 }
 
 function GuidePage() {
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-2xl">
+    <main className="flex flex-1 flex-col justify-center px-4 py-6">
+      <div className="page-wrap">
         <Practice />
       </div>
     </main>

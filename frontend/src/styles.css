@@ -2989,3 +2989,49 @@ button:not(:disabled):hover .race-itembox--ready {
   left: 70%;
   scale: 0.75;
 }
+
+/* The Guide's keyboard, set into the dashboard: chunky dark keycaps, each with its finger's colour
+   along the bottom edge, and the next key to press lit up in neon. */
+.kb {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 1rem 1.25rem 1.25rem;
+  background: linear-gradient(rgb(255 255 255 / 3%), transparent 40%), #0d0815;
+}
+
+.kb-row {
+  display: flex;
+  gap: 6px;
+}
+
+.kb-key {
+  display: flex;
+  flex-basis: 0;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #8a7ca3;
+  background: #1a1126;
+  box-shadow:
+    inset 0 -4px 0 var(--finger),
+    inset 0 2px 0 rgb(255 255 255 / 6%),
+    0 0 0 2px #241834;
+  transition:
+    transform 80ms steps(1),
+    background-color 80ms steps(1);
+}
+
+.kb-key--active {
+  color: #0b0614;
+  background: #22d3ee;
+  box-shadow:
+    inset 0 -4px 0 #0e7490,
+    0 0 0 2px #a5f3fc,
+    0 0 16px rgb(34 211 238 / 55%);
+  transform: translateY(2px);
+}
