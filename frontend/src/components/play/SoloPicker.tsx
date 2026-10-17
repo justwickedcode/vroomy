@@ -98,17 +98,20 @@ function CustomPace({
   const { hydrated, stats } = useProfile()
   const bestWpm = hydrated && stats.bestWpm > 0 ? stats.bestWpm : undefined
   const [wpm, setWpm] = useLastPace()
-  const [draft, setDraft] = useState(String(wpm))
+  // What's being typed into the number box, only while editing; otherwise it shows the pace
+  // itself (which can load from storage after mount), so the two never disagree.
+  const [draft, setDraft] = useState<string | null>(null)
 
   function apply(next: number) {
     const clamped = Math.min(MAX_WPM, Math.max(MIN_WPM, Math.round(next)))
     setWpm(clamped)
-    setDraft(String(clamped))
+    setDraft(null)
   }
 
   function commitDraft() {
+    if (draft === null) return
     const parsed = Number(draft)
-    apply(Number.isFinite(parsed) ? parsed : wpm)
+    apply(Number.isFinite(parsed) && draft !== '' ? parsed : wpm)
   }
 
   return (
@@ -123,7 +126,7 @@ function CustomPace({
         <ArrowLeft />
         Presets
       </Button>
-      <div className="flex flex-col items-center gap-6 py-2">
+      <div className="flex flex-col items-center gap-5 py-2">
         <PaceDial
           value={wpm}
           min={MIN_WPM}
@@ -148,7 +151,7 @@ function CustomPace({
             inputMode="numeric"
             min={MIN_WPM}
             max={MAX_WPM}
-            value={draft}
+            value={draft ?? String(wpm)}
             onChange={(event) => setDraft(event.target.value)}
             onBlur={commitDraft}
             onKeyDown={(event) => {

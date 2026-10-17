@@ -19,7 +19,9 @@ function freshQueue() {
   return queue
 }
 
-export function useWordStream() {
+// The drill is a timed test: the clock starts on the first keystroke, and once `durationMs` is
+// up typing stops and wpm/accuracy are final (measured over exactly that long).
+export function useWordStream(durationMs = 60000) {
   // Starts empty rather than calling freshQueue() directly in useState's
   // initializer — Math.random() would run once during SSR and again on
   // client hydration and produce two different queues, a hydration
@@ -37,13 +39,17 @@ export function useWordStream() {
     setQueue(freshQueue())
   }, [])
 
+  const elapsedMs = startedAt
+    ? Math.min((now ?? startedAt) - startedAt, durationMs)
+    : 0
+  const finished = elapsedMs >= durationMs
+
   useEffect(() => {
-    if (!startedAt) return
+    if (!startedAt || finished) return
     const id = setInterval(() => setNow(Date.now()), TICK_MS)
     return () => clearInterval(id)
-  }, [startedAt])
+  }, [startedAt, finished])
 
-  const elapsedMs = startedAt ? (now ?? startedAt) - startedAt : 0
   const minutes = elapsedMs / 60000
   const wpm =
     elapsedMs >= MIN_ELAPSED_FOR_WPM_MS && minutes > 0
@@ -56,7 +62,7 @@ export function useWordStream() {
 
   function handleInputChange(value: string) {
     const currentWord = queue[0]
-    if (!currentWord) return
+    if (!currentWord || finished) return
     if (!startedAt) setStartedAt(Date.now())
 
     // Only the current (first) word can be edited — once a word scrolls
@@ -118,6 +124,9 @@ export function useWordStream() {
     completed,
     wpm,
     accuracy,
+    started: startedAt !== null,
+    finished,
+    timeLeftMs: durationMs - elapsedMs,
     handleInputChange,
     reset,
   }

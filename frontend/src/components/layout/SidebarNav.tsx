@@ -3,7 +3,7 @@ import PixelIcon from '#/components/ui/PixelIcon'
 import { cn } from '#/lib/utils'
 
 // Grouped like lichess's sidebar rather than one flat list of links —
-// Guide/Stats/Achievements sit together as "about your progress", Garage is
+// Practice/Achievements sit together as "about your progress", Garage is
 // the one car-cosmetic destination (model, paint, and upgrades all live on
 // that single page — no need for separate tabs per section), Compete
 // is the social/comparison cluster. No "Play" or "Dashboard" row: the
@@ -15,7 +15,7 @@ export const NAV_GROUPS = [
   {
     label: 'Improve',
     items: [
-      { to: '/guide', label: 'Type faster', icon: 'keyboard' },
+      { to: '/practice', label: 'Practice', icon: 'keyboard' },
       { to: '/achievements', label: 'Achievements', icon: 'achievements' },
     ],
   },

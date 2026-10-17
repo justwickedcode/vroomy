@@ -2135,7 +2135,7 @@ body::before {
   border-radius: 0;
 }
 
-/* WordStream (the /guide practice drill) renders its queue directly inside .race-words, which
+/* WordStream (the /practice drill) renders its queue directly inside .race-words, which
    is itself a flex column — without this row wrapper each word span would become its own flex
    item and stack one per line instead of flowing as a single scrolling line of words. */
 .word-stream-track {
@@ -2990,48 +2990,116 @@ button:not(:disabled):hover .race-itembox--ready {
   scale: 0.75;
 }
 
-/* The Guide's keyboard, set into the dashboard: chunky dark keycaps, each with its finger's colour
-   along the bottom edge, and the next key to press lit up in neon. */
-.kb {
+/* ── Custom pace picker (see PaceDial) ───────────────────────────── */
+
+.pace-picker {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 1rem 1.25rem 1.25rem;
-  background: linear-gradient(rgb(255 255 255 / 3%), transparent 40%), #0d0815;
-}
-
-.kb-row {
-  display: flex;
-  gap: 6px;
-}
-
-.kb-key {
-  display: flex;
-  flex-basis: 0;
   align-items: center;
-  justify-content: center;
-  height: 2.5rem;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.pace-lcd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 11rem;
+  padding: 0.75rem 1.5rem 0.5rem;
+  background: #050d08;
+  box-shadow:
+    inset 0 4px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #1d1528;
+}
+
+.pace-lcd-value {
+  font-family: var(--font-display);
+  font-size: 4rem;
+  line-height: 1;
+  color: var(--pace);
+  text-shadow: 0 0 12px color-mix(in oklab, var(--pace) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pace-bar {
+  position: relative;
+  display: flex;
+  gap: 3px;
+  height: 2.25rem;
+  padding: 4px;
+  background: #0d0815;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #241834;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+.pace-bar:focus-visible {
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #ff2fb4;
+}
+
+.pace-seg {
+  flex: 1;
+  background: #1a1126;
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 35%);
+}
+
+.pace-seg--lit {
+  background: var(--seg);
+  box-shadow:
+    inset 0 -3px 0 rgb(0 0 0 / 30%),
+    inset 0 2px 0 rgb(255 255 255 / 25%),
+    0 0 6px color-mix(in oklab, var(--seg) 50%, transparent);
+}
+
+/* Your best, as a flag hanging over the bar. */
+.pace-best {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  translate: -50% 0;
+  padding: 0 4px;
   font-family: var(--font-mono);
-  font-size: 0.7rem;
+  font-size: 0.6rem;
   font-weight: 700;
   text-transform: uppercase;
-  color: #8a7ca3;
-  background: #1a1126;
-  box-shadow:
-    inset 0 -4px 0 var(--finger),
-    inset 0 2px 0 rgb(255 255 255 / 6%),
-    0 0 0 2px #241834;
-  transition:
-    transform 80ms steps(1),
-    background-color 80ms steps(1);
-}
-
-.kb-key--active {
   color: #0b0614;
   background: #22d3ee;
-  box-shadow:
-    inset 0 -4px 0 #0e7490,
-    0 0 0 2px #a5f3fc,
-    0 0 16px rgb(34 211 238 / 55%);
-  transform: translateY(2px);
+  pointer-events: none;
+}
+
+.pace-best::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% 0;
+  width: 2px;
+  height: calc(2.25rem + 2px);
+  background: #22d3ee;
+}
+
+.pace-ticks {
+  position: relative;
+  height: 1rem;
+  margin-top: 4px;
+}
+
+.pace-ticks span {
+  position: absolute;
+  translate: -50% 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #8a7ca3;
+}
+
+.pace-ticks span:first-child {
+  translate: 0 0;
+}
+
+.pace-ticks span:last-child {
+  translate: -100% 0;
 }

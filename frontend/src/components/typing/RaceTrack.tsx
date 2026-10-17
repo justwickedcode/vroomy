@@ -480,11 +480,11 @@ export default function RaceTrack({
 }) {
   const player = racers.find((r) => r.isYou) ?? racers[0]
   // Real races follow your car; the showcase is a fixed tableau.
-  const camera = showcase
-    ? null
-    : player.finished
-      ? 1
-      : clamp01(player.progress)
+  // Real races follow your car; the showcase is a fixed tableau, and an endless drill (no finish
+  // line, see Practice) just cruises — progress means nothing there, only how fast you type.
+  const cruise = !showcase && !finishLine
+  const camera =
+    showcase || cruise ? null : player.finished ? 1 : clamp01(player.progress)
   // Only your own finish stops the world: while bots are done and you're still typing, the
   // road, city and lights keep rolling at your pace.
   const showFinish = finishLine && Boolean(player.finished)
@@ -495,8 +495,13 @@ export default function RaceTrack({
   // Kept in a ref so the rAF loop always reads the latest value without re-mounting.
   // The title-screen track runs the world three times faster — it's a high-speed chase, not a
   // race you're typing in.
-  const worldSpeed =
-    (36 / Math.max(0.44, 1.9 - player.wpm / 110)) * (showcase ? 3 : 1)
+  const worldSpeed = cruise
+    ? player.wpm > 0
+      ? 40 + player.wpm * 1.6
+      : 0
+    : (36 / Math.max(0.44, 1.9 - player.wpm / 110)) * (showcase ? 3 : 1)
+  const cruiseRef = useRef(cruise)
+  cruiseRef.current = cruise
   const basePxPerSecRef = useRef(worldSpeed)
   basePxPerSecRef.current = worldSpeed
   // Where the chase camera is headed (your progress), for the loop below; null for the showcase.
@@ -590,12 +595,20 @@ export default function RaceTrack({
         velocity *= Math.pow(0.01, dt)
         if (velocity < 0.15) velocity = 0
       } else {
-        // Gently chase the wpm-based target speed so wpm changes feel organic
-        velocity += (basePxPerSecRef.current - velocity) * Math.min(dt * 6, 1)
+        // Ease toward the wpm-based target speed like a car: picking up speed over a second or
+        // so, and coasting a little longer down to a stop, never lurching.
+        const goal = basePxPerSecRef.current
+        const rate = goal > velocity ? 1.6 : 1
+        velocity += (goal - velocity) * Math.min(dt * rate, 1)
+        if (goal === 0 && velocity < 0.5) velocity = 0
       }
 
       roadPos += velocity * dt
       el.style.setProperty('--road-pos', `${roadPos}px`)
+      // Cruising: the exhaust follows the speed (the showcase leaves it at full).
+      if (cruiseRef.current) {
+        el.style.setProperty('--speed', Math.min(velocity / 150, 1).toFixed(3))
+      }
       rafId = requestAnimationFrame(tick)
     }
 
