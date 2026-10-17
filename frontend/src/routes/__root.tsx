@@ -5,7 +5,7 @@ import {
   Scripts,
   createRootRouteWithContext,
 } from '@tanstack/react-router'
-import { Flag } from 'lucide-react'
+import { Flag } from '#/components/ui/icons'
 import AppShell from '#/components/layout/AppShell'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
@@ -14,10 +14,11 @@ import { checkBackendConnectivity } from '#/lib/checkBackendConnectivity'
 import appCss from '../styles.css?url'
 
 import type { QueryClient } from '@tanstack/react-query'
+import { logoSvgMarkup } from '#/components/ui/PixelIcon'
 import type { ErrorComponentProps } from '@tanstack/react-router'
 
-const FAVICON =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2338bdf8'/%3E%3Cg fill='white'%3E%3Crect x='8' y='8' width='4' height='4'/%3E%3Crect x='16' y='8' width='4' height='4'/%3E%3Crect x='12' y='12' width='4' height='4'/%3E%3Crect x='20' y='12' width='4' height='4'/%3E%3Crect x='8' y='16' width='4' height='4'/%3E%3Crect x='16' y='16' width='4' height='4'/%3E%3Crect x='12' y='20' width='4' height='4'/%3E%3Crect x='20' y='20' width='4' height='4'/%3E%3C/g%3E%3C/svg%3E"
+// The same pixel-art car as the sidebar logo (see PixelIcon).
+const FAVICON = `data:image/svg+xml,${encodeURIComponent(logoSvgMarkup())}`
 
 const DESCRIPTION =
   'A multiplayer typing race game — race real quotes against AI bots, type fast, and watch your car cross the finish line first.'
@@ -74,7 +75,7 @@ function NotFound() {
     <main className="flex min-h-[60vh] items-center justify-center px-4 py-16">
       <Card className="rise-in w-full max-w-md overflow-hidden text-center">
         <CardHeader className="items-center py-8">
-          <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground">
+          <span className="flex size-12 items-center justify-center px-corners bg-accent text-accent-foreground">
             <Flag className="size-5" />
           </span>
           <p className="kicker mt-3">404</p>
@@ -97,7 +98,7 @@ function RouteError({ error }: ErrorComponentProps) {
     <main className="flex min-h-[60vh] items-center justify-center px-4 py-16">
       <Card className="rise-in w-full max-w-md overflow-hidden text-center">
         <CardHeader className="items-center py-8">
-          <span className="flex size-12 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+          <span className="flex size-12 items-center justify-center px-corners bg-destructive/15 text-destructive">
             <Flag className="size-5" />
           </span>
           <p className="kicker mt-3 text-destructive">Crashed out</p>

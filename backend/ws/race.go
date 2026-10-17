@@ -16,13 +16,13 @@ const (
 	// upper bound keeps a single lobby's broadcast fan-out small and matches a "small lobby"
 	// typing-race feel rather than an open-ended free-for-all.
 	raceMinPlayers = 2
-	raceMaxPlayers = 6
+	raceMaxPlayers = 5
 
 	// lobbyWaitTimeout: once raceMinPlayers is reached, the lobby waits this long for more
 	// players before starting anyway — long enough to give a real chance for the lobby to fill
 	// toward raceMaxPlayers, short enough that the first two players don't wait forever for a
 	// third. Never applies before raceMinPlayers is reached; a lone player just waits.
-	lobbyWaitTimeout = 15 * time.Second
+	lobbyWaitTimeout = 30 * time.Second
 
 	// raceCountdown: time between the quote being announced and the race actually starting —
 	// gives every client's UI a chance to render the quote and show a "get ready" countdown in
@@ -70,6 +70,9 @@ type playerState struct {
 	elapsedMs int64
 	wpm       float64
 	rank      int
+	// lastPowerupAt is when this player last fired their ability (zero: not yet this race); it
+	// recharges after abilityRecharge (see handlePowerup).
+	lastPowerupAt time.Time
 }
 
 // Room is one race: a fixed set of players racing the same quote from the same start signal.
@@ -77,6 +80,8 @@ type playerState struct {
 // their own goroutines at any time relative to the room's own timers firing.
 type Room struct {
 	id string
+	// mode is fixed at creation: classic, or powerups (see lobbyMode).
+	mode lobbyMode
 	// selectQuote is a field, not a direct call to RandomTypingQuote, purely for testability —
 	// race_test.go injects a fake one so the room lifecycle (join, countdown, race, results)
 	// can be exercised without a real Postgres connection.
@@ -111,9 +116,10 @@ type Room struct {
 	host *Client
 }
 
-func newRoom(id string, pool *pgxpool.Pool) *Room {
+func newRoom(id string, mode lobbyMode, pool *pgxpool.Pool) *Room {
 	return &Room{
-		id: id,
+		id:   id,
+		mode: mode,
 		selectQuote: func(ctx context.Context) (TypingQuote, error) {
 			return RandomTypingQuote(ctx, pool, raceLanguage, raceMinWords, raceMaxWords, "")
 		},
@@ -135,6 +141,7 @@ func (r *Room) addClient(c *Client) {
 	r.broadcast(serverMessage{
 		Type:          "waiting",
 		Code:          r.code,
+		Mode:          string(r.mode),
 		PlayersInRoom: count,
 		MinPlayers:    raceMinPlayers,
 		MaxPlayers:    raceMaxPlayers,
@@ -203,6 +210,7 @@ func (r *Room) removeClient(c *Client) {
 	r.broadcast(serverMessage{
 		Type:          "waiting",
 		Code:          r.code,
+		Mode:          string(r.mode),
 		PlayersInRoom: remaining,
 		MinPlayers:    raceMinPlayers,
 		MaxPlayers:    raceMaxPlayers,
@@ -272,6 +280,7 @@ func (r *Room) startCountdown() {
 
 	r.broadcast(serverMessage{
 		Type:       "race_start",
+		Mode:       string(r.mode),
 		Quote:      &quote,
 		WordCount:  wordCount,
 		StartsInMs: raceCountdown.Milliseconds(),
@@ -307,6 +316,8 @@ func (r *Room) handleMessage(c *Client, msg clientMessage) {
 		r.handleFinish(c, msg.ElapsedMs)
 	case "start":
 		r.handleStart(c)
+	case "powerup":
+		r.handlePowerup(c, msg.Powerup)
 	}
 }
 

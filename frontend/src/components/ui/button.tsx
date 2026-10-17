@@ -5,17 +5,17 @@ import type { VariantProps } from 'class-variance-authority'
 import type { ComponentProps } from 'react'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+  'px-corners pixel-text inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
   {
     variants: {
       variant: {
-        default: 'btn-primary-glow text-primary-foreground font-semibold',
+        default: 'btn-primary-glow font-semibold',
         secondary:
-          'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',
+          'bg-secondary text-secondary-foreground shadow-[inset_0_-3px_0_rgb(0_0_0/30%)] hover:bg-secondary/80',
         outline: 'glass-chip hover:border-primary/60 hover:text-primary',
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         destructive:
-          'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
+          'bg-destructive text-destructive-foreground shadow-[inset_0_-4px_0_rgb(0_0_0/25%)] hover:bg-destructive/90',
       },
       size: {
         default: 'h-10 px-4 py-2',

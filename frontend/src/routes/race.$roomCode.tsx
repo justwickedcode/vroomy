@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
+import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 import MultiplayerRace from '#/components/typing/MultiplayerRace'
 import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
 import { useIsDesktopViewport } from '#/lib/layout/useIsDesktopViewport'
@@ -11,7 +12,12 @@ import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 // there's no possible collision with an actual room's code.
 const CREATE_SENTINEL = 'new'
 
+// ?mode= only matters when creating ("new"): it's the lobby type the host picked on
+// /race/friends. Joiners get whatever the room already is.
 export const Route = createFileRoute('/race/$roomCode')({
+  validateSearch: (search: Record<string, unknown>): { mode?: LobbyMode } => ({
+    mode: search.mode === 'powerups' ? 'powerups' : undefined,
+  }),
   component: RoomGate,
 })
 
@@ -30,6 +36,7 @@ function RoomGate() {
 
 function RoomPage() {
   const { roomCode } = Route.useParams()
+  const { mode } = Route.useSearch()
   const navigate = useNavigate()
   const mp = useMultiplayerRace()
 
@@ -41,7 +48,7 @@ function RoomPage() {
   // useMultiplayerRace's isCurrent() guard for why the first (superseded) socket's belated
   // events can't corrupt the state the second one goes on to build.
   useEffect(() => {
-    if (roomCode === CREATE_SENTINEL) mp.createRoom()
+    if (roomCode === CREATE_SENTINEL) mp.createRoom(mode ?? 'classic')
     else mp.joinRoom(roomCode)
   }, [])
 

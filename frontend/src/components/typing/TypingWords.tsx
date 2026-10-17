@@ -119,7 +119,7 @@ export default function TypingWords({
       role="button"
       tabIndex={0}
       className={cn(
-        'race-words relative block w-full cursor-text rounded-lg p-5 text-left',
+        'race-words relative block w-full cursor-text p-5 text-left',
         className,
       )}
       onClick={() => {

@@ -1,14 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @theme {
   --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-  /* Headlines only — condensed and industrial, standing apart from the UI's own sans so
-     numbers/labels/passage text (all IBM Plex, one coherent instrument system) don't compete
-     with it. See h1/h2 base styles below for where this actually gets applied. */
-  --font-display: 'Big Shoulders Display', 'Arial Narrow', sans-serif;
+  --font-code: var(--font-mono);
+  /* The pixel face is for headlines only, where it's big enough to read easily. Every small
+     label, button, badge and number stays in IBM Plex — pixel fonts at small sizes are hard to
+     read (direct feedback). The pixel look comes from shapes, corners and icons instead. */
+  --font-display: 'Pixelify Sans', 'IBM Plex Mono', monospace;
+  --font-pixel: var(--font-mono);
+  /* No rounded corners anywhere — pixel art doesn't have them. Shapes get stepped "pixel"
+     corners instead (see .px-corners). */
+  --radius-xs: 0px;
 }
 
 @theme inline {
@@ -32,10 +37,10 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-signal: var(--signal);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
 }
 
 /* Instrument Cluster: a cockpit, not a SaaS dashboard wearing a racing skin — see
@@ -47,7 +52,24 @@
    and `success` keep their own real hue on purpose, same as before: semantic signals, not
    brand color, so they stay put through every visual pass. */
 :root {
-  --radius: 0.25rem;
+  --radius: 0;
+  /* Size of the stepped corner cut by .px-corners — the same as the 2px borders, so edges meet
+     at a single diagonal step like a hand-drawn pixel box. */
+  --notch: 2px;
+  --px-clip: polygon(
+    0 var(--notch),
+    var(--notch) var(--notch),
+    var(--notch) 0,
+    calc(100% - var(--notch)) 0,
+    calc(100% - var(--notch)) var(--notch),
+    100% var(--notch),
+    100% calc(100% - var(--notch)),
+    calc(100% - var(--notch)) calc(100% - var(--notch)),
+    calc(100% - var(--notch)) 100%,
+    var(--notch) 100%,
+    var(--notch) calc(100% - var(--notch)),
+    0 calc(100% - var(--notch))
+  );
 
   --background: oklch(0.09 0.004 75);
   --foreground: oklch(0.96 0.004 85);
@@ -104,7 +126,82 @@ h1,
 h2 {
   font-family: var(--font-display);
   text-transform: uppercase;
-  letter-spacing: -0.005em;
+  letter-spacing: 0.01em;
+}
+
+/* Stepped "pixel-rounded" corners: cuts a --notch square off each corner, the CSS version of a
+   sprite's rounded corner. Used by every card, chip, button, badge and input. */
+.px-corners {
+  clip-path: var(--px-clip);
+}
+
+/* Pixel type for UI text that should feel part of the game (buttons, numbers) — readable at
+   body sizes, unlike the tiny-caps --font-pixel. */
+.pixel-text {
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+/* Pixel sliders: a flat 4px track and a square thumb with a hard bottom lip. */
+input[type='range'] {
+  appearance: none;
+  height: 16px;
+  background: transparent;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 4px;
+  background: var(--color-border);
+}
+
+input[type='range']::-moz-range-track {
+  height: 4px;
+  background: var(--color-border);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 16px;
+  margin-top: -6px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-signal);
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 30%);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 16px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-signal);
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 30%);
+}
+
+/* Square, chunky scrollbars to match. */
+* {
+  scrollbar-color: var(--color-border) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Square, hard-edged focus outline instead of a soft ring. */
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
 }
 
 /* A near-flat dark surface with one faint gradient — not a SaaS hero-glow
@@ -132,10 +229,11 @@ body::before {
 .glass-panel {
   position: relative;
   background: var(--color-card);
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-border);
+  /* Hard, flat pixel bevel: a light top edge and dark bottom edge inside the box, no blur. */
   box-shadow:
-    inset 0 1px 0 color-mix(in oklab, white 6%, transparent),
-    0 24px 48px -16px rgb(0 0 0 / 70%);
+    inset 0 2px 0 color-mix(in oklab, white 6%, transparent),
+    inset 0 -3px 0 rgb(0 0 0 / 35%);
 }
 
 /* @layer components, not a bare rule: Tailwind's own utilities (border-primary,
@@ -149,18 +247,19 @@ body::before {
 @layer components {
   .glass-chip {
     background: var(--color-secondary);
-    border: 1px solid var(--color-border);
+    border: 2px solid var(--color-border);
+    box-shadow: inset 0 -3px 0 rgb(0 0 0 / 30%);
+    clip-path: var(--px-clip);
   }
 }
 
 .glass-divider {
-  height: 1px;
-  background: linear-gradient(
+  height: 2px;
+  /* A dashed pixel line. */
+  background: repeating-linear-gradient(
     90deg,
-    transparent,
-    color-mix(in oklab, white 14%, var(--color-border)) 20%,
-    color-mix(in oklab, white 14%, var(--color-border)) 80%,
-    transparent
+    color-mix(in oklab, white 10%, var(--color-border)) 0 4px,
+    transparent 4px 8px
   );
 }
 
@@ -168,8 +267,8 @@ body::before {
   display: inline-flex;
   align-items: center;
   gap: 0.5em;
-  font-family: var(--font-mono);
-  letter-spacing: 0.16em;
+  font-family: var(--font-pixel);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 600;
   font-size: 0.7rem;
@@ -178,12 +277,10 @@ body::before {
 
 .kicker::before {
   content: '';
-  width: 0.4em;
-  height: 0.4em;
+  width: 6px;
+  height: 6px;
   flex-shrink: 0;
-  border-radius: 50%;
   background: var(--color-signal);
-  box-shadow: 0 0 6px 1px var(--color-signal);
 }
 
 /* --- Pit-lane chrome: nav, ticker, livery stripe, stagger/tilt utilities --- */
@@ -279,8 +376,7 @@ body::before {
   left: -1rem;
   top: 0.3rem;
   bottom: 0.3rem;
-  width: 2px;
-  border-radius: 999px;
+  width: 3px;
   background: var(--color-primary);
   transform: scaleY(0);
   transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -366,27 +462,35 @@ body::before {
 }
 
 .btn-primary-glow {
-  background: var(--color-primary);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  /* A dark arcade button in a neon magenta frame, so the colourful pixel icons sit on dark the
+     way they do everywhere else. A chunky lip along the bottom is what it "presses" into on click
+     (see :active). */
+  color: #fff;
+  background: #1f1530;
+  box-shadow:
+    inset 0 0 0 2px #ff2fb4,
+    inset 0 -5px 0 rgb(0 0 0 / 45%),
+    0 0 14px rgb(255 47 180 / 30%);
   transition:
     background-color 120ms ease,
-    box-shadow 200ms ease;
+    box-shadow 120ms ease;
 }
 
-/* The one button that ever turns signal amber — an ignition switch, not a hover state every
-   control on the page shares. Ghost/outline/secondary buttons stay neutral on hover. */
 .btn-primary-glow:hover {
-  background: var(--color-signal);
-  box-shadow: 0 0 0 4px
-    color-mix(in oklab, var(--color-signal) 20%, transparent);
+  background: #3a1640;
+  box-shadow:
+    inset 0 0 0 2px #ff5cc6,
+    inset 0 -5px 0 rgb(0 0 0 / 45%),
+    0 0 20px rgb(255 47 180 / 50%);
 }
 
-.btn-primary-glow:active {
-  filter: brightness(0.95);
+/* Pressed: the whole button drops onto its lip, for every button variant. */
+[data-slot='button']:active:not(:disabled) {
+  transform: translateY(2px);
 }
 
-/* An automotive semi-circle dial (needle, ticks, a three-zone arc), not a full progress ring —
-   see Gauge.tsx for why: it's reserved for numbers with a real ceiling, so the needle position
+/* A pixel speedometer arc (see Gauge.tsx), not a full progress ring — reserved for numbers with
+   a real ceiling, so how far the arc lights up
    itself carries meaning (calm/working/redline), the way an actual tachometer's does. */
 .gauge {
   display: flex;
@@ -414,61 +518,33 @@ body::before {
   display: block;
 }
 
-.gauge-track {
-  fill: none;
-  stroke: color-mix(in oklab, white 8%, transparent);
-  stroke-width: 8;
-  stroke-linecap: round;
+/* Pixel gauge blocks (see Gauge.tsx): unlit track, then calm / working / redline bands. */
+.gauge-px--off {
+  fill: color-mix(in oklab, white 16%, transparent);
 }
 
-.gauge-zone {
-  fill: none;
-  stroke-width: 8;
+.gauge-px--calm {
+  fill: var(--color-success);
 }
 
-.gauge-zone-calm {
-  stroke: var(--color-accent);
+.gauge-px--working {
+  fill: var(--color-signal);
 }
 
-.gauge-zone-working {
-  stroke: color-mix(in oklab, var(--color-signal) 55%, var(--color-accent));
-}
-
-.gauge-zone-redline {
-  stroke: var(--color-signal);
-}
-
-.gauge-tick {
-  stroke: var(--color-muted-foreground);
-}
-
-.gauge-needle {
-  stroke: var(--color-foreground);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  transition:
-    x2 150ms ease,
-    y2 150ms ease;
-}
-
-.gauge-hub {
-  fill: var(--color-foreground);
-}
-
-.gauge-hub-center {
-  fill: var(--color-background);
+.gauge-px--redline {
+  fill: var(--color-destructive);
 }
 
 .gauge-readout {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: -0.15rem;
+  margin-top: 0.25rem;
 }
 
 .gauge-value {
-  font-family: var(--font-mono);
-  font-size: 1.15rem;
+  font-family: var(--font-display);
+  font-size: 1.4rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -508,113 +584,11 @@ body::before {
   font-size: 0.6rem;
 }
 
-/* A bordered, letter-spaced code readout — reads like a plate stamped for this
-   one race, not a form field. */
-.license-plate {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.75rem;
-  border: 2px solid var(--color-foreground);
-  padding: 0.5rem 1rem;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  font-size: 1.4rem;
-  letter-spacing: 0.2em;
-}
-
-.license-plate-tab {
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-muted-foreground);
-}
-
-/* Numbered seats, filled or open — the lobby's real, known state (how many seats,
-   how many taken, which one is you) rather than invented names for players the
-   server hasn't identified. */
-.starting-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  border: 1px solid var(--color-border);
-  background: var(--color-border);
-  overflow: hidden;
-  border-radius: var(--radius);
-}
-
-.starting-grid-slot {
-  display: grid;
-  grid-template-columns: 2.25rem 0.6rem 1fr auto;
-  align-items: center;
-  gap: 0.85rem;
-  padding: 0.65rem 1rem;
-  background: var(--color-card);
-}
-
-.starting-grid-pos {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.05rem;
-  color: var(--color-muted-foreground);
-}
-
-.starting-grid-slot.is-you .starting-grid-pos {
-  color: var(--color-signal);
-}
-
-.starting-grid-dot {
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
-  background: var(--color-border);
-}
-
-.starting-grid-dot.is-you {
-  background: var(--color-signal);
-}
-
-.starting-grid-dot.is-filled {
-  background: var(--color-muted-foreground);
-}
-
-.starting-grid-name {
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.starting-grid-flag {
-  margin-left: 0.6em;
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--color-signal);
-}
-
-.starting-grid-slot.is-empty .starting-grid-name {
-  color: var(--color-muted-foreground);
-  font-weight: 500;
-}
-
-.starting-grid-state {
-  font-family: var(--font-mono);
-  font-size: 0.66rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-success);
-}
-
-.starting-grid-state.is-waiting {
-  color: var(--color-muted-foreground);
-}
-
 .standings {
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: 0;
   overflow: hidden;
+  clip-path: var(--px-clip);
 }
 
 .standings-head,
@@ -627,7 +601,7 @@ body::before {
 }
 
 .standings-head {
-  font-family: var(--font-mono);
+  font-family: var(--font-pixel);
   font-size: 0.62rem;
   font-weight: 500;
   letter-spacing: 0.1em;
@@ -684,14 +658,15 @@ body::before {
   align-items: center;
   gap: 1.1rem;
   padding: 0.6rem 1.1rem;
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   background: color-mix(in oklab, black 30%, var(--color-secondary));
   border: 1px solid var(--color-border);
   box-shadow: inset 0 1px 2px rgb(0 0 0 / 40%);
+  clip-path: var(--px-clip);
 }
 
 .speed-option {
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   padding: 0.85rem 1rem;
   cursor: pointer;
   transition:
@@ -699,6 +674,7 @@ body::before {
     background-color 150ms ease,
     transform 150ms ease,
     box-shadow 150ms ease;
+  clip-path: var(--px-clip);
 }
 
 .speed-option:hover {
@@ -715,7 +691,7 @@ body::before {
 .race-track {
   position: relative;
   height: 6.75rem;
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   border: 1px solid #000;
   background:
     repeating-linear-gradient(
@@ -725,6 +701,7 @@ body::before {
     ),
     linear-gradient(180deg, #1c1f27, #08090c);
   box-shadow: inset 0 1px 3px rgb(0 0 0 / 50%);
+  clip-path: var(--px-clip);
 }
 
 .race-track-inner {
@@ -791,7 +768,7 @@ body::before {
     transparent 270deg
   );
   background-size: 7px 7px;
-  border-radius: 2px;
+  border-radius: 0;
   box-shadow:
     0 0 0 1px rgb(255 255 255 / 20%),
     0 0 10px rgb(255 255 255 / 25%);
@@ -806,7 +783,7 @@ body::before {
   bottom: -3px;
   width: 2px;
   background: #cbd5e1;
-  border-radius: 1px;
+  border-radius: 0;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -827,6 +804,141 @@ body::before {
 }
 
 /* ── Curbs ───────────────────────────────────────────────────────── */
+
+/* Epic (dashboard title-screen) track: taller lanes, bigger cars, and white speed streaks
+   rushing past toward the left. */
+.race-track-panel--epic {
+  padding-top: 0;
+}
+
+.race-track-panel--showcase .race-lane {
+  height: 66px;
+}
+
+/* A showcase, not a race: no WPM readouts on the lanes. */
+.race-track-panel--showcase .race-name-wpm {
+  display: none;
+}
+
+.race-name-wpm {
+  margin-left: 0.35em;
+  color: #4ade80;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pools of streetlight on the asphalt, one under each lamp of the skyline's street layer, sliding
+   past at road speed — they line up with the lamps because both move by exactly --road-pos and
+   share the lamp spacing (40 skyline px at the skyline's scale: an 80px skyline -> 50px, 96px ->
+   60px, the showcase's 112px -> 70px and 144px -> 90px). This is what ties the city to the road. */
+.race-track-panel--epic {
+  --lamp-gap: 50px;
+  --lamp-x: 29px;
+}
+
+.race-track-panel--showcase {
+  --lamp-gap: 70px;
+  --lamp-x: 40px;
+}
+
+@media (min-width: 640px) {
+  .race-track-panel--epic {
+    --lamp-gap: 60px;
+    --lamp-x: 35px;
+  }
+
+  .race-track-panel--showcase {
+    --lamp-gap: 90px;
+    --lamp-x: 52px;
+  }
+}
+
+.race-track-panel--epic .race-lanes-area::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image: radial-gradient(
+    ellipse 22% 38% at 50% 0%,
+    rgb(165 243 252 / 18%),
+    transparent 100%
+  );
+  background-size: var(--lamp-gap) 100%;
+  background-repeat: repeat-x;
+  background-position-x: calc(
+    var(--lamp-x) - var(--lamp-gap) / 2 - var(--road-pos, 0px)
+  );
+  mix-blend-mode: screen;
+}
+
+/* Night-time asphalt with a purple cast, so the road belongs to the synthwave skyline. */
+.race-track-panel--epic .race-lane:nth-child(odd) {
+  background: linear-gradient(180deg, #2a2536 0%, #26212f 100%);
+}
+
+.race-track-panel--epic .race-lane:nth-child(even) {
+  background: linear-gradient(180deg, #221e2c 0%, #1f1b28 100%);
+}
+
+.race-track-panel--showcase .race-car-svg {
+  width: 6.5rem;
+}
+
+/* Your exhaust burns as hard as you're driving: no flames while you're parked. */
+.race-car-wrap--you .trail {
+  opacity: clamp(0, var(--speed, 1) * 1.6, 1);
+}
+
+/* Epic barriers: dark steel rails with a glowing neon magenta strip and cyan marker lights that
+   scroll with the road, instead of red/white kerbs — synthwave, to match the skyline. */
+.race-track-panel--epic .race-curb {
+  height: 12px;
+  background:
+    repeating-linear-gradient(90deg, #22d3ee 0 6px, transparent 6px 36px)
+      calc(-1 * var(--road-pos, 0px)) 7px / auto 3px no-repeat,
+    linear-gradient(#ff2fb4, #ff2fb4) 0 2px / 100% 2px no-repeat,
+    #15101f;
+  background-repeat: repeat-x, no-repeat, no-repeat;
+  box-shadow:
+    0 0 10px 1px rgb(255 47 180 / 45%),
+    inset 0 -2px 0 rgb(0 0 0 / 45%);
+}
+
+/* Night driving: every car on the title track throws a headlight beam ahead onto the road. */
+.race-track-panel--epic .race-car-wrap::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 92%;
+  width: 6rem;
+  height: 2.6rem;
+  transform: translateY(-50%);
+  background: linear-gradient(
+    90deg,
+    rgb(255 244 214 / 26%),
+    rgb(255 244 214 / 0%)
+  );
+  clip-path: polygon(0 38%, 100% 0, 100% 100%, 0 62%);
+  pointer-events: none;
+}
+
+/* The pink barriers glow onto the edges of the asphalt. */
+.race-track-panel--epic .race-lanes-area {
+  box-shadow:
+    inset 0 22px 22px -18px rgb(255 47 180 / 30%),
+    inset 0 -22px 22px -18px rgb(255 47 180 / 30%);
+}
+
+/* A few of the skyline's stars twinkle. */
+.sky-twinkle {
+  animation: sky-twinkle 2.4s steps(2) infinite;
+}
+
+@keyframes sky-twinkle {
+  50% {
+    opacity: 0.15;
+  }
+}
 
 .race-curb {
   position: relative;
@@ -908,7 +1020,7 @@ body::before {
   align-items: center;
   white-space: nowrap;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 0;
   background: rgba(10, 12, 22, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 8.5px;
@@ -918,6 +1030,7 @@ body::before {
   color: #c9cdd8;
   backdrop-filter: blur(4px);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  clip-path: var(--px-clip);
 }
 
 .race-name-tag--you {
@@ -925,21 +1038,7 @@ body::before {
   border-color: rgba(56, 189, 248, 0.4);
 }
 
-/* ── WPM readout ─────────────────────────────────────────────────── */
-
-.race-wpm {
-  position: absolute;
-  right: 0.6rem;
-  top: 50%;
-  z-index: 2;
-  transform: translateY(-50%);
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.55);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── Lanes area — relative container for curbs, lanes, finish band ── */
+/* ── Lanes area — relative container for curbs, lanes, finish gate ─ */
 
 .race-lanes-area {
   position: relative;
@@ -949,25 +1048,250 @@ body::before {
 
 /* ── Finish band ─────────────────────────────────────────────────── */
 
-.race-finish-band {
+.race-finish-gate {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 24px;
   transform: translateX(-12px);
-  background-color: #111;
-  background-image: conic-gradient(
-    #fff 90deg,
-    transparent 90deg 180deg,
-    #fff 180deg 270deg,
-    transparent 270deg
-  );
-  background-size: 12px 12px;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 0 22px 4px color-mix(in oklab, var(--color-primary) 40%, transparent);
+  /* Above the barriers (so its pylons stand on them), below the cars (which drive over it). */
+  z-index: 3;
   pointer-events: none;
-  z-index: 2;
+}
+
+/* Three columns of hard 8px checks, with a band of light sweeping down them in steps. */
+.race-finish-strip {
+  position: absolute;
+  /* Across the asphalt only — the barriers (12px) stay intact; the pylons stand on them. */
+  inset: 12px 0;
+  background:
+    linear-gradient(
+        transparent 0 40%,
+        rgb(255 255 255 / 45%) 40% 50%,
+        transparent 50%
+      )
+      0 0 / 100% 300% no-repeat,
+    conic-gradient(
+        #f4ecff 90deg,
+        #0b0614 90deg 180deg,
+        #f4ecff 180deg 270deg,
+        #0b0614 270deg
+      )
+      0 0 / 16px 16px;
+  box-shadow:
+    -4px 0 0 rgb(0 0 0 / 40%),
+    0 0 24px 6px rgb(244 236 255 / 22%);
+  animation: race-finish-sheen 1.6s steps(12) infinite;
+}
+
+@keyframes race-finish-sheen {
+  from {
+    background-position:
+      0 100%,
+      0 0;
+  }
+  to {
+    background-position:
+      0 -50%,
+      0 0;
+  }
+}
+
+/* Laser beams down both edges of the line, flickering between magenta and cyan. */
+.race-finish-laser {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  width: 2px;
+  background: #ff2fb4;
+  box-shadow: 0 0 8px 2px rgb(255 47 180 / 70%);
+  animation: race-finish-laser 0.5s steps(1) infinite;
+}
+
+.race-finish-laser--before {
+  left: -8px;
+}
+
+.race-finish-laser--after {
+  right: -8px;
+  animation-delay: 0.25s;
+}
+
+@keyframes race-finish-laser {
+  50% {
+    background: #22d3ee;
+    box-shadow: 0 0 8px 2px rgb(34 211 238 / 70%);
+    opacity: 0.7;
+  }
+}
+
+/* Pylons on both barriers, wrapped in marquee bulbs that chase upward. */
+.race-finish-post {
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  transform: translateX(-50%);
+  background:
+    repeating-linear-gradient(
+        #facc15 0 3px,
+        transparent 3px 6px,
+        #ff2fb4 6px 9px,
+        transparent 9px 12px
+      )
+      50% 0 / 4px 12px repeat-y,
+    #3a2a4f;
+  box-shadow:
+    inset -2px 0 0 rgb(0 0 0 / 45%),
+    0 0 10px rgb(250 204 21 / 35%);
+  animation: race-finish-bulbs 0.6s steps(4) infinite;
+}
+
+.race-finish-post--top {
+  bottom: calc(100% - 12px);
+  height: 34px;
+}
+
+.race-finish-post--bottom {
+  top: calc(100% - 12px);
+  height: 18px;
+}
+
+@keyframes race-finish-bulbs {
+  to {
+    background-position:
+      50% -12px,
+      0 0;
+  }
+}
+
+/* The sign on top of the upper pylon: a marquee frame of chasing bulbs around a neon FINISH. */
+.race-finish-sign {
+  position: absolute;
+  bottom: calc(100% + 22px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px;
+  background: repeating-linear-gradient(90deg, #facc15 0 3px, #3a2a4f 3px 6px) 0
+    0 / 12px 100%;
+  box-shadow: 0 0 16px rgb(255 47 180 / 55%);
+  animation: race-finish-marquee 0.5s steps(2) infinite;
+}
+
+.race-finish-sign > span {
+  display: block;
+  padding: 3px 8px 4px;
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #fff;
+  background: #15101f;
+  text-shadow:
+    2px 2px 0 #ff2fb4,
+    0 0 8px rgb(255 47 180 / 90%);
+}
+
+@keyframes race-finish-marquee {
+  to {
+    background-position: 6px 0;
+  }
+}
+
+/* Two searchlights from the sign, sweeping the night sky behind the skyline's glow. */
+.race-finish-searchlight {
+  position: absolute;
+  bottom: calc(100% + 30px);
+  left: 50%;
+  width: 46px;
+  height: 160px;
+  margin-left: -23px;
+  transform-origin: 50% 100%;
+  background: linear-gradient(
+    to top,
+    rgb(165 243 252 / 34%),
+    rgb(165 243 252 / 0%)
+  );
+  clip-path: polygon(44% 100%, 56% 100%, 100% 0, 0 0);
+  mix-blend-mode: screen;
+  z-index: -1;
+}
+
+.race-finish-searchlight--a {
+  animation: race-finish-sweep 3.2s ease-in-out infinite alternate;
+}
+
+.race-finish-searchlight--b {
+  background: linear-gradient(
+    to top,
+    rgb(255 47 180 / 30%),
+    rgb(255 47 180 / 0%)
+  );
+  animation: race-finish-sweep 2.6s ease-in-out -1.3s infinite alternate-reverse;
+}
+
+@keyframes race-finish-sweep {
+  from {
+    transform: rotate(-34deg);
+  }
+  to {
+    transform: rotate(34deg);
+  }
+}
+
+/* You crossed: the whole gate flashes and fireworks burst over it. */
+.race-finish-gate--crossed .race-finish-strip {
+  animation:
+    race-finish-sheen 0.6s steps(8) infinite,
+    race-finish-flash 0.3s steps(1) 4;
+}
+
+@keyframes race-finish-flash {
+  50% {
+    filter: brightness(2.2);
+  }
+}
+
+/* A pixel firework: one pixel whose ring of box-shadow sparks bursts outward and fades, in
+   hard steps. */
+.race-firework {
+  position: absolute;
+  left: calc(50% + var(--fx));
+  bottom: calc(100% + 40px + var(--fy));
+  width: 4px;
+  height: 4px;
+  color: var(--fc);
+  background: #fff;
+  box-shadow:
+    0 -20px 0 currentColor,
+    14px -14px 0 currentColor,
+    20px 0 0 currentColor,
+    14px 14px 0 currentColor,
+    0 20px 0 currentColor,
+    -14px 14px 0 currentColor,
+    -20px 0 0 currentColor,
+    -14px -14px 0 currentColor,
+    0 -10px 0 #fff,
+    10px 0 0 #fff,
+    0 10px 0 #fff,
+    -10px 0 0 #fff;
+  opacity: 0;
+  animation: race-firework 1.4s steps(7) infinite;
+}
+
+@keyframes race-firework {
+  0% {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
 }
 
 /* ── Car wrap & car ──────────────────────────────────────────────── */
@@ -979,6 +1303,51 @@ body::before {
   transition: left 300ms ease;
   z-index: 4;
   overflow: visible;
+}
+
+/* Chase camera: a rival (or the finish gate) sits where its progress (--p) is relative to the
+   camera's (--cam), CAMERA_X/CAMERA_SCALE in RaceTrack.tsx. Both are spring-smoothed and written
+   every frame by RaceTrack's loop (--p on each rival's lane, inherited by its car and tags). */
+@property --p {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+
+.race-follow {
+  left: calc(26% + (var(--p) - var(--cam, 0)) * 400%);
+  transition: none;
+}
+
+/* A rival out of sight: a small tag pinned to the edge of their lane. */
+.race-offscreen {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  transform: translateY(-50%);
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #f4ecff;
+  background: rgb(21 16 31 / 85%);
+  box-shadow: 0 0 0 2px #3a2a4f;
+  pointer-events: none;
+}
+
+.race-offscreen--ahead {
+  right: 6px;
+  box-shadow: 0 0 0 2px #ff2fb4;
+  /* Fades in as the car's position passes the right edge (screen % = 26 + gap * 400). */
+  opacity: clamp(0, ((var(--p) - var(--cam, 0)) * 400 + 26 - 100) / 4, 1);
+}
+
+.race-offscreen--behind {
+  left: 6px;
+  opacity: clamp(0, (-1 * (var(--p) - var(--cam, 0)) * 400 - 26 - 4) / 4, 1);
 }
 
 .race-car-svg {
@@ -1104,10 +1473,6 @@ body::before {
   --pu-c: #ef4444;
 }
 
-.race-powerup-impact--magnet {
-  --pu-c: #a855f7;
-}
-
 @keyframes pu-impact-ring {
   0% {
     opacity: 1;
@@ -1154,440 +1519,409 @@ body::before {
   }
 }
 
-.race-emp-flash {
+/* Nuke: a white-hot core blooming into orange, held a beat longer than the EMP so the
+   strongest powerup also reads as the biggest. */
+.race-nuke-flash {
   position: absolute;
   inset: 0;
   z-index: 6;
   pointer-events: none;
   background: radial-gradient(
-    circle,
-    rgb(125 211 252 / 55%) 0%,
-    rgb(56 189 248 / 25%) 45%,
-    transparent 75%
+    circle at 30% 50%,
+    rgb(255 251 235 / 85%) 0%,
+    rgb(251 146 60 / 55%) 30%,
+    rgb(234 88 12 / 25%) 55%,
+    transparent 80%
   );
-  animation: pu-emp-flash 550ms ease-out forwards;
+  animation: pu-emp-flash 800ms ease-out forwards;
 }
 
-@keyframes pu-emp-flash {
-  0% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-  }
-}
-
-/* Trails off the rear of the car (nose faces right, so effects sit at the wrapper's left edge)
-   — only rendered while a racer is actively moving, see the `racing` guard in RaceTrack.tsx.
-   Sized and colored to read as aggressive propulsion at a glance — direct feedback was that the
-   original set (small twinkly dots, soft bubbles) looked "cute" next to the car, not powerful. */
-.race-nitro {
+/* ── Trails ──────────────────────────────────────────────────────────
+   Off the rear of a moving car (its nose faces right, so they sit past the wrapper's left edge),
+   in the same pixel-art language as everything else: square particles, no blur, and animations
+   that move in hard steps. Each <span> part carries --i (its place in the stagger), --y (its
+   height in the trail, %) and --s (its size, px) — see Trail in RaceTrack.tsx. */
+.trail {
   position: absolute;
   top: 50%;
   right: 100%;
-  width: 4.6rem;
-  height: 1.9rem;
+  width: 5.5rem;
+  height: 2.6rem;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
-.race-nitro span {
+.trail > span {
   position: absolute;
-  top: 50%;
+  top: calc(var(--y) * 1%);
   right: 0;
-  border-radius: 999px 999px 999px 0;
+  width: calc(var(--s) * 1px);
+  height: calc(var(--s) * 1px);
 }
 
-.race-nitro span:nth-child(1) {
+/* Nitro blast: a stacked pixel flame, white-hot at the nozzle, flickering in length. */
+.trail--nitro > span {
+  top: 50%;
+  translate: 0 -50%;
+  transform-origin: right center;
+  animation: trail-flame 0.24s steps(2) infinite alternate;
+}
+
+.trail--nitro > span:nth-child(1) {
   width: 100%;
-  height: 100%;
-  transform: translateY(-50%);
-  filter: blur(1.5px);
-  background: linear-gradient(
-    90deg,
-    transparent,
-    #ff4d1f 25%,
-    #ffb020 62%,
-    #fff6c8
-  );
-  box-shadow: 0 0 12px 2px rgb(255 138 20 / 70%);
-  animation: nitro-flicker-big 170ms ease-in-out infinite alternate;
+  height: 16px;
+  background: #ef4444;
+  box-shadow: 0 0 14px rgb(239 68 68 / 60%);
 }
 
-.race-nitro span:nth-child(2) {
-  width: 55%;
-  height: 55%;
-  transform: translateY(-50%);
-  filter: blur(1.5px);
-  background: linear-gradient(90deg, transparent, #fff2b8 60%, #fffef2);
-  animation: nitro-flicker-big 130ms ease-in-out infinite alternate-reverse;
+.trail--nitro > span:nth-child(2) {
+  width: 72%;
+  height: 11px;
+  background: #fb923c;
+  animation-direction: alternate-reverse;
 }
 
-.race-nitro span:nth-child(3) {
-  top: 15%;
-  right: 80%;
-  width: 7px;
+.trail--nitro > span:nth-child(3) {
+  width: 46%;
   height: 7px;
-  border-radius: 999px;
-  background: #ffb020;
-  box-shadow: 0 0 10px 3px rgb(255 176 32 / 90%);
-  animation: ember-pop 420ms ease-out infinite;
+  background: #facc15;
 }
 
-@keyframes nitro-flicker-big {
+.trail--nitro > span:nth-child(4) {
+  width: 22%;
+  height: 3px;
+  background: #fff7d6;
+  animation-direction: alternate-reverse;
+}
+
+@keyframes trail-flame {
   from {
-    transform: translateY(-50%) scaleX(0.8) scaleY(0.85);
-    opacity: 0.8;
+    transform: scaleX(0.75);
   }
   to {
-    transform: translateY(-50%) scaleX(1.2) scaleY(1.1);
-    opacity: 1;
+    transform: scaleX(1.15);
   }
 }
 
-@keyframes ember-pop {
-  0% {
+/* Ember trail: square sparks shed off the back, drifting up as they cool. */
+.trail--orbs > span {
+  width: calc(var(--s) * 0.7px);
+  height: calc(var(--s) * 0.7px);
+  background: #fb923c;
+  box-shadow: 0 0 6px #f97316;
+  animation: trail-ember 0.7s steps(7);
+}
+
+.trail--orbs > span:nth-child(3n) {
+  background: #fde047;
+}
+
+.trail--orbs > span:nth-child(3n + 1) {
+  background: #f43f5e;
+  box-shadow: 0 0 6px #f43f5e;
+}
+
+@keyframes trail-ember {
+  from {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-80px, -16px);
     opacity: 0;
-    transform: translate(0, 0) scale(0.7);
   }
-  30% {
-    opacity: 1;
+}
+
+/* Smoke blast: chunky shaded pixel puffs that swell as they're left behind. */
+.trail--smoke > span {
+  width: calc(var(--s) * 2px);
+  height: calc(var(--s) * 2px);
+  margin-top: calc(var(--s) * -1px);
+  background: rgb(205 210 230 / 85%);
+  box-shadow:
+    inset -3px -3px 0 rgb(120 130 160 / 60%),
+    inset 2px 2px 0 rgb(255 255 255 / 50%);
+  animation: trail-smoke 0.9s steps(6);
+}
+
+@keyframes trail-smoke {
+  from {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 0.9;
   }
-  100% {
+  to {
+    transform: translate(-70px, -8px) scale(1.6);
     opacity: 0;
-    transform: translate(-16px, -12px) scale(0.2);
   }
 }
 
-/* Bots cycle through three trail effects — flying embers, a thick smoke blast, a thunderbolt —
-   so the pack reads as varied racers with their own gear, not five copies of one effect. */
-.race-trail-orbs {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 4.2rem;
-  height: 2rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.race-trail-orbs span {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: radial-gradient(circle, #fff3c4 0%, #ff8c14 55%, transparent 75%);
-  box-shadow: 0 0 10px 3px rgb(255 140 20 / 85%);
-  animation: ember-fly 550ms ease-out infinite;
-}
-
-.race-trail-orbs span:nth-child(1) {
-  top: 12%;
-  left: 78%;
-  animation-delay: 0ms;
-}
-
-.race-trail-orbs span:nth-child(2) {
-  top: 55%;
-  left: 55%;
-  animation-delay: 130ms;
-  background: radial-gradient(circle, #fff 0%, #ff5b1f 55%, transparent 75%);
-  box-shadow: 0 0 10px 3px rgb(255 91 31 / 85%);
-}
-
-.race-trail-orbs span:nth-child(3) {
-  top: 30%;
-  left: 25%;
-  animation-delay: 260ms;
-  background: radial-gradient(circle, #fff3c4 0%, #f43f5e 55%, transparent 75%);
-  box-shadow: 0 0 10px 3px rgb(244 63 94 / 85%);
-}
-
-@keyframes ember-fly {
-  0% {
-    opacity: 1;
-    transform: translateX(0) scale(1.15);
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-28px) scale(0.3);
-  }
-}
-
-.race-trail-smoke {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 5.6rem;
-  height: 3.4rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.race-trail-smoke span {
-  position: absolute;
-  top: 50%;
-  border-radius: 999px;
-  background: rgb(235 235 240 / 92%);
-  box-shadow: 0 0 14px 4px rgb(235 235 240 / 55%);
-  filter: blur(1.5px);
-  animation: smoke-puff-big 900ms ease-out infinite;
-}
-
-.race-trail-smoke span:nth-child(1) {
-  right: 58%;
-  width: 2.1rem;
-  height: 2.1rem;
-  animation-delay: 0ms;
-}
-
-.race-trail-smoke span:nth-child(2) {
-  right: 28%;
-  width: 1.6rem;
-  height: 1.6rem;
-  animation-delay: 220ms;
-}
-
-.race-trail-smoke span:nth-child(3) {
-  right: 6%;
-  width: 1.2rem;
-  height: 1.2rem;
-  animation-delay: 440ms;
-}
-
-@keyframes smoke-puff-big {
-  0% {
-    opacity: 0.7;
-    transform: translateY(-50%) scale(0.7);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-150%) scale(2.2);
-  }
-}
-
-.race-trail-spark {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 3.4rem;
-  height: 3.8rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.spark-bolt {
-  /* A small blur radius on purpose — stacked this close, anything bigger merges the three bolts'
-     glow into one solid haze that reads as a background panel behind them, not three bolts. */
-  filter: drop-shadow(0 0 1.5px rgb(56 189 248 / 90%));
-  animation: bolt-crackle 260ms steps(1) infinite;
-}
-
-@keyframes bolt-crackle {
-  0%,
-  55% {
-    opacity: 1;
-  }
-  70% {
-    opacity: 0.3;
-  }
-  85% {
-    opacity: 1;
-  }
-  92% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 1;
-  }
-}
-
-/* Three horizontal chevrons blasting backward off the bumper, like speed lines — a static
-   bullseye-style ring (the first cut here) read as a plain circle icon, not a trail in motion. */
-.race-trail-bubbles {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 4.4rem;
-  height: 2.2rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.race-trail-bubbles span {
-  position: absolute;
-  right: 0;
-  width: 1.9rem;
-  height: 1.1rem;
-  background: #7dd3fc;
-  clip-path: polygon(100% 0%, 12% 50%, 100% 100%, 52% 50%);
-  filter: drop-shadow(0 0 8px rgb(125 211 252 / 95%))
-    drop-shadow(2px 0 0 rgb(8 47 73 / 75%));
-  animation: shock-streak 480ms ease-out infinite;
-}
-
-.race-trail-bubbles span:nth-child(1) {
-  top: 4%;
-  animation-delay: 0ms;
-}
-
-.race-trail-bubbles span:nth-child(2) {
-  top: 44%;
-  animation-delay: 140ms;
-  background: #f0f9ff;
-  filter: drop-shadow(0 0 7px rgb(240 249 255 / 95%))
-    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
-}
-
-.race-trail-bubbles span:nth-child(3) {
-  top: 82%;
-  animation-delay: 280ms;
-  background: #38bdf8;
-  filter: drop-shadow(0 0 7px rgb(56 189 248 / 95%))
-    drop-shadow(1.5px 0 0 rgb(8 47 73 / 70%));
-}
-
-@keyframes shock-streak {
-  0% {
-    opacity: 1;
-    transform: translateX(4px) scaleX(0.7);
-  }
-  70% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-14px) scaleX(1.3);
-  }
-}
-
-.race-trail-stars {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 4.2rem;
-  height: 2.4rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.race-trail-stars span {
-  position: absolute;
-  width: 16px;
-  height: 16px;
+/* Meteor shower: four-point pixel stars streaking away, each with a short tail. */
+.trail--stars > span {
+  width: 9px;
+  height: 9px;
   background: #fde68a;
-  box-shadow: 0 0 12px 2px rgb(253 230 138 / 90%);
   clip-path: polygon(
-    50% 0%,
-    61% 35%,
-    98% 35%,
-    68% 57%,
-    79% 91%,
-    50% 70%,
-    21% 91%,
-    32% 57%,
-    2% 35%,
-    39% 35%
+    33% 0,
+    66% 0,
+    66% 33%,
+    100% 33%,
+    100% 66%,
+    66% 66%,
+    66% 100%,
+    33% 100%,
+    33% 66%,
+    0 66%,
+    0 33%,
+    33% 33%
   );
-  animation: meteor-streak 600ms ease-in infinite;
+  filter: drop-shadow(6px 0 0 rgb(253 230 138 / 45%))
+    drop-shadow(6px 0 0 rgb(253 230 138 / 25%));
+  animation: trail-meteor 0.6s steps(6);
 }
 
-.race-trail-stars span:nth-child(1) {
-  top: 5%;
-  left: 75%;
-  animation-delay: 0ms;
+.trail--stars > span:nth-child(even) {
+  background: #f9a8d4;
 }
 
-.race-trail-stars span:nth-child(2) {
-  top: 50%;
-  left: 40%;
-  animation-delay: 160ms;
-  background: #fca5a5;
-  box-shadow: 0 0 12px 2px rgb(252 165 165 / 90%);
-}
-
-.race-trail-stars span:nth-child(3) {
-  top: 20%;
-  left: 5%;
-  animation-delay: 320ms;
-}
-
-@keyframes meteor-streak {
-  0% {
+@keyframes trail-meteor {
+  from {
+    transform: translate(10px, 0) scale(0.5);
     opacity: 0;
-    transform: translateX(8px) scale(0.4) rotate(0deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    transform: translate(-75px, 10px) scale(1.3);
+    opacity: 0;
+  }
+}
+
+/* Plasma bolt: pixel diamonds cycling through the neon colours as they fly off. */
+.trail--rainbow > span {
+  width: 9px;
+  height: 9px;
+  background: #22d3ee;
+  rotate: 45deg;
+  box-shadow: 0 0 8px currentColor;
+  color: #22d3ee;
+  animation: trail-plasma 0.66s steps(6);
+}
+
+@keyframes trail-plasma {
+  0% {
+    transform: translate(0, 0);
+    filter: hue-rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-56px, 56px);
+    filter: hue-rotate(300deg);
+    opacity: 0;
+  }
+}
+
+/* Comet: a long, stepped cyan tail with white sparks peeling off it. */
+.trail--comet {
+  width: 8rem;
+}
+
+.trail--comet::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 100%;
+  height: 8px;
+  translate: 0 -50%;
+  background: linear-gradient(
+    90deg,
+    transparent 0 20%,
+    rgb(34 211 238 / 25%) 20% 45%,
+    rgb(34 211 238 / 55%) 45% 70%,
+    #22d3ee 70% 90%,
+    #ecfeff 90%
+  );
+  box-shadow: 0 0 14px rgb(34 211 238 / 55%);
+  animation: trail-comet 0.18s steps(2) infinite alternate;
+}
+
+.trail--comet > span {
+  width: 3px;
+  height: 3px;
+  top: calc(30% + var(--y) * 0.4%);
+  background: #fff;
+  animation: trail-ember 0.8s steps(8);
+}
+
+@keyframes trail-comet {
+  to {
+    height: 12px;
+  }
+}
+
+/* Cash splash: gold coins spinning out the back in an arc and dropping to the road. */
+.trail--coins > span {
+  width: 9px;
+  height: 9px;
+  background: #facc15;
+  box-shadow:
+    inset -2px -2px 0 #b45309,
+    inset 2px 2px 0 #fef9c3;
+  clip-path: polygon(
+    30% 0,
+    70% 0,
+    100% 30%,
+    100% 70%,
+    70% 100%,
+    30% 100%,
+    0 70%,
+    0 30%
+  );
+  animation: trail-coin 0.9s steps(9);
+}
+
+@keyframes trail-coin {
+  0% {
+    transform: translate(0, 0) scaleX(1);
+    opacity: 1;
   }
   25% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-24px) scale(1.35) rotate(45deg);
-  }
-}
-
-/* Small jagged energy-bolt chips instead of soft dots — same colorful cycle as before, but
-   shaped and glowing like the thunderbolt trail rather than a twinkling sprinkle. */
-.race-trail-rainbow {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  width: 4.2rem;
-  height: 2.2rem;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.race-trail-rainbow span {
-  position: absolute;
-  width: 15px;
-  height: 15px;
-  border-radius: 4px;
-  transform: rotate(45deg);
-  animation: plasma-pulse 500ms ease-in-out infinite;
-}
-
-.race-trail-rainbow span:nth-child(1) {
-  top: 5%;
-  left: 75%;
-  background: #f87171;
-  box-shadow: 0 0 10px 2px rgb(248 113 113 / 85%);
-  animation-delay: 0ms;
-}
-
-.race-trail-rainbow span:nth-child(2) {
-  top: 55%;
-  left: 48%;
-  background: #4ade80;
-  box-shadow: 0 0 10px 2px rgb(74 222 128 / 85%);
-  animation-delay: 110ms;
-}
-
-.race-trail-rainbow span:nth-child(3) {
-  top: 12%;
-  left: 22%;
-  background: #38bdf8;
-  box-shadow: 0 0 10px 2px rgb(56 189 248 / 85%);
-  animation-delay: 220ms;
-}
-
-.race-trail-rainbow span:nth-child(4) {
-  top: 60%;
-  left: 0%;
-  background: #a78bfa;
-  box-shadow: 0 0 10px 2px rgb(167 139 250 / 85%);
-  animation-delay: 330ms;
-}
-
-@keyframes plasma-pulse {
-  0%,
-  100% {
-    opacity: 0.4;
-    transform: rotate(45deg) scale(0.75);
+    transform: translate(-18px, -16px) scaleX(0.2);
   }
   50% {
+    transform: translate(-34px, -20px) scaleX(1);
+  }
+  75% {
+    transform: translate(-50px, -6px) scaleX(0.2);
+  }
+  100% {
+    transform: translate(-64px, 14px) scaleX(1);
+    opacity: 0;
+  }
+}
+
+/* Glitch: RGB-split data blocks tearing off the car and jumping about. */
+.trail--glitch > span {
+  width: calc(var(--s) * 3px);
+  height: calc(var(--s) * 0.5px);
+  background: #ff2fb4;
+  box-shadow:
+    3px 0 0 #22d3ee,
+    -3px 0 0 rgb(255 255 255 / 70%);
+  animation: trail-glitch 0.42s steps(1);
+}
+
+.trail--glitch > span:nth-child(odd) {
+  background: #22d3ee;
+  box-shadow:
+    -3px 0 0 #ff2fb4,
+    3px 0 0 rgb(255 255 255 / 70%);
+}
+
+@keyframes trail-glitch {
+  0% {
+    transform: translateX(-4px);
     opacity: 1;
-    transform: rotate(45deg) scale(1.4);
+  }
+  25% {
+    transform: translateX(-30px) scaleX(1.6);
+  }
+  50% {
+    transform: translateX(-14px);
+    opacity: 0.4;
+  }
+  75% {
+    transform: translateX(-52px) scaleX(0.6);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-70px);
+    opacity: 0;
+  }
+}
+
+/* Inferno: a wall of pixel flames licking up behind the car, over a burning tyre track. */
+.trail--inferno {
+  width: 6.5rem;
+  height: 3.6rem;
+}
+
+.trail--inferno::before {
+  content: '';
+  position: absolute;
+  bottom: 18%;
+  right: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #f97316 60%, #fde047);
+  box-shadow: 0 0 10px #f97316;
+}
+
+.trail--inferno > span {
+  top: auto;
+  bottom: 18%;
+  right: calc(var(--i) * 12%);
+  width: 9px;
+  height: calc(var(--s) * 2.6px);
+  transform-origin: bottom center;
+  background: linear-gradient(
+    to top,
+    #fde047 0 30%,
+    #f97316 30% 65%,
+    #dc2626 65%
+  );
+  box-shadow: 0 0 10px rgb(249 115 22 / 60%);
+  animation: trail-inferno 0.3s steps(3) alternate;
+}
+
+@keyframes trail-inferno {
+  from {
+    transform: scaleY(0.55) translateX(0);
+  }
+  to {
+    transform: scaleY(1.2) translateX(-4px);
+  }
+}
+
+/* Afterimage: neon ghosts of the car itself, strung out behind it and flickering. */
+.trail--afterimage {
+  top: 0;
+  right: auto;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+
+.trail--afterimage > span {
+  top: 0;
+  right: auto;
+  left: calc((var(--i) + 1) * -42%);
+  width: 100%;
+  height: 100%;
+  opacity: calc(0.55 - var(--i) * 0.15);
+  filter: grayscale(1) sepia(1) hue-rotate(140deg) saturate(6) brightness(1.1)
+    drop-shadow(0 0 4px #22d3ee);
+  animation: trail-afterimage 0.2s steps(1);
+}
+
+.trail--afterimage > span:nth-child(2) {
+  filter: grayscale(1) sepia(1) hue-rotate(270deg) saturate(6) brightness(1.1)
+    drop-shadow(0 0 4px #ff2fb4);
+}
+
+/* The ghost cars are plain copies: no bob, glow or headlight of their own. */
+.trail--afterimage .race-car-svg {
+  display: block;
+  width: 100% !important;
+  height: auto;
+  animation: none;
+}
+
+@keyframes trail-afterimage {
+  50% {
+    translate: -3px 0;
   }
 }
 
@@ -1664,20 +1998,15 @@ body::before {
   flex-direction: column;
   justify-content: center;
   min-height: clamp(155px, 22vh, 210px);
-  background: oklch(0.99 0.002 264);
+  /* A night-time dashboard screen under the neon track: the barrier's dark violet, lit from the
+     road above by a faint magenta glow, with a hard pixel bevel along the bottom. */
+  background: linear-gradient(rgb(255 47 180 / 10%), transparent 40%), #120c1c;
   border: none;
-  border-top: 3px solid oklch(0.62 0.2 232);
-  border-left: 2px solid oklch(0.62 0.2 232 / 0.55);
-  border-right: 2px solid oklch(0.62 0.2 232 / 0.55);
-  border-bottom: 2px solid oklch(0.62 0.2 232 / 0.3);
   box-shadow:
-    6px 0 40px oklch(0.62 0.2 232 / 0.32),
-    -6px 0 40px oklch(0.62 0.2 232 / 0.32),
-    0 8px 24px oklch(0.62 0.2 232 / 0.12),
-    inset 6px 0 30px oklch(0.62 0.2 232 / 0.07),
-    inset -6px 0 30px oklch(0.62 0.2 232 / 0.07);
-  color: oklch(0.22 0.015 264);
-  font-family: var(--font-mono);
+    inset 0 -4px 0 rgb(0 0 0 / 40%),
+    inset 0 2px 0 rgb(255 255 255 / 4%);
+  color: #f4ecff;
+  font-family: var(--font-code);
   font-size: 1.5rem;
   line-height: 1.9;
   padding: 1.75rem 2.5rem;
@@ -1699,10 +2028,10 @@ body::before {
 .race-word {
   display: inline-block;
   margin: 0 0 0.35rem 0;
-  border-radius: 4px;
+  border-radius: 0;
 }
 
-/* WordStream (the /guide practice drill) renders its queue directly inside .race-words, which
+/* WordStream (the /practice drill) renders its queue directly inside .race-words, which
    is itself a flex column — without this row wrapper each word span would become its own flex
    item and stack one per line instead of flowing as a single scrolling line of words. */
 .word-stream-track {
@@ -1741,22 +2070,22 @@ body::before {
 }
 
 .race-word-active {
-  color: oklch(0.22 0.015 264);
+  color: #f4ecff;
 }
 
-/* ── Current character — blue keycap, NitroType style ───────────── */
+/* ── Current character — a neon cyan pixel keycap ───────────────── */
 .race-char-current {
-  color: #fff;
-  background: oklch(0.58 0.2 232);
-  border-radius: 3px;
+  color: #0b0614;
+  background: #22d3ee;
+  border-radius: 0;
   /* No padding: the keycap would be wider than every other character, so as it moved along
      each keystroke the rest of the line shifted with it and words near a wrap jumped between
      lines. The first shadow (a 2px spread in the keycap's own color) draws that extra edge
      outside the layout box instead, so the text never moves. */
   box-shadow:
-    0 0 0 2px oklch(0.58 0.2 232),
-    0 3px 0 1px oklch(0.38 0.18 232),
-    0 0 12px 2px oklch(0.58 0.2 232 / 0.45);
+    0 0 0 2px #22d3ee,
+    0 3px 0 1px #0e7490,
+    0 0 14px 2px rgb(34 211 238 / 45%);
 }
 
 /* Error: wrong key — red keycap */
@@ -1770,22 +2099,22 @@ body::before {
 }
 
 .race-word-pending {
-  color: oklch(0.62 0.01 264);
+  color: #8a7ca3;
 }
 .race-char-pending {
-  color: oklch(0.62 0.01 264);
+  color: #8a7ca3;
 }
 .race-word-correct {
-  color: oklch(0.42 0.16 152);
+  color: #4ade80;
 }
 .race-char-correct {
-  color: oklch(0.42 0.16 152);
+  color: #4ade80;
 }
 
 .race-char-incorrect {
   color: var(--color-destructive-foreground);
   background: var(--color-destructive);
-  border-radius: 3px;
+  border-radius: 0;
 }
 
 [data-caret-marker] {
@@ -1803,9 +2132,9 @@ body::before {
   left: -1px;
   width: 2px;
   height: 100%;
-  border-radius: 1px;
-  background: oklch(0.58 0.2 232);
-  box-shadow: 0 0 10px 2px oklch(0.58 0.2 232 / 0.7);
+  border-radius: 0;
+  background: #22d3ee;
+  box-shadow: 0 0 10px 2px rgb(34 211 238 / 70%);
   animation: race-caret-blink 1s step-end infinite;
 }
 
@@ -1856,7 +2185,7 @@ body::before {
   align-items: center;
   justify-content: center;
   border-radius: inherit;
-  background: oklch(0.99 0.002 264 / 75%);
+  background: rgb(18 12 28 / 72%);
   backdrop-filter: blur(4px);
   pointer-events: none;
 }
@@ -1879,25 +2208,23 @@ body::before {
 }
 
 .race-countdown-number {
-  font-family: var(--font-sans);
+  font-family: var(--font-display);
   font-size: clamp(5rem, 16vw, 9rem);
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: -0.03em;
   color: #fff;
+  /* Hard pixel drop shadow in the barrier's neon, plus a glow onto the road. */
   text-shadow:
-    0 0 24px oklch(0.88 0.25 82 / 0.9),
-    0 0 56px oklch(0.88 0.25 82 / 0.55),
-    0 4px 0 oklch(0.45 0.18 82);
+    6px 6px 0 #ff2fb4,
+    0 0 40px rgb(255 47 180 / 55%);
   animation: race-countdown-pop 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .race-countdown-number--go {
-  color: oklch(0.92 0.22 82);
+  color: #facc15;
   text-shadow:
-    0 0 28px oklch(0.88 0.25 82),
-    0 0 64px oklch(0.88 0.25 82 / 0.7),
-    0 4px 0 oklch(0.45 0.18 82);
+    6px 6px 0 #c2410c,
+    0 0 48px rgb(250 204 21 / 60%);
   animation: race-countdown-go 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
@@ -1936,4 +2263,893 @@ body::before {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── Race console: the car's dashboard under the typing screen ──── */
+.race-console {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(rgb(255 255 255 / 3%), transparent 60%), #0d0815;
+  box-shadow: inset 0 2px 0 rgb(255 47 180 / 25%);
+}
+
+/* The equipped power-up as an arcade item box: when ready its frame cycles through the neon
+   colours in hard steps, like a game's ? block; spent, it goes dark. */
+.race-itembox {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  background: #1a1126;
+  border: 3px solid #3a2a4f;
+  box-shadow:
+    inset 0 -4px 0 rgb(0 0 0 / 45%),
+    inset 0 3px 0 rgb(255 255 255 / 8%);
+}
+
+.race-itembox--ready {
+  animation: race-itembox 1.2s steps(1) infinite;
+}
+
+button:not(:disabled):hover .race-itembox--ready {
+  transform: translateY(-2px);
+}
+
+.race-itembox--used {
+  filter: grayscale(1) brightness(0.55);
+}
+
+@keyframes race-itembox {
+  0% {
+    border-color: #ff2fb4;
+    box-shadow:
+      0 0 12px rgb(255 47 180 / 45%),
+      inset 0 -4px 0 rgb(0 0 0 / 45%);
+  }
+  33% {
+    border-color: #22d3ee;
+    box-shadow:
+      0 0 12px rgb(34 211 238 / 45%),
+      inset 0 -4px 0 rgb(0 0 0 / 45%);
+  }
+  66% {
+    border-color: #facc15;
+    box-shadow:
+      0 0 12px rgb(250 204 21 / 45%),
+      inset 0 -4px 0 rgb(0 0 0 / 45%);
+  }
+}
+
+/* A chunky keycap pinned to the item box's corner. */
+.race-keycap {
+  position: absolute;
+  right: -0.7rem;
+  bottom: -0.55rem;
+  padding: 0 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #0b0614;
+  background: #f4ecff;
+  box-shadow:
+    inset 0 -2px 0 #8a7ca3,
+    0 0 0 2px #0d0815;
+}
+
+/* Green-on-black LCD readouts, recessed into the dash. */
+.race-lcd {
+  display: flex;
+  align-items: stretch;
+  background: #050d08;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #1d1528;
+}
+
+.race-lcd > * + * {
+  box-shadow: -2px 0 0 #0f2016;
+}
+
+.race-lcd-value {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  line-height: 1;
+  color: #4ade80;
+  text-shadow: 0 0 8px rgb(74 222 128 / 55%);
+  font-variant-numeric: tabular-nums;
+}
+
+.race-lcd-label {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(74 222 128 / 45%);
+}
+
+/* The car radio: the quote's author is what's "on air". */
+.race-radio {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  background: #07131a;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #1d1528;
+}
+
+/* A tuner scale with a needle sweeping across it. */
+.race-radio-dial {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 1.25rem;
+  background: repeating-linear-gradient(
+      90deg,
+      rgb(165 243 252 / 45%) 0 2px,
+      transparent 2px 6px
+    )
+    0 100% / 100% 5px no-repeat;
+}
+
+.race-radio-dial::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ff2fb4;
+  box-shadow: 0 0 6px #ff2fb4;
+  animation: race-radio-tune 4s steps(8) infinite alternate;
+}
+
+@keyframes race-radio-tune {
+  from {
+    left: 10%;
+  }
+  to {
+    left: 85%;
+  }
+}
+
+@media (max-width: 767px) {
+  .race-console {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+}
+
+/* The finish screen, laid over the typing screen: place, loot, next moves. */
+.race-results {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 2.5rem;
+  padding: 1.25rem 2.5rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.4;
+  letter-spacing: normal;
+  color: #f4ecff;
+  background: linear-gradient(rgb(255 47 180 / 12%), transparent 50%), #120c1c;
+  animation: race-results-in 0.25s steps(4) both;
+}
+
+@keyframes race-results-in {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+/* "Waiting for racers" on a multiplayer finish screen, with a blinking pixel ellipsis. */
+.race-waiting {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8a7ca3;
+  text-align: center;
+}
+
+.race-waiting::after {
+  content: '...';
+  animation: race-caret-blink 1s steps(1) infinite;
+}
+
+/* Things painted on and lying in the road, scrolling past with it (see RoadDecals). */
+.race-road-decals {
+  position: absolute;
+  inset: 12px 0;
+  z-index: 1;
+  pointer-events: none;
+  image-rendering: pixelated;
+}
+
+/* ── Abilities: item box extras ──────────────────────────────────── */
+
+.race-itembox {
+  overflow: hidden;
+}
+
+.race-itembox-q {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #8a7ca3;
+}
+
+/* Chaos recharge: the empty box fills up from the bottom. */
+.race-itembox-charge {
+  position: absolute;
+  inset: auto 0 0;
+  background: repeating-linear-gradient(
+    rgb(255 47 180 / 45%) 0 3px,
+    rgb(255 47 180 / 25%) 3px 6px
+  );
+  transition: height 100ms linear;
+  pointer-events: none;
+}
+
+/* The roulette: faces flick past under a strobing frame. */
+.race-itembox--rolling {
+  animation: race-itembox 0.3s steps(1) infinite;
+}
+
+.race-itembox--rolling svg {
+  animation: race-itembox-flick 0.1s steps(1) infinite;
+}
+
+@keyframes race-itembox-flick {
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* ── Abilities on the track ──────────────────────────────────────── */
+
+/* The ability's icon pops up over each car it touched. */
+.race-ability-pop {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  z-index: 6;
+  transform: translateX(-50%);
+  filter: drop-shadow(2px 2px 0 rgb(0 0 0 / 60%));
+  animation: race-ability-pop 0.9s steps(6) both;
+  pointer-events: none;
+}
+
+@keyframes race-ability-pop {
+  0% {
+    transform: translate(-50%, 10px) scale(0.4);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -6px) scale(1.25);
+    opacity: 1;
+  }
+  75% {
+    transform: translate(-50%, -12px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -22px) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes race-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Ghost: see-through, flickering. */
+.race-car-wrap--ghost {
+  opacity: 0.45;
+  filter: saturate(0.3) brightness(1.4)
+    drop-shadow(0 0 6px rgb(216 180 254 / 80%));
+  animation: race-ghost 0.6s steps(2) infinite;
+}
+
+@keyframes race-ghost {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes race-quake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translate(-5px, 3px);
+  }
+  40% {
+    transform: translate(6px, -2px);
+  }
+  60% {
+    transform: translate(-4px, -3px);
+  }
+  80% {
+    transform: translate(3px, 2px);
+  }
+}
+
+/* What just happened, up in the sky over the track. */
+.race-announcer {
+  display: inline-block;
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #15101f;
+  box-shadow:
+    0 0 0 2px #ff2fb4,
+    0 0 14px rgb(255 47 180 / 45%);
+  animation: race-announce 0.25s steps(3) both;
+}
+
+@keyframes race-announce {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+/* ── How a hit shows on a car (see HIT_EFFECTS) ──────────────────── */
+
+/* Shell: a jolt. */
+.race-car-wrap--shake .race-car-svg {
+  animation: race-quake 0.35s steps(6) 2;
+}
+
+/* Oil: a full spin-out. */
+.race-car-wrap--spin .race-car-svg {
+  animation: race-spin 0.9s steps(8);
+}
+
+@keyframes race-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Nuke: a scorch flash. */
+.race-car-wrap--blast .race-car-svg {
+  animation: race-blast 1.2s steps(6);
+}
+
+@keyframes race-blast {
+  0% {
+    filter: brightness(3) sepia(1);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+/* Overdrive: the car burns hot. */
+.race-car-wrap--overdrive .race-car-svg {
+  filter: drop-shadow(0 0 8px rgb(251 146 60 / 90%)) saturate(1.4);
+  animation: race-overdrive 0.3s steps(2) infinite;
+}
+
+@keyframes race-overdrive {
+  50% {
+    filter: drop-shadow(0 0 3px rgb(250 204 21 / 90%)) saturate(1.2);
+  }
+}
+
+/* Hyperspace: star-streaks stretching away behind the car, like jumping to lightspeed. */
+.trail--hyperspace {
+  width: 9rem;
+}
+
+.trail--hyperspace > span {
+  width: calc(var(--s) * 6px);
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #e0f2fe 70%, #fff);
+  box-shadow: 0 0 4px rgb(186 230 253 / 80%);
+  animation: trail-hyperspace 0.45s steps(5);
+}
+
+.trail--hyperspace > span:nth-child(3n) {
+  background: linear-gradient(90deg, transparent, #a5f3fc 70%, #fff);
+}
+
+@keyframes trail-hyperspace {
+  from {
+    transform: translateX(10px) scaleX(0.2);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-90px) scaleX(1.4);
+    opacity: 0;
+  }
+}
+
+/* Toxic: green acid bubbles rising and popping over a dripping slime track. */
+.trail--toxic::before {
+  content: '';
+  position: absolute;
+  bottom: 22%;
+  right: 0;
+  width: 100%;
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    #4ade80 0 6px,
+    #16a34a 6px 9px,
+    transparent 9px 12px
+  );
+  box-shadow: 0 0 8px rgb(74 222 128 / 60%);
+  -webkit-mask: linear-gradient(90deg, transparent, #000 40%);
+  mask: linear-gradient(90deg, transparent, #000 40%);
+}
+
+.trail--toxic > span {
+  top: auto;
+  bottom: 22%;
+  right: calc(var(--i) * 13%);
+  width: calc(var(--s) * 1px);
+  height: calc(var(--s) * 1px);
+  background: rgb(74 222 128 / 35%);
+  box-shadow:
+    inset 0 0 0 2px #4ade80,
+    inset 2px 2px 0 2px rgb(220 252 231 / 70%),
+    0 0 6px rgb(74 222 128 / 70%);
+  border-radius: 2px;
+  animation: trail-toxic 0.9s steps(6);
+}
+
+@keyframes trail-toxic {
+  0% {
+    transform: translateY(0) scale(0.4);
+    opacity: 1;
+  }
+  80% {
+    transform: translateY(-22px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-26px) scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* Confetti: a party behind the car — chips of every colour tumbling away. */
+.trail--confetti > span {
+  width: 6px;
+  height: 3px;
+  background: #ff2fb4;
+  animation: trail-confetti 0.8s steps(8);
+}
+
+.trail--confetti > span:nth-child(4n + 1) {
+  background: #22d3ee;
+}
+
+.trail--confetti > span:nth-child(4n + 2) {
+  background: #facc15;
+}
+
+.trail--confetti > span:nth-child(4n + 3) {
+  background: #4ade80;
+}
+
+@keyframes trail-confetti {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-36px, -14px) rotate(180deg);
+  }
+  100% {
+    transform: translate(-70px, 16px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Blizzard: pixel snowflakes swirling off the back in an icy mist. */
+.trail--blizzard::before {
+  content: '';
+  position: absolute;
+  top: 25%;
+  right: 0;
+  width: 100%;
+  height: 50%;
+  background: linear-gradient(90deg, transparent, rgb(186 230 253 / 25%));
+}
+
+.trail--blizzard > span {
+  width: 7px;
+  height: 7px;
+  background: #f0f9ff;
+  clip-path: polygon(
+    40% 0,
+    60% 0,
+    60% 40%,
+    100% 40%,
+    100% 60%,
+    60% 60%,
+    60% 100%,
+    40% 100%,
+    40% 60%,
+    0 60%,
+    0 40%,
+    40% 40%
+  );
+  filter: drop-shadow(0 0 2px #bae6fd);
+  animation: trail-blizzard 1s steps(8);
+}
+
+@keyframes trail-blizzard {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(-40px, 8px) rotate(90deg);
+  }
+  100% {
+    transform: translate(-80px, -6px) rotate(180deg);
+    opacity: 0;
+  }
+}
+
+/* Love bomb: pixel hearts floating up and away. */
+.trail--hearts > span {
+  width: 10px;
+  height: 9px;
+  background: #f472b6;
+  clip-path: polygon(
+    0 20%,
+    20% 0,
+    40% 0,
+    50% 20%,
+    60% 0,
+    80% 0,
+    100% 20%,
+    100% 50%,
+    50% 100%,
+    0 50%
+  );
+  filter: drop-shadow(0 0 3px rgb(244 114 182 / 80%));
+  animation: trail-hearts 1s steps(8);
+}
+
+.trail--hearts > span:nth-child(even) {
+  background: #fb7185;
+}
+
+@keyframes trail-hearts {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-60px, -22px) scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* After every trail's own `animation` shorthand (which would reset these): the parts loop
+   forever, staggered so they never move in lockstep. */
+.trail > span {
+  animation-delay: calc(var(--i) * -0.11s);
+  animation-iteration-count: infinite;
+}
+
+/* The Garage's trail previews: your car cruising on a strip of night road, scaled down. */
+.trail-preview {
+  position: relative;
+  align-self: stretch;
+  height: 3.5rem;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(
+        90deg,
+        rgb(255 255 255 / 25%) 0 10px,
+        transparent 10px 24px
+      )
+      0 50% / 100% 2px no-repeat,
+    linear-gradient(#221e2c, #1a1622);
+  box-shadow:
+    inset 0 2px 0 #ff2fb4,
+    inset 0 -2px 0 #ff2fb4;
+}
+
+.trail-preview-car {
+  left: 70%;
+  scale: 0.75;
+}
+
+/* ── Custom pace picker (see PaceDial) ───────────────────────────── */
+
+.pace-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.pace-lcd {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 11rem;
+  padding: 0.75rem 1.5rem 0.5rem;
+  background: #050d08;
+  box-shadow:
+    inset 0 4px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #1d1528;
+}
+
+.pace-lcd-value {
+  font-family: var(--font-display);
+  font-size: 4rem;
+  line-height: 1;
+  color: var(--pace);
+  text-shadow: 0 0 12px color-mix(in oklab, var(--pace) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.pace-bar {
+  position: relative;
+  display: flex;
+  gap: 3px;
+  height: 2.25rem;
+  padding: 4px;
+  background: #0d0815;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #241834;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+
+.pace-bar:focus-visible {
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #ff2fb4;
+}
+
+.pace-seg {
+  flex: 1;
+  background: #1a1126;
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 35%);
+}
+
+.pace-seg--lit {
+  background: var(--seg);
+  box-shadow:
+    inset 0 -3px 0 rgb(0 0 0 / 30%),
+    inset 0 2px 0 rgb(255 255 255 / 25%),
+    0 0 6px color-mix(in oklab, var(--seg) 50%, transparent);
+}
+
+/* Your best, as a flag hanging over the bar. */
+.pace-best {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  translate: -50% 0;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #0b0614;
+  background: #22d3ee;
+  pointer-events: none;
+}
+
+.pace-best::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  translate: -50% 0;
+  width: 2px;
+  height: calc(2.25rem + 2px);
+  background: #22d3ee;
+}
+
+.pace-ticks {
+  position: relative;
+  height: 1rem;
+  margin-top: 4px;
+}
+
+.pace-ticks span {
+  position: absolute;
+  translate: -50% 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #8a7ca3;
+}
+
+.pace-ticks span:first-child {
+  translate: 0 0;
+}
+
+.pace-ticks span:last-child {
+  translate: -100% 0;
+}
+
+/* Text boxes on the play screens (room code, exact pace): a recessed dark LCD field. */
+.play-input {
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  color: #4ade80;
+  background: #050d08;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #241834;
+  outline: none;
+}
+
+.play-input::placeholder {
+  color: rgb(74 222 128 / 30%);
+}
+
+.play-input:focus-visible {
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 60%),
+    0 0 0 2px #ff2fb4;
+}
+
+/* Solo's bot pace "gears" (see SoloPicker): equal cells in a row, each with a pixel bar that
+   climbs a step higher (green → yellow → red) than the one before. */
+.pace-gear {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem 0.4rem 0.6rem;
+  text-align: center;
+  background: var(--color-card);
+  outline: none;
+  transition: background-color 120ms;
+}
+
+.pace-gear:hover {
+  background: var(--color-accent);
+}
+
+.pace-gear:focus-visible {
+  box-shadow: inset 0 0 0 2px #22d3ee;
+}
+
+.pace-gear-bar {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  width: 1.4rem;
+  height: 4.6rem;
+}
+
+.pace-gear-bar > span {
+  flex: 1;
+  background: #1a1126;
+}
+
+.pace-gear-bar > span.is-lit {
+  background: var(--gear);
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 30%);
+}
+
+.pace-gear:hover .pace-gear-bar > span.is-lit {
+  box-shadow:
+    inset 0 -2px 0 rgb(0 0 0 / 30%),
+    0 0 6px color-mix(in oklab, var(--gear) 60%, transparent);
+}
+
+.pace-gear-bar--custom {
+  align-items: center;
+  justify-content: center;
+  width: auto;
+}
+
+.pace-gear-name {
+  display: flex;
+  align-items: center;
+  min-height: 2.1em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.pace-gear-wpm {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--color-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A starry night sky to sit above a PixelSkyline that's shorter than its box: the skyline's own
+   top colour, with scattered pixel stars. */
+.night-sky {
+  background-color: #1a0b2e;
+  background-image:
+    radial-gradient(circle, #fff3e0 1px, transparent 1.5px),
+    radial-gradient(circle, rgb(255 243 224 / 55%) 1px, transparent 1.5px),
+    radial-gradient(circle, rgb(165 243 252 / 45%) 1px, transparent 1.5px),
+    linear-gradient(transparent 55%, #2b0f45);
+  background-size:
+    173px 97px,
+    109px 139px,
+    251px 71px,
+    100% 100%;
+  background-position:
+    23px 11px,
+    71px 53px,
+    137px 31px,
+    0 0;
+}
+
+/* The replay scrubber: a chunky pixel track along the bottom of the dashboard, filled up to the
+   playhead in neon pink, with a square handle. */
+input[type='range'].replay-scrub {
+  display: block;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  appearance: none;
+  background: linear-gradient(90deg, #ff2fb4 var(--fill), #1a1126 var(--fill));
+  box-shadow: inset 0 -3px 0 rgb(0 0 0 / 35%);
+}
+
+input[type='range'].replay-scrub::-webkit-slider-runnable-track {
+  height: 14px;
+  background: transparent;
+}
+
+input[type='range'].replay-scrub::-moz-range-track {
+  height: 14px;
+  background: transparent;
+}
+
+input[type='range'].replay-scrub::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  margin-top: 0;
+  appearance: none;
+  background: #f4ecff;
+  box-shadow: inset 0 -3px 0 #8a7ca3;
+}
+
+input[type='range'].replay-scrub::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 0;
+  border-radius: 0;
+  background: #f4ecff;
+  box-shadow: inset 0 -3px 0 #8a7ca3;
 }

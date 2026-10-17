@@ -21,6 +21,9 @@ export interface ApiRace {
   placement: number
   racerCount: number
   hasReplay: boolean
+  // Only on the POST response: what this race paid, and achievements it newly unlocked.
+  coinsEarned?: number
+  achievements?: Array<{ id: string; reward: number }>
 }
 
 // users.go ProfileStats
@@ -45,6 +48,11 @@ export interface ApiProfile {
   equippedPowerup: string
   races: Array<ApiRace>
   stats: ApiStats
+  coins: number
+  // Paid shop items this player has bought (see #/lib/shop).
+  owned: Array<string>
+  // Ids of every achievement unlocked (and paid) so far.
+  achievements: Array<string>
 }
 
 export interface ApiCosmetics {
@@ -65,6 +73,8 @@ export interface ApiRaceInput {
   passage?: string
   replay?: Array<ReplayEvent>
   dailyDate?: string
+  // Hour (0-23) on the player's clock when they finished — for Early bird / Night owl.
+  localHour?: number
   date?: string // import only
 }
 

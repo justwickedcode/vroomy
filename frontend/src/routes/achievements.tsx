@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
-import { ACHIEVEMENTS } from '#/lib/achievements'
+import { ACHIEVEMENTS, achievementReward } from '#/lib/achievements'
+import Coins from '#/components/ui/Coins'
+import PixelMeter from '#/components/ui/PixelMeter'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { Achievement, AchievementCategory } from '#/lib/achievements'
@@ -10,8 +11,7 @@ export const Route = createFileRoute('/achievements')({
 })
 
 // Declaration order in ACHIEVEMENTS is grouped by category already (Speed, then Endurance,
-// etc.) — this just lists that same order once so the page renders one section per category
-// instead of a flat wall of 20+ chips.
+// etc.) — this just lists that same order once so the page renders one section per category.
 const CATEGORIES: Array<AchievementCategory> = [
   'Speed',
   'Endurance',
@@ -20,12 +20,46 @@ const CATEGORIES: Array<AchievementCategory> = [
   'Timing',
 ]
 
-function AchievementsPage() {
-  const { hydrated, stats, races } = useProfile()
-  const unlockedCount = hydrated
-    ? ACHIEVEMENTS.filter((a) => a.unlocked(stats, races)).length
-    : 0
+const CELL = 'bg-card'
 
+function Badge({
+  achievement,
+  done,
+}: {
+  achievement: Achievement
+  done: boolean
+}) {
+  const { id, icon: Icon, title, detail } = achievement
+  return (
+    <div
+      className={cn(
+        CELL,
+        'flex flex-col items-center gap-2 p-5 text-center',
+        !done && 'opacity-45',
+      )}
+    >
+      <Icon className={cn('size-10', !done && 'grayscale')} />
+      <p className="text-sm font-bold">{title}</p>
+      <p className="text-xs text-muted-foreground">{detail}</p>
+      <Coins
+        amount={achievementReward(id)}
+        prefix={done ? '' : '+'}
+        className={cn(
+          'mt-auto text-xs',
+          done ? 'text-muted-foreground' : 'text-signal',
+        )}
+      />
+    </div>
+  )
+}
+
+function AchievementsPage() {
+  const { hydrated, achievements } = useProfile()
+  const unlocked = hydrated ? achievements : []
+  const earned = ACHIEVEMENTS.filter((a) => unlocked.includes(a.id)).reduce(
+    (sum, a) => sum + achievementReward(a.id),
+    0,
+  )
   const byCategory = new Map<AchievementCategory, Array<Achievement>>()
   for (const achievement of ACHIEVEMENTS) {
     const list = byCategory.get(achievement.category) ?? []
@@ -34,61 +68,56 @@ function AchievementsPage() {
   }
 
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Achievements.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {unlockedCount} of {ACHIEVEMENTS.length} unlocked
-          </p>
-        </div>
-
-        <Card className="rise-in overflow-hidden">
-          {CATEGORIES.map((category, i) => (
-            <div key={category}>
-              {i > 0 && <div className="glass-divider" />}
-              <CardHeader className="py-5">
-                <p className="kicker">{category}</p>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 gap-3 pt-0 pb-6 sm:grid-cols-2">
-                {(byCategory.get(category) ?? []).map(
-                  ({ icon: Icon, title, detail, unlocked }) => {
-                    const done = hydrated && unlocked(stats, races)
-                    return (
-                      <div
-                        key={title}
-                        className={cn(
-                          'glass-chip flex items-start gap-3 rounded-xl p-4 transition-opacity',
-                          !done && 'opacity-50',
-                        )}
-                      >
-                        <Icon
-                          className={cn(
-                            'size-6 shrink-0',
-                            done ? 'text-primary' : 'text-muted-foreground',
-                          )}
-                          strokeWidth={2}
-                        />
-                        <div>
-                          <p className="text-sm font-bold">{title}</p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {detail}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  },
-                )}
-              </CardContent>
+    <main className="flex flex-1 flex-col px-4 py-8 sm:py-10">
+      <div className="page-wrap flex flex-1 flex-col">
+        {/* One connected panel, like the dashboard: progress up top, then a grid of badges per
+            category whose cells share single dividing lines. */}
+        <div className="rise-in px-corners grid flex-1 content-start gap-[2px] border-2 border-border bg-border">
+          <div className={cn(CELL, 'grid gap-4 p-5 sm:grid-cols-[1fr_auto]')}>
+            <div className="flex flex-col gap-3">
+              <p className="kicker">Achievements</p>
+              <p className="font-display text-4xl leading-none">
+                {unlocked.length}
+                <span className="text-xl text-muted-foreground">
+                  /{ACHIEVEMENTS.length}
+                </span>
+              </p>
+              <PixelMeter
+                frac={unlocked.length / ACHIEVEMENTS.length}
+                segments={ACHIEVEMENTS.length}
+                className="gap-[2px]"
+              />
             </div>
-          ))}
-        </Card>
+            <div className="flex flex-col gap-2 sm:items-end">
+              <p className="kicker">Earned</p>
+              <Coins amount={earned} className="text-2xl text-signal" />
+            </div>
+          </div>
+
+          {CATEGORIES.map((category) => {
+            const list = byCategory.get(category) ?? []
+            const done = list.filter((a) => unlocked.includes(a.id)).length
+            return (
+              <section key={category} className={cn(CELL, 'p-5')}>
+                <div className="mb-3 flex items-baseline justify-between">
+                  <p className="kicker">{category}</p>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {done}/{list.length}
+                  </span>
+                </div>
+                <div className="px-corners grid grid-cols-2 border-2 border-border sm:grid-cols-3 lg:grid-cols-4 [&>*]:shadow-[0_0_0_1px_var(--color-border)]">
+                  {list.map((achievement) => (
+                    <Badge
+                      key={achievement.id}
+                      achievement={achievement}
+                      done={unlocked.includes(achievement.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )
+          })}
+        </div>
       </div>
     </main>
   )

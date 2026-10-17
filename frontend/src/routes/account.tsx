@@ -1,94 +1,74 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { LogIn, LogOut, UserRound } from 'lucide-react'
+import { LogIn, LogOut } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import PixelSkyline from '#/components/typing/PixelSkyline'
+import { PlayPanel, StartButton } from '#/components/play/PlayKit'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 
 export const Route = createFileRoute('/account')({ component: AccountPage })
 
+// One connected panel like the rest of the app: the skyline as a banner, then who you are (or
+// the way in).
 function AccountPage() {
   const { user, loaded } = useCurrentUser()
 
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Account.
-          </h1>
-        </div>
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+      <div className="page-wrap rise-in max-w-2xl">
+        <PlayPanel>
+          <div className="relative">
+            <PixelSkyline className="h-32 sm:h-40" />
+            <h1 className="absolute top-4 left-5 font-display text-3xl uppercase [text-shadow:3px_3px_0_#1a0b2e]">
+              Account
+            </h1>
+          </div>
 
-        {!loaded ? (
-          <Card className="rise-in overflow-hidden">
-            <CardContent className="flex items-center gap-4 pt-6 pb-6">
-              <div className="size-16 animate-pulse rounded-full bg-secondary/40" />
-              <div className="flex-1 space-y-2">
-                <div className="h-4 w-32 animate-pulse rounded bg-secondary/40" />
-                <div className="h-3 w-48 animate-pulse rounded bg-secondary/40" />
-              </div>
-            </CardContent>
-          </Card>
-        ) : user ? (
-          <Card className="rise-in overflow-hidden">
-            <CardContent className="flex flex-col items-center gap-4 pt-10 pb-8 text-center sm:flex-row sm:items-center sm:text-left">
+          {!loaded ? (
+            <div className="h-24 animate-pulse bg-card" />
+          ) : user ? (
+            <div className="flex flex-col items-center gap-4 bg-card p-5 text-center sm:flex-row sm:text-left">
               {user.avatarUrl ? (
                 <img
                   src={user.avatarUrl}
                   alt=""
-                  className="size-16 shrink-0 rounded-full"
+                  className="px-corners size-16 shrink-0"
                 />
               ) : (
-                <span className="flex size-16 shrink-0 items-center justify-center rounded-full bg-secondary text-xl font-semibold">
+                <span className="px-corners flex size-16 shrink-0 items-center justify-center bg-secondary font-display text-2xl">
                   {(user.name ?? '?').charAt(0).toUpperCase()}
                 </span>
               )}
-              <div className="min-w-0">
-                <p className="truncate text-xl font-bold">
-                  {user.name ?? 'Account'}
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-display text-2xl uppercase">
+                  {user.name ?? 'Racer'}
                 </p>
                 {user.email && (
-                  <p className="truncate text-sm text-muted-foreground">
+                  <p className="truncate font-mono text-xs text-muted-foreground">
                     {user.email}
                   </p>
                 )}
               </div>
-            </CardContent>
-
-            <div className="glass-divider" />
-
-            <CardContent className="flex justify-center pt-6 pb-6 sm:justify-start">
               <Button asChild variant="outline">
                 <a href="/logout">
-                  <LogOut className="size-4" />
+                  <LogOut />
                   Log out
                 </a>
               </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="rise-in overflow-hidden text-center">
-            <CardHeader className="items-center py-10">
-              <UserRound className="mb-2 size-8 text-muted-foreground" />
-              <p className="font-semibold">Not logged in</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Log in to keep your stats, cosmetics, and race history tied
-                to your account.
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-4 bg-card p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                Log in to keep your races, coins and garage on every device.
               </p>
-            </CardHeader>
-            <CardContent className="pb-10">
-              <Button asChild>
+              <StartButton asChild className="sm:w-80">
                 <a href="/login">
-                  <LogIn className="size-4" />
+                  <LogIn />
                   Log in
                 </a>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+              </StartButton>
+            </div>
+          )}
+        </PlayPanel>
       </div>
     </main>
   )

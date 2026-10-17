@@ -38,6 +38,7 @@ type clientMessage struct {
 	Type      string `json:"type"`
 	WordIndex int    `json:"wordIndex,omitempty"`
 	ElapsedMs int64  `json:"elapsedMs,omitempty"`
+	Powerup   string `json:"powerup,omitempty"`
 }
 
 // Client wraps one race WebSocket connection. Reading and writing to a single *websocket.Conn

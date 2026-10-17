@@ -47,6 +47,7 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 	mux.HandleFunc("PUT /api/users/me/cosmetics", handlePutCosmetics(pool))
 	mux.HandleFunc("POST /api/users/me/races", handlePostRace(pool))
 	mux.HandleFunc("POST /api/users/me/races/import", handlePostRacesImport(pool))
+	mux.HandleFunc("POST /api/users/me/purchases", handlePurchase(pool))
 	mux.HandleFunc("GET /api/users/me/daily", handleGetMyDaily(pool))
 	mux.HandleFunc("POST /api/users/me/daily/import", handleImportDaily(pool))
 	mux.HandleFunc("GET /api/users/me/friends", handleGetFriends(pool))

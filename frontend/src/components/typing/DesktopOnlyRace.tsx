@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Monitor } from 'lucide-react'
+import { ArrowLeft, Monitor } from '#/components/ui/icons'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Button } from '#/components/ui/button'
 import { Badge } from '#/components/ui/badge'
@@ -14,7 +14,7 @@ export default function DesktopOnlyRace() {
       <div className="page-wrap max-w-xl">
         <Card className="rise-in overflow-hidden text-center">
           <CardHeader className="items-center py-10">
-            <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+            <span className="mb-3 flex size-12 items-center justify-center px-corners bg-secondary text-muted-foreground">
               <Monitor className="size-5" />
             </span>
             <Badge variant="outline" className="mb-3">
@@ -23,10 +23,6 @@ export default function DesktopOnlyRace() {
             <h1 className="text-xl font-extrabold tracking-tight">
               Racing needs a bigger screen.
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The race track and keyboard-driven typing are built for a laptop or desktop. Grab
-              a bigger screen to race — your garage and stats are still here on mobile.
-            </p>
           </CardHeader>
           <CardContent className="pb-8">
             <Button variant="outline" asChild>

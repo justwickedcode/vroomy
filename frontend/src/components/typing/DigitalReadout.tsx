@@ -13,7 +13,9 @@ export default function DigitalReadout({
   size?: 'lg'
 }) {
   return (
-    <div className={cn('digital-readout', size === 'lg' && 'digital-readout--lg')}>
+    <div
+      className={cn('digital-readout', size === 'lg' && 'digital-readout--lg')}
+    >
       <span className="gauge-value">{value}</span>
       <span className="gauge-label">{label}</span>
     </div>

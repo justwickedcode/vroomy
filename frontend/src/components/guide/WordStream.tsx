@@ -93,7 +93,7 @@ export default function WordStream({
   return (
     <button
       type="button"
-      className="race-words relative block w-full cursor-text rounded-lg p-5 text-left"
+      className="race-words relative block w-full cursor-text p-5 text-left"
       onClick={() => inputRef.current?.focus()}
     >
       <div className="word-stream-track">

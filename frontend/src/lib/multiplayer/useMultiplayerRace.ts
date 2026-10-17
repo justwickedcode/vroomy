@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { computeWordSpans } from '#/lib/typing/useTypingRace'
 import { useReplayRecorder } from '#/lib/replay/recorder'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import {
+  ABILITY_RECHARGE_MS,
+  OVERDRIVE_MAX_WORDS,
+  OVERDRIVE_MS,
+  SLIPSTREAM_MAX_WORDS,
+} from '#/lib/powerups'
+import type { PowerupKind } from '#/lib/powerups'
 
 // Talks to backend/ws (a separate Go service — see backend/ws/README.md) over a raw WebSocket,
 // not fetch/TanStack Query: this is a stateful, long-lived, server-pushed session (matchmaking,
@@ -12,6 +19,20 @@ const TICK_MS = 100
 // Below this, elapsed time is too noisy to extrapolate into a per-minute rate — matches
 // useTypingRace's own threshold, since both feed the same Gauge display.
 const MIN_ELAPSED_FOR_WPM_MS = 1500
+
+// Classic rooms are pure typing; powerup rooms let each player fire their equipped powerup once
+// per race. Players are only ever matched with others who picked the same (see backend/ws's
+// lobbyMode).
+export type LobbyMode = 'classic' | 'powerups'
+
+// A powerup someone in the room fired, as the server announced it. `key` is unique per event so
+// the race view can replay the effect even when the same kind fires twice in a row.
+export interface PowerupEvent {
+  key: number
+  playerId: string
+  powerup: PowerupKind
+  targets: Array<string>
+}
 
 export type MultiplayerPhase =
   | 'connecting'
@@ -64,6 +85,9 @@ interface ServerMessage {
   results?: Array<RaceResult>
   message?: string
   players?: Array<{ playerId: string; name?: string }>
+  mode?: LobbyMode
+  powerup?: PowerupKind
+  targets?: Array<string>
 }
 
 function namesFrom(
@@ -92,7 +116,7 @@ export function useMultiplayerRace() {
   const [code, setCode] = useState<string | null>(null)
   const [playersInRoom, setPlayersInRoom] = useState(0)
   const [minPlayers, setMinPlayers] = useState(2)
-  const [maxPlayers, setMaxPlayers] = useState(6)
+  const [maxPlayers, setMaxPlayers] = useState(5)
   const [quote, setQuote] = useState<MultiplayerQuote | null>(null)
   const [wordCount, setWordCount] = useState(0)
   const [startsInMs, setStartsInMs] = useState(0)
@@ -108,6 +132,13 @@ export function useMultiplayerRace() {
   // How many players the race started with — the "of N" in a recorded placement. Fixed at
   // race_start, unlike playersInRoom, so a mid-race disconnect doesn't change it.
   const [racerCount, setRacerCount] = useState(0)
+  const [mode, setMode] = useState<LobbyMode>('classic')
+  // When we last fired our ability (null: not yet this race); it recharges after
+  // ABILITY_RECHARGE_MS, which backend/ws enforces too.
+  const [powerupUsedAt, setPowerupUsedAt] = useState<number | null>(null)
+  const [clock, setClock] = useState(() => Date.now())
+  const [lastPowerup, setLastPowerup] = useState<PowerupEvent | null>(null)
+  const powerupKeyRef = useRef(0)
   // Set the instant our own player_finished arrives — before race_end, which waits for every
   // still-connected player to finish (or the 5-minute cap). Our own rank is already final the
   // moment we cross the line; there's no reason to make the UI sit blank until race_end just
@@ -240,6 +271,52 @@ export function useMultiplayerRace() {
     }
   }
 
+  // Boost/nitro: commits the next `count` words as if typed, exactly like useTypingRace's
+  // skipWord. Read through a ref by the socket handler, which outlives any single render.
+  const skipWords = (count: number) => {
+    if (finished || text.length === 0) return
+    const targetIndex = Math.min(activeWordIndex + count - 1, spans.length - 1)
+    const word = spans[targetIndex]
+    const isLast = targetIndex >= spans.length - 1
+    const committed = text.slice(0, word.end) + (isLast ? '' : ' ')
+    setTyped(committed)
+    if (startedAt) recorder.record(startedAt, committed.length, false)
+    if (isLast) {
+      setFinishedAt(Date.now())
+    } else {
+      setWordIndex(targetIndex + 1)
+    }
+  }
+  const skipWordsRef = useRef(skipWords)
+  skipWordsRef.current = skipWords
+  // Overdrive (see #/lib/powerups): each word we finish ourselves carries us one further, for a
+  // while. `landedOn` is where our own bonus skip landed, so it doesn't chain on itself.
+  const overdriveRef = useRef({ until: 0, left: 0, landedOn: -1 })
+  const lastWordRef = useRef(activeWordIndex)
+  useEffect(() => {
+    const prev = lastWordRef.current
+    lastWordRef.current = activeWordIndex
+    const od = overdriveRef.current
+    if (activeWordIndex <= prev || activeWordIndex === od.landedOn) return
+    if (od.left <= 0 || Date.now() > od.until) return
+    od.left -= 1
+    od.landedOn = activeWordIndex + 1
+    skipWordsRef.current(1)
+  }, [activeWordIndex])
+
+  const slipstreamWordsRef = useRef((): number => 1)
+  slipstreamWordsRef.current = () => {
+    const ahead = Object.values(opponents)
+      .filter((o): o is Opponent => o !== undefined && !o.finished)
+      .map((o) => o.wordIndex)
+      .filter((w) => w > activeWordIndex)
+    if (ahead.length === 0) return 1
+    return Math.min(
+      SLIPSTREAM_MAX_WORDS,
+      Math.max(1, Math.min(...ahead) - activeWordIndex),
+    )
+  }
+
   const socketRef = useRef<WebSocket | null>(null)
   const finishSentRef = useRef(false)
   // ws.onmessage is a long-lived closure set up once per connection — reading React state
@@ -266,6 +343,10 @@ export function useMultiplayerRace() {
     setOpponents({})
     setNames({})
     setRacerCount(0)
+    setMode('classic')
+    setPowerupUsedAt(null)
+    setLastPowerup(null)
+    overdriveRef.current = { until: 0, left: 0, landedOn: -1 }
     setResults(null)
     setMyResult(null)
     setErrorMessage(null)
@@ -335,15 +416,33 @@ export function useMultiplayerRace() {
             break
           case 'waiting':
             if (msg.players) setNames(namesFrom(msg.players))
+            if (msg.mode) setMode(msg.mode)
             setCode(msg.code || null)
             setPlayersInRoom(msg.playersInRoom ?? 0)
             setMinPlayers(msg.minPlayers ?? 2)
-            setMaxPlayers(msg.maxPlayers ?? 6)
+            setMaxPlayers(msg.maxPlayers ?? 5)
             break
           case 'race_start':
             if (msg.players) {
-              setNames(namesFrom(msg.players))
-              setRacerCount(msg.players.length)
+              const players = msg.players
+              setNames(namesFrom(players))
+              setRacerCount(players.length)
+              // Everyone in the room gets a car on the grid now, at the line, before the quote
+              // shows — not only once their first progress update arrives.
+              setOpponents((prev) => {
+                const next = { ...prev }
+                for (const player of players) {
+                  const id = player.playerId
+                  if (id === myIdRef.current || next[id]) continue
+                  next[id] = {
+                    id,
+                    wordIndex: 0,
+                    finished: false,
+                    left: false,
+                  }
+                }
+                return next
+              })
             }
             if (msg.quote) setQuote(msg.quote)
             setWordCount(msg.wordCount ?? 0)
@@ -405,6 +504,41 @@ export function useMultiplayerRace() {
               return { ...prev, [msg.playerId!]: { ...existing, left: true } }
             })
             break
+          case 'powerup_used': {
+            if (!msg.playerId || !msg.powerup) break
+            powerupKeyRef.current += 1
+            const fired: PowerupEvent = {
+              key: powerupKeyRef.current,
+              playerId: msg.playerId,
+              powerup: msg.powerup,
+              targets: msg.targets ?? [],
+            }
+            setLastPowerup(fired)
+            if (msg.playerId === myIdRef.current) {
+              setPowerupUsedAt(Date.now())
+              // Applied here, once the server has confirmed it (see useSoloPowerups for the
+              // same abilities in solo).
+              switch (msg.powerup) {
+                case 'boost':
+                  skipWordsRef.current(1)
+                  break
+                case 'nitro':
+                  skipWordsRef.current(2)
+                  break
+                case 'slipstream':
+                  skipWordsRef.current(slipstreamWordsRef.current())
+                  break
+                case 'overdrive':
+                  overdriveRef.current = {
+                    until: Date.now() + OVERDRIVE_MS,
+                    left: OVERDRIVE_MAX_WORDS,
+                    landedOn: -1,
+                  }
+                  break
+              }
+            }
+            break
+          }
           case 'race_end':
             setResults(msg.results ?? [])
             setPhase('finished')
@@ -432,8 +566,37 @@ export function useMultiplayerRace() {
     [resetRoomState],
   )
 
-  const quickMatch = useCallback(() => connect('/ws/race'), [connect])
-  const createRoom = useCallback(() => connect('/ws/private/create'), [connect])
+  const quickMatch = useCallback(
+    (lobby: LobbyMode) => connect(`/ws/race?mode=${lobby}`),
+    [connect],
+  )
+  const createRoom = useCallback(
+    (lobby: LobbyMode) => connect(`/ws/private/create?mode=${lobby}`),
+    [connect],
+  )
+
+  // Fires our equipped powerup. Nothing happens locally until the server confirms it with
+  // powerup_used (handled above) — that's what enforces once per race, and it means a boost
+  // and the freeze it might trigger elsewhere always line up.
+  // Ticks while our ability recharges, so the item box fills up smoothly.
+  useEffect(() => {
+    if (powerupUsedAt === null || phase !== 'racing') return
+    const id = setInterval(() => setClock(Date.now()), 100)
+    return () => clearInterval(id)
+  }, [powerupUsedAt, phase])
+  const powerupCharge =
+    powerupUsedAt === null
+      ? 1
+      : Math.min(1, (clock - powerupUsedAt) / ABILITY_RECHARGE_MS)
+  const powerupReady = powerupCharge >= 1
+
+  const firePowerup = useCallback(
+    (kind: PowerupKind) => {
+      if (!powerupReady || phase !== 'racing' || finished) return
+      send({ type: 'powerup', powerup: kind })
+    },
+    [powerupReady, phase, finished, send],
+  )
   const joinRoom = useCallback(
     (joinCode: string) =>
       connect(
@@ -494,6 +657,11 @@ export function useMultiplayerRace() {
     myResult,
     names,
     racerCount,
+    mode,
+    powerupReady,
+    powerupCharge,
+    lastPowerup,
+    firePowerup,
     errorMessage,
     quickMatch,
     createRoom,

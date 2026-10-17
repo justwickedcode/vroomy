@@ -22,9 +22,10 @@ import {
   Trophy,
   Wind,
   Zap,
-} from 'lucide-react'
+} from '#/components/ui/icons'
+import REWARDS from '#/lib/shop/achievement_rewards.json'
 import type { ProfileStats, RaceRecord } from '#/lib/profile/useProfile'
-import type { LucideIcon } from 'lucide-react'
+import type { IconComponent } from '#/components/ui/icons'
 
 export type AchievementCategory =
   | 'Speed'
@@ -34,7 +35,10 @@ export type AchievementCategory =
   | 'Timing'
 
 export interface Achievement {
-  icon: LucideIcon
+  // Stable id — what the server records and pays for (backend/api/achievements.go mirrors these
+  // rules by id).
+  id: string
+  icon: IconComponent
   title: string
   detail: string
   category: AchievementCategory
@@ -48,15 +52,10 @@ function lastThree(races: Array<RaceRecord>) {
   return races.length >= 3 ? races.slice(0, 3) : null
 }
 
-// Shared by every cosmetic/gameplay catalog that gates an item behind an achievement (vehicles,
-// underglow, trails, powerups — see their requiresAchievement fields) so they all check
-// unlock state the same way rather than each re-deriving it.
-export function isAchievementUnlocked(
-  title: string,
-  stats: ProfileStats,
-  races: Array<RaceRecord>,
-): boolean {
-  return ACHIEVEMENTS.some((a) => a.title === title && a.unlocked(stats, races))
+// Coins each achievement pays, once — an identical copy lives in backend/api (a Go test keeps
+// them in sync). Logged-in players are paid by the server; guests by useProfile.
+export function achievementReward(id: string): number {
+  return (REWARDS as Record<string, number | undefined>)[id] ?? 0
 }
 
 // Single source of truth — the achievements page and the dashboard teaser both evaluate this
@@ -66,6 +65,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   // ── Speed — wpm milestones, easiest to hardest ─────────────────────────
   {
     icon: Rocket,
+    id: 'first-lap',
     title: 'First lap',
     detail: 'Finish your first race.',
     category: 'Speed',
@@ -73,6 +73,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Wind,
+    id: 'getting-warmed-up',
     title: 'Getting warmed up',
     detail: 'Hit 30 wpm in a race.',
     category: 'Speed',
@@ -80,6 +81,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Zap,
+    id: 'speed-demon',
     title: 'Speed demon',
     detail: 'Hit 60 wpm in a race.',
     category: 'Speed',
@@ -87,6 +89,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Gauge,
+    id: 'highway-cruiser',
     title: 'Highway cruiser',
     detail: 'Hit 80 wpm in a race.',
     category: 'Speed',
@@ -94,6 +97,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Flame,
+    id: 'century-club',
     title: 'Century club',
     detail: 'Hit 100 wpm in a race.',
     category: 'Speed',
@@ -101,6 +105,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Rabbit,
+    id: 'turbocharged',
     title: 'Turbocharged',
     detail: 'Hit 120 wpm in a race.',
     category: 'Speed',
@@ -108,6 +113,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Sparkles,
+    id: 'nitro-boost',
     title: 'Nitro boost',
     detail: 'Hit 150 wpm in a race.',
     category: 'Speed',
@@ -115,6 +121,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: TrendingUp,
+    id: 'ludicrous-speed',
     title: 'Ludicrous speed',
     detail: 'Hit 200 wpm in a race.',
     category: 'Speed',
@@ -124,6 +131,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   // ── Endurance — lifetime race count ─────────────────────────────────
   {
     icon: Award,
+    id: 'marathoner',
     title: 'Marathoner',
     detail: 'Run 10 races.',
     category: 'Endurance',
@@ -131,6 +139,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Route,
+    id: 'road-warrior',
     title: 'Road warrior',
     detail: 'Run 25 races.',
     category: 'Endurance',
@@ -138,6 +147,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: CalendarClock,
+    id: 'daily-driver',
     title: 'Daily driver',
     detail: 'Run 50 races.',
     category: 'Endurance',
@@ -145,6 +155,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: MapPin,
+    id: 'long-hauler',
     title: 'Long hauler',
     detail: 'Run 100 races.',
     category: 'Endurance',
@@ -152,6 +163,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Milestone,
+    id: 'odometer',
     title: 'Odometer',
     detail: 'Run 250 races.',
     category: 'Endurance',
@@ -161,6 +173,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   // ── Precision — accuracy ─────────────────────────────────────────────
   {
     icon: Target,
+    id: 'sharpshooter',
     title: 'Sharpshooter',
     detail: 'Finish a race with 100% accuracy.',
     category: 'Precision',
@@ -168,6 +181,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Crosshair,
+    id: 'steady-hands',
     title: 'Steady hands',
     detail: 'Keep 95%+ average accuracy over at least 5 races.',
     category: 'Precision',
@@ -175,6 +189,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: CheckCheck,
+    id: 'flawless-streak',
     title: 'Flawless streak',
     detail: 'Finish 3 races in a row with 100% accuracy.',
     category: 'Precision',
@@ -187,6 +202,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   // ── Podium — placement ────────────────────────────────────────────────
   {
     icon: Medal,
+    id: 'on-the-podium',
     title: 'On the podium',
     detail: 'Finish 1st, 2nd, or 3rd.',
     category: 'Podium',
@@ -194,6 +210,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Flag,
+    id: 'checkered-flag',
     title: 'Checkered flag',
     detail: 'Win a race outright.',
     category: 'Podium',
@@ -201,6 +218,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Crown,
+    id: 'hat-trick',
     title: 'Hat trick',
     detail: 'Win 3 races.',
     category: 'Podium',
@@ -208,6 +226,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Swords,
+    id: 'giant-slayer',
     title: 'Giant slayer',
     detail: 'Win a race against at least 4 other racers.',
     category: 'Podium',
@@ -216,6 +235,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Trophy,
+    id: 'win-streak',
     title: 'Win streak',
     detail: 'Win 3 races in a row.',
     category: 'Podium',
@@ -228,6 +248,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   // ── Timing — when you raced, not how well ────────────────────────────
   {
     icon: Sunrise,
+    id: 'early-bird',
     title: 'Early bird',
     detail: 'Finish a race before 7am.',
     category: 'Timing',
@@ -236,6 +257,7 @@ export const ACHIEVEMENTS: Array<Achievement> = [
   },
   {
     icon: Moon,
+    id: 'night-owl',
     title: 'Night owl',
     detail: 'Finish a race between midnight and 4am.',
     category: 'Timing',

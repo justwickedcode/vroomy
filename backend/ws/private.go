@@ -33,7 +33,7 @@ func newPrivateRooms(pool *pgxpool.Pool) *privateRooms {
 // early start — see Room.handleStart), and returns the room and its freshly-generated share
 // code. The caller is responsible for actually adding host to the returned room (see
 // handleCreatePrivateRoom) — create only reserves the code and builds the room.
-func (p *privateRooms) create(host *Client) (*Room, string) {
+func (p *privateRooms) create(host *Client, mode lobbyMode) (*Room, string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -45,7 +45,7 @@ func (p *privateRooms) create(host *Client) (*Room, string) {
 		}
 	}
 
-	room := newRoom(code, p.pool)
+	room := newRoom(code, mode, p.pool)
 	room.code = code
 	room.host = host
 	room.onClosed = func() { p.remove(code) }

@@ -1,18 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Pause, Play, RotateCcw } from 'lucide-react'
+import { Pause, Play, RotateCcw } from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
-import Gauge from '#/components/typing/Gauge'
-import DigitalReadout from '#/components/typing/DigitalReadout'
 import { computeWordSpans } from '#/lib/typing/useTypingRace'
 import { frameAt } from '#/lib/replay/playback'
 import { cn } from '#/lib/utils'
+import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
 import type { TrailVariant } from '#/lib/trails'
 import type { ReplayData } from '#/lib/api/types'
 
-const WPM_GAUGE_MAX = 130
 const SPEEDS = [1, 2, 4] as const
 
 function formatTime(ms: number) {
@@ -23,6 +21,23 @@ function formatTime(ms: number) {
 }
 
 const noop = () => {}
+
+function Lcd({
+  value,
+  label,
+  big,
+}: {
+  value: string | number
+  label: string
+  big?: boolean
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center px-4 py-1.5">
+      <span className={cn('race-lcd-value', big && 'text-3xl')}>{value}</span>
+      <span className="race-lcd-label">{label}</span>
+    </div>
+  )
+}
 
 // Plays a recorded race back through the same RaceTrack/TypingWords/Gauge components the live
 // race uses, so a replay looks exactly like the run did — driven by a clock instead of a
@@ -104,6 +119,7 @@ export default function ReplayPlayer({
           },
         ]}
         phase="ready"
+        epic
         className="flex-shrink-0"
       />
 
@@ -119,60 +135,57 @@ export default function ReplayPlayer({
         className="pointer-events-none shrink-0"
       />
 
-      <div className="flex flex-col gap-4 p-4">
-        <input
-          type="range"
-          min={0}
-          max={duration}
-          step={10}
-          value={t}
-          onChange={(e) => {
-            tRef.current = Number(e.target.value)
-            setT(tRef.current)
-          }}
-          className="w-full accent-primary"
-          aria-label="Replay position"
-        />
-
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={togglePlay}>
-              {playing ? <Pause /> : done ? <RotateCcw /> : <Play />}
-              {playing ? 'Pause' : done ? 'Replay' : 'Play'}
-            </Button>
-            <div className="flex gap-1 rounded-lg border border-border bg-secondary/30 p-1">
-              {SPEEDS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSpeed(s)}
-                  className={cn(
-                    'rounded-md px-2 py-1 text-xs font-semibold tabular-nums',
-                    speed === s
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {s}×
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Gauge label="wpm" value={frame.wpm} max={WPM_GAUGE_MAX} />
-            <Gauge
-              label="accuracy"
-              value={finalAccuracy}
-              max={100}
-              suffix="%"
-            />
-            <DigitalReadout
-              label="time"
-              value={`${formatTime(t)} / ${formatTime(duration)}`}
-            />
+      {/* The dashboard, as in a race: transport controls, the LCD readouts, and a pixel
+          scrubber along the bottom. */}
+      <div className="race-console">
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={togglePlay}>
+            {playing ? <Pause /> : done ? <RotateCcw /> : <Play />}
+            {playing ? 'Pause' : done ? 'Replay' : 'Play'}
+          </Button>
+          <div className="flex gap-[2px] border-2 border-border bg-border">
+            {SPEEDS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSpeed(s)}
+                className={cn(
+                  'px-2.5 py-1 font-mono text-xs font-semibold tabular-nums',
+                  speed === s
+                    ? 'bg-[#2a1238] text-foreground shadow-[inset_0_-2px_0_#ff2fb4]'
+                    : 'bg-card text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {s}×
+              </button>
+            ))}
           </div>
         </div>
+        <div className="race-lcd">
+          <Lcd value={frame.wpm} label="wpm" big />
+          <Lcd value={`${finalAccuracy}%`} label="acc" />
+          <Lcd value={formatTime(t)} label="time" />
+        </div>
+        <span className="text-right font-mono text-xs text-muted-foreground">
+          {formatTime(duration)}
+        </span>
       </div>
+      <input
+        type="range"
+        min={0}
+        max={duration}
+        step={10}
+        value={t}
+        onChange={(e) => {
+          tRef.current = Number(e.target.value)
+          setT(tRef.current)
+        }}
+        className="replay-scrub"
+        style={
+          { '--fill': `${(t / Math.max(duration, 1)) * 100}%` } as CSSProperties
+        }
+        aria-label="Replay position"
+      />
     </div>
   )
 }

@@ -1,6 +1,6 @@
 # quotes-ws
 
-A small Go WebSocket service that runs the real-time multiplayer typing race: auto-matchmaking into small lobbies (2-6 players) or a private lobby you share with specific friends by code, a synchronized countdown, live opponent progress, and final rankings — all in-memory, no persistence beyond picking each race's quote.
+A small Go WebSocket service that runs the real-time multiplayer typing race: auto-matchmaking into small lobbies (2-5 players) or a private lobby you share with specific friends by code, a synchronized countdown, live opponent progress, and final rankings — all in-memory, no persistence beyond picking each race's quote.
 
 ## Relationship to backend/api and quotes-crawler
 
@@ -42,6 +42,7 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 | `player_progress` | `playerId`, `wordIndex`                                        | An opponent's live progress (never echoed back to that player)                                                            |
 | `player_finished` | `playerId`, `rank`, `elapsedMs`, `wpm`                         | A player finishes typing the quote                                                                                        |
 | `player_left`     | `playerId`                                                     | A player disconnects mid-race                                                                                             |
+| `powerup_used`    | `playerId`, `powerup`                                          | Ability rooms: someone fired their ability — sent to everyone, including the user                                         |
 | `race_end`        | `results` (`[{playerId, rank, elapsedMs, wpm}]`)               | Every connected player has finished, or `raceMaxDuration` elapses                                                         |
 | `error`           | `message`                                                      | The room couldn't start (e.g. no eligible quote found), or a private-room join failed (e.g. unknown/already-started code) |
 
@@ -52,14 +53,21 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 | `progress` | `wordIndex` | "I'm now at word N" — purely cosmetic, for opponents' UI                                                                                                                       |
 | `finish`   | `elapsedMs` | "I finished the quote in this many milliseconds"                                                                                                                               |
 | `start`    | —           | Private-room host only: skip the wait and start now (requires at least `minPlayers` already joined; ignored from anyone else, on a public room, or before `minPlayers` is met) |
+| `powerup`  | `powerup`   | Ability rooms only: fire your ability (`boost`, `nitro`, `slipstream`, `overdrive`); it recharges 12s after each use                                                           |
 
 `wpm` is always computed server-side from the room's own authoritative word count and the client-reported `elapsedMs` — never trusted as a value the client sends directly.
+
+## Lobby modes
+
+`/ws/race` and `/ws/private/create` take `?mode=classic` (the default) or `?mode=powerups`. The matchmaker keeps a separate waiting room per mode, so classic and powerup players are never matched together; joining a private room by code gets whatever mode its host chose. `waiting` and `race_start` include `mode`.
+
+In ability rooms each player may fire their ability whenever it has recharged (12s after the last use). Like NitroType's nitros, every ability only helps whoever fires it — nobody can hit, slow or distract anyone else — so the server just enforces the recharge and announces it; the user's client applies the effect (skipped words reach the server as ordinary progress). Which ability a player fires isn't checked against their purchases — ws has no login to look that up with.
 
 ## Matchmaking rules
 
 - A room needs at least 2 players to race, and holds at most 6.
-- Once 2 players have joined, the room waits up to 15s for more before starting anyway — or the private room's host can send `start` to begin immediately instead of waiting.
-- Reaching 6 players starts the room immediately, without waiting.
+- Once 2 players have joined, the room waits up to 30s for more before starting anyway — or the private room's host can send `start` to begin immediately instead of waiting.
+- Reaching 5 players starts the room immediately, without waiting.
 - A player who disconnects during the wait is removed outright; a player who disconnects mid-race stays in the final results as unfinished, and stops blocking the race from ending once everyone still connected has finished.
 - A private room's share code stops resolving (`/ws/private/join` returns "room not found") as soon as the room stops accepting new joiners — whether because it started or because everyone left — so a stale link can't seat someone into a race already underway.
 

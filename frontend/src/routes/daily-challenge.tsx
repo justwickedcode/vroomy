@@ -7,7 +7,7 @@ export const Route = createFileRoute('/daily-challenge')({
 
 function DailyChallengePage() {
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
+    <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap">
         <DailyChallengeCard />
       </div>

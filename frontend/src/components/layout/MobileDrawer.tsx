@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { LogIn, LogOut, X } from 'lucide-react'
+import { LogIn, LogOut, X } from '#/components/ui/icons'
 import Logo from '#/components/layout/Logo'
 import { SidebarNavList } from '#/components/layout/SidebarNav'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
@@ -43,10 +43,10 @@ export default function MobileDrawer({ onClose }: { onClose: () => void }) {
                     <img
                       src={user.avatarUrl}
                       alt=""
-                      className="size-7 shrink-0 rounded-full"
+                      className="px-corners size-7 shrink-0"
                     />
                   ) : (
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
+                    <span className="px-corners pixel-text flex size-7 shrink-0 items-center justify-center bg-secondary text-xs font-semibold">
                       {(user.name ?? '?').charAt(0).toUpperCase()}
                     </span>
                   )}

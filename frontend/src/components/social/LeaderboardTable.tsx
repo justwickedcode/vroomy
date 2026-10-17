@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Medal, PlayCircle } from 'lucide-react'
+import { Medal, PlayCircle } from '#/components/ui/icons'
 import CarIcon from '#/components/typing/CarIcon'
 import PlayerAvatar from '#/components/social/PlayerAvatar'
 import { Badge } from '#/components/ui/badge'
@@ -89,7 +89,7 @@ export default function LeaderboardTable({
   board,
   compact = false,
   limit,
-  emptyText = 'Nobody on the board yet — be the first.',
+  emptyText = 'No races yet',
 }: {
   board: Leaderboard
   compact?: boolean

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
@@ -7,14 +7,25 @@ import {
   importDailyFn,
   importRacesFn,
   postRaceFn,
+  purchaseFn,
   putCosmeticsFn,
 } from '#/lib/api/functions'
+import {
+  UNDERGLOW_ITEM,
+  carItem,
+  coinsForRace,
+  ownsItem,
+  powerupItem,
+  priceOf,
+  trailItem,
+} from '#/lib/shop'
 import {
   clearLocalReplays,
   getLocalReplay,
   saveLocalReplay,
 } from '#/lib/replay/localReplays'
 import { clearLocalDaily, readLocalDaily } from '#/lib/daily/localDaily'
+import { ACHIEVEMENTS, achievementReward } from '#/lib/achievements'
 import type {
   ApiCosmetics,
   ApiProfile,
@@ -25,7 +36,9 @@ import type {
   ReplayData,
 } from '#/lib/api/types'
 import type { CarModel } from '#/components/typing/CarIcon'
+import { toTrailVariant } from '#/lib/trails'
 import type { TrailVariant } from '#/lib/trails'
+import { asPowerup } from '#/lib/powerups'
 import type { PowerupKind } from '#/lib/powerups'
 
 const STORAGE_KEY = 'vroomy:profile:v1'
@@ -59,6 +72,19 @@ export interface RaceRecord {
   hasReplay?: boolean
 }
 
+export interface UnlockedAchievement {
+  id: string
+  title: string
+  reward: number
+}
+
+export interface SavedRace {
+  replayId: string | null
+  coinsEarned: number
+  // Achievements this race newly unlocked; their rewards are paid on top of coinsEarned.
+  achievements: Array<UnlockedAchievement>
+}
+
 export interface NewRace {
   wpm: number
   accuracy: number
@@ -73,18 +99,20 @@ export interface NewRace {
 
 interface Profile {
   carModel: CarModel
-  // Underglow is free to toggle, but only once unlocked (see #/components/typing/CarIcon's
-  // UNDERGLOW_ACHIEVEMENT). Cars otherwise render in their own sprite's native paint — color is
-  // reserved for underglow, not a body recolor.
+  // Underglow is bought once in the garage, then free to toggle and recolor. Cars otherwise
+  // render in their own sprite's native paint — color is reserved for underglow.
   underglow: boolean
   underglowColor: string
-  // Which trail effect (see #/lib/trails) renders behind the player's own car in a race —
-  // same achievement-unlock pattern as the model and underglow.
+  // Which trail effect (see #/lib/trails) renders behind the player's own car in a race.
   trail: TrailVariant
-  // Which powerup (see #/lib/powerups) spawns during solo races — 'boost' has no unlock
-  // requirement so it's always a safe fallback if a saved profile somehow points at one that
-  // isn't unlocked (e.g. achievements data changes under an old save).
+  // Which powerup (see #/lib/powerups) the player gets once per solo race — 'boost' is free, so
+  // it's always a safe fallback.
   equippedPowerup: PowerupKind
+  // Shop balance and the paid items bought with it (see #/lib/shop).
+  coins: number
+  owned: Array<string>
+  // Achievements already paid for (see payAchievements).
+  achievementsClaimed: Array<string>
   races: Array<RaceRecord>
   // Lifetime race count, tracked separately from races.length: races itself is capped to
   // MAX_RACE_HISTORY so storage doesn't grow forever, which means races.length alone
@@ -102,6 +130,22 @@ const DEFAULT_PROFILE: Profile = {
   equippedPowerup: DEFAULT_POWERUP,
   races: [],
   racesPlayedTotal: 0,
+  coins: 0,
+  owned: [],
+  achievementsClaimed: [],
+}
+
+// The paid items a profile has equipped — what a save from before the shop existed gets to keep,
+// since everything was unlocked back then.
+function equippedPaidItems(
+  p: Pick<Profile, 'carModel' | 'trail' | 'equippedPowerup' | 'underglow'>,
+) {
+  return [
+    carItem(p.carModel),
+    trailItem(p.trail),
+    powerupItem(p.equippedPowerup),
+    ...(p.underglow ? [UNDERGLOW_ITEM] : []),
+  ].filter((id) => priceOf(id) > 0)
 }
 
 function readProfile(): Profile {
@@ -111,18 +155,36 @@ function readProfile(): Profile {
     if (!raw) return DEFAULT_PROFILE
     const parsed = JSON.parse(raw) as Partial<Profile>
     const races = Array.isArray(parsed.races) ? parsed.races : []
-    return {
+    const cosmetics = {
       carModel: parsed.carModel ?? DEFAULT_MODEL,
       underglow: parsed.underglow ?? false,
       underglowColor: parsed.underglowColor ?? DEFAULT_UNDERGLOW_COLOR,
-      trail: parsed.trail ?? DEFAULT_TRAIL,
-      equippedPowerup: parsed.equippedPowerup ?? DEFAULT_POWERUP,
+      trail: toTrailVariant(parsed.trail ?? DEFAULT_TRAIL),
+      equippedPowerup: asPowerup(parsed.equippedPowerup),
+    }
+    const profile: Profile = {
+      ...cosmetics,
+      // A save from before the shop gets paid for the races it still has on record, and keeps
+      // whatever it had equipped.
+      coins:
+        parsed.coins ??
+        races.reduce((sum, race) => sum + coinsForRace(race), 0),
+      owned: Array.isArray(parsed.owned)
+        ? parsed.owned
+        : equippedPaidItems(cosmetics),
+      achievementsClaimed: Array.isArray(parsed.achievementsClaimed)
+        ? parsed.achievementsClaimed
+        : [],
       races,
       // A profile saved before racesPlayedTotal existed has no lifetime count on record —
       // races.length is the best available floor for it (never an overcount, since the total
       // can only be >= how many are currently retained).
       racesPlayedTotal: parsed.racesPlayedTotal ?? races.length,
     }
+    // A save from before achievements paid out gets paid for everything it has already unlocked.
+    return Array.isArray(parsed.achievementsClaimed)
+      ? profile
+      : payAchievements(profile).profile
   } catch {
     return DEFAULT_PROFILE
   }
@@ -136,6 +198,58 @@ function writeProfile(profile: Profile) {
     // localStorage unavailable (private browsing, quota, etc.) — the
     // in-memory state still works for the current session, it just won't
     // persist across reloads.
+  }
+}
+
+// Pays a guest for every achievement their history now satisfies that hasn't been paid yet —
+// the browser-side twin of backend/api's syncAchievements.
+function payAchievements(profile: Profile): {
+  profile: Profile
+  unlocked: Array<UnlockedAchievement>
+} {
+  const stats = computeStats(profile.races, profile.racesPlayedTotal)
+  const unlocked = ACHIEVEMENTS.filter(
+    (a) =>
+      !profile.achievementsClaimed.includes(a.id) &&
+      a.unlocked(stats, profile.races),
+  ).map((a) => ({ id: a.id, title: a.title, reward: achievementReward(a.id) }))
+  if (unlocked.length === 0) return { profile, unlocked }
+  return {
+    profile: {
+      ...profile,
+      coins: profile.coins + unlocked.reduce((sum, a) => sum + a.reward, 0),
+      achievementsClaimed: [
+        ...profile.achievementsClaimed,
+        ...unlocked.map((a) => a.id),
+      ],
+    },
+    unlocked,
+  }
+}
+
+// One shared copy of the guest profile for the whole page. Every component calls useProfile, and
+// each used to keep its own copy in React state — so a change made through one (buying a car)
+// could be overwritten moments later when another, stale copy saved itself (equipping it), which
+// undid the purchase. Now every instance reads and writes this single store.
+let localCache: Profile | null = null
+const localListeners = new Set<() => void>()
+
+function getLocalProfile(): Profile {
+  localCache ??= readProfile()
+  return localCache
+}
+
+function updateLocalProfile(updater: (prev: Profile) => Profile) {
+  const next = updater(getLocalProfile())
+  localCache = next
+  writeProfile(next)
+  for (const listener of localListeners) listener()
+}
+
+function subscribeLocalProfile(listener: () => void) {
+  localListeners.add(listener)
+  return () => {
+    localListeners.delete(listener)
   }
 }
 
@@ -209,6 +323,7 @@ function raceInput(race: NewRace): ApiRaceInput {
     passage: race.replay?.passage,
     replay: race.replay?.events,
     dailyDate: race.dailyDate,
+    localHour: new Date().getHours(),
   }
 }
 
@@ -268,7 +383,7 @@ async function importGuestData(userId: string, queryClient: QueryClient) {
   importsInFlight.add(userId)
 
   try {
-    const local = readProfile()
+    const local = getLocalProfile()
     const races = local.races.filter(isImportable).map((r) => {
       const replay = r.hasReplay ? getLocalReplay(r.id) : null
       return {
@@ -278,6 +393,7 @@ async function importGuestData(userId: string, queryClient: QueryClient) {
         racerCount: r.racerCount,
         mode: r.mode ?? 'solo',
         date: r.date,
+        localHour: new Date(r.date).getHours(),
         passage: replay?.passage,
         replay: replay?.events,
       } satisfies ApiRaceInput
@@ -310,8 +426,26 @@ async function importGuestData(userId: string, queryClient: QueryClient) {
       await putCosmeticsFn({ data: localCosmetics })
     }
 
+    // Races imported above paid out server-side; spend that on whatever the guest had bought, so
+    // the garage looks the same after logging in. The guest's local balance itself is never
+    // uploaded — it lives in localStorage, where anyone can edit it.
+    const toBuy = [...local.owned].sort((a, b) => priceOf(a) - priceOf(b))
+    for (const itemId of toBuy) {
+      try {
+        await purchaseFn({ data: itemId })
+      } catch {
+        // Already owned on the account, or not enough coins — skip it.
+      }
+    }
+
     window.localStorage.setItem(importedFlagKey(userId), '1')
-    writeProfile({ ...local, races: [], racesPlayedTotal: 0 })
+    updateLocalProfile((prev) => ({
+      ...prev,
+      races: [],
+      racesPlayedTotal: 0,
+      coins: 0,
+      owned: [],
+    }))
     clearLocalReplays()
     clearLocalDaily()
     await queryClient.invalidateQueries({ queryKey: ['profile'] })
@@ -329,14 +463,16 @@ export function useProfile() {
   const userId = user?.id ?? null
   const queryClient = useQueryClient()
 
-  // Starts from the SSR-safe default and syncs from localStorage right
-  // after mount — a one-frame flash of "no history yet" is an acceptable
-  // trade-off for not hand-rolling hydration-safe localStorage reads.
-  const [local, setLocal] = useState<Profile>(DEFAULT_PROFILE)
+  // The server render (and hydration) uses the default profile; the browser's saved one takes
+  // over right after — a one-frame flash of "no history yet" rather than a hydration mismatch.
+  const local = useSyncExternalStore(
+    subscribeLocalProfile,
+    getLocalProfile,
+    () => DEFAULT_PROFILE,
+  )
   const [localHydrated, setLocalHydrated] = useState(false)
 
   useEffect(() => {
-    setLocal(readProfile())
     setLocalHydrated(true)
   }, [])
 
@@ -373,11 +509,7 @@ export function useProfile() {
           .catch(() => queryClient.invalidateQueries({ queryKey: key }))
         return
       }
-      setLocal((prev) => {
-        const next = { ...prev, ...patch }
-        writeProfile(next)
-        return next
-      })
+      updateLocalProfile((prev) => ({ ...prev, ...patch }))
     },
     [userId, queryClient],
   )
@@ -403,48 +535,59 @@ export function useProfile() {
     [updateCosmetics],
   )
 
-  // Returns the new record's id. Generated outside the state updater so the caller gets the
-  // same id the updater stores (an updater can run more than once).
-  const addLocalRace = useCallback((race: NewRace): string => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    setLocal((prev) => {
-      const record: RaceRecord = {
-        id,
-        date: new Date().toISOString(),
-        wpm: race.wpm,
-        accuracy: race.accuracy,
-        placement: race.placement,
-        racerCount: race.racerCount,
-        mode: race.mode,
-        hasReplay: Boolean(race.replay),
-      }
-      const races = [record, ...prev.races].slice(0, MAX_RACE_HISTORY)
-      if (race.replay) {
-        saveLocalReplay(
-          record.id,
-          race.replay,
-          races.map((r) => r.id),
-        )
-      }
-      const next = {
-        ...prev,
-        races,
-        racesPlayedTotal: prev.racesPlayedTotal + 1,
-      }
-      writeProfile(next)
-      return next
-    })
-    return id
-  }, [])
+  // Returns the new record's id (so the caller can link to its replay) and any achievements it
+  // unlocked.
+  const addLocalRace = useCallback(
+    (race: NewRace): { id: string; unlocked: Array<UnlockedAchievement> } => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      let unlocked: Array<UnlockedAchievement> = []
+      updateLocalProfile((prev) => {
+        const record: RaceRecord = {
+          id,
+          date: new Date().toISOString(),
+          wpm: race.wpm,
+          accuracy: race.accuracy,
+          placement: race.placement,
+          racerCount: race.racerCount,
+          mode: race.mode,
+          hasReplay: Boolean(race.replay),
+        }
+        const races = [record, ...prev.races].slice(0, MAX_RACE_HISTORY)
+        if (race.replay) {
+          saveLocalReplay(
+            record.id,
+            race.replay,
+            races.map((r) => r.id),
+          )
+        }
+        const next = {
+          ...prev,
+          races,
+          racesPlayedTotal: prev.racesPlayedTotal + 1,
+          coins: prev.coins + coinsForRace(race),
+        }
+        const paid = payAchievements(next)
+        unlocked = paid.unlocked
+        return paid.profile
+      })
+      return { id, unlocked }
+    },
+    [],
+  )
 
-  // Resolves to the id to open this race's replay with (/replays/$replayId), or null when the
-  // race has no replay — so a finish screen can offer "Watch replay" for the run just completed.
+  // Resolves once the race is saved: the id to open its replay with (/replays/$replayId, null
+  // when there's no replay) and the coins it paid — for the finish screen.
   const addRace = useCallback(
-    (race: NewRace): Promise<string | null> => {
+    (race: NewRace): Promise<SavedRace> => {
       const key = profileQueryKey(userId)
+      const coinsEarned = coinsForRace(race)
       if (!userId || !queryClient.getQueryData(key)) {
-        const id = addLocalRace(race)
-        return Promise.resolve(race.replay ? id : null)
+        const { id, unlocked } = addLocalRace(race)
+        return Promise.resolve({
+          replayId: race.replay ? id : null,
+          coinsEarned,
+          achievements: unlocked,
+        })
       }
 
       // Optimistic: the race shows up in history and stats immediately, and the refetch after
@@ -465,12 +608,20 @@ export function useProfile() {
               ...prev,
               races: [pending, ...prev.races].slice(0, MAX_RACE_HISTORY),
               stats: statsWithRace(prev.stats, race),
+              coins: prev.coins + coinsEarned,
             }
           : prev,
       )
 
       return postRaceFn({ data: raceInput(race) })
-        .then((saved) => (saved.hasReplay ? String(saved.id) : null))
+        .then((saved) => ({
+          replayId: saved.hasReplay ? String(saved.id) : null,
+          coinsEarned: saved.coinsEarned ?? coinsEarned,
+          achievements: (saved.achievements ?? []).map((a) => ({
+            ...a,
+            title: ACHIEVEMENTS.find((def) => def.id === a.id)?.title ?? a.id,
+          })),
+        }))
         .catch((err: unknown) => {
           // Don't lose the race if api is unreachable — keep it as guest history, which gets
           // imported once api is back (the import flag is already set, so clear it).
@@ -480,8 +631,12 @@ export function useProfile() {
           } catch {
             // Nothing to clear.
           }
-          const id = addLocalRace(race)
-          return race.replay ? id : null
+          const { id, unlocked } = addLocalRace(race)
+          return {
+            replayId: race.replay ? id : null,
+            coinsEarned,
+            achievements: unlocked,
+          }
         })
         .finally(() => {
           void queryClient.invalidateQueries({ queryKey: key })
@@ -494,15 +649,40 @@ export function useProfile() {
     [userId, queryClient, addLocalRace],
   )
 
+  // Buys a shop item. Rejects (with a message fit to show) when it can't be bought.
+  const buy = useCallback(
+    async (itemId: string): Promise<void> => {
+      const key = profileQueryKey(userId)
+      if (userId && queryClient.getQueryData(key)) {
+        const updated = await purchaseFn({ data: itemId })
+        queryClient.setQueryData(key, updated)
+        return
+      }
+      const current = getLocalProfile()
+      const price = priceOf(itemId)
+      if (ownsItem(current.owned, itemId)) return
+      if (current.coins < price) throw new Error('Not enough coins')
+      updateLocalProfile((prev) => ({
+        ...prev,
+        coins: prev.coins - price,
+        owned: [...prev.owned, itemId],
+      }))
+    },
+    [userId, queryClient],
+  )
+
   const profile: Profile = remote
     ? {
         carModel: remote.carModel,
         underglow: remote.underglow,
         underglowColor: remote.underglowColor,
-        trail: remote.trail as TrailVariant,
-        equippedPowerup: remote.equippedPowerup as PowerupKind,
+        trail: toTrailVariant(remote.trail),
+        equippedPowerup: asPowerup(remote.equippedPowerup),
         races: remote.races.map(raceFromApi),
         racesPlayedTotal: remote.stats.racesPlayed,
+        coins: remote.coins,
+        owned: remote.owned,
+        achievementsClaimed: remote.achievements,
       }
     : local
 
@@ -526,5 +706,10 @@ export function useProfile() {
     setTrail,
     setEquippedPowerup,
     addRace,
+    coins: profile.coins,
+    // Ids of unlocked achievements — the server's record when logged in.
+    achievements: profile.achievementsClaimed,
+    owns: (itemId: string) => ownsItem(profile.owned, itemId),
+    buy,
   }
 }

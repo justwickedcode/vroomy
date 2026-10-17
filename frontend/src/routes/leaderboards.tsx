@@ -1,6 +1,7 @@
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { LogIn } from 'lucide-react'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import { LogIn, PlayCircle } from '#/components/ui/icons'
+import CarIcon from '#/components/typing/CarIcon'
+import PixelSkyline from '#/components/typing/PixelSkyline'
 import { Button } from '#/components/ui/button'
 import LeaderboardTable from '#/components/social/LeaderboardTable'
 import { useLeaderboard } from '#/lib/social/useLeaderboard'
@@ -8,6 +9,7 @@ import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 import { todayKey } from '#/lib/typing/sentences'
 import { cn } from '#/lib/utils'
 import type {
+  LeaderboardEntry,
   LeaderboardBoard,
   LeaderboardPeriod,
   LeaderboardScope,
@@ -65,7 +67,8 @@ function Segmented<T extends string>({
   disabled?: (id: T) => boolean
 }) {
   return (
-    <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+    // Pixel tabs, like the Play picker's tiles: one connected strip, the pick framed in pink.
+    <div className="flex flex-wrap gap-[2px] border-2 border-border bg-border">
       {options.map((option) => (
         <button
           key={option.id}
@@ -73,10 +76,10 @@ function Segmented<T extends string>({
           onClick={() => onSelect(option.id)}
           disabled={disabled?.(option.id)}
           className={cn(
-            'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+            'px-3 py-1.5 font-mono text-xs font-semibold uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-40',
             value === option.id
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
+              ? 'bg-[#2a1238] text-foreground shadow-[inset_0_-2px_0_#ff2fb4]'
+              : 'bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
           {option.label}
@@ -106,26 +109,14 @@ function LeaderboardsPage() {
     void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
   }
 
-  return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-2xl">
-        <div className="mb-8">
-          <div
-            className="livery-stripe mb-4 w-16 rounded-full"
-            aria-hidden="true"
-          />
-          <h1 className="rise-in text-3xl font-extrabold tracking-tight sm:text-4xl">
-            Leaderboards.
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {board === 'daily'
-              ? "Best run on today's daily passage."
-              : 'Each racer’s single fastest race in the window.'}
-          </p>
-        </div>
+  const entries = leaderboard.data?.entries ?? []
 
-        <Card className="rise-in overflow-hidden">
-          <CardHeader className="flex-col items-stretch gap-3 py-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+  return (
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+      <div className="page-wrap flex flex-col">
+        {/* One connected panel: controls, the podium, then everyone else. */}
+        <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+          <div className="flex flex-col gap-3 bg-card p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <Segmented
               options={BOARDS}
               value={board}
@@ -146,62 +137,138 @@ function LeaderboardsPage() {
                 disabled={(id) => id === 'friends' && !user}
               />
             </div>
-          </CardHeader>
-          <div className="glass-divider" />
-          <CardContent className="pt-4 pb-6">
+          </div>
+
+          <div className="relative flex h-80 flex-col justify-end overflow-hidden bg-card sm:h-96">
+            {/* The podium stands on the same synthwave street as the dashboard's title track. */}
+            {/* Night sky above, the city at its natural size along the bottom. */}
+            <div className="night-sky absolute inset-0" />
+            <PixelSkyline className="absolute inset-x-0 bottom-0 h-32 sm:h-40" />
             {leaderboard.isError ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
+              <p className="relative py-10 text-center text-sm font-semibold">
                 Couldn't load the leaderboard. Try again in a moment.
               </p>
             ) : !leaderboard.data ? (
-              <div className="flex flex-col gap-2">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className="h-10 animate-pulse rounded-md bg-secondary/40"
-                  />
-                ))}
-              </div>
-            ) : (
-              <LeaderboardTable
-                board={leaderboard.data}
-                emptyText={
-                  scope === 'friends'
-                    ? 'No races from you or your friends in this window yet.'
-                    : 'Nobody on the board yet — be the first.'
-                }
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        {loaded && !user && (
-          <Card className="rise-in mt-4 overflow-hidden">
-            <CardContent className="flex flex-col items-center gap-3 py-6 text-center sm:flex-row sm:text-left">
-              <p className="flex-1 text-sm text-muted-foreground">
-                Races only count toward the leaderboard when you're logged in.
-                Anything you've already played as a guest comes with you.
+              <div className="relative h-64 animate-pulse bg-black/20" />
+            ) : entries.length === 0 ? (
+              <p className="relative py-10 text-center text-sm font-semibold">
+                No races yet
               </p>
-              <Button asChild size="sm">
-                <a href="/login">
-                  <LogIn />
-                  Log in
-                </a>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <Podium entries={entries.slice(0, 3)} />
+            )}
+          </div>
 
-        {user && scope === 'friends' && (
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            Racing alone?{' '}
-            <Link to="/friends" className="font-semibold text-primary">
-              Add some friends
-            </Link>
-            .
-          </p>
-        )}
+          <div className="flex flex-col bg-card">
+            {leaderboard.data && entries.length > 3 && (
+              <div className="p-4">
+                <LeaderboardTable
+                  board={{ entries: entries.slice(3), me: leaderboard.data.me }}
+                />
+              </div>
+            )}
+            {leaderboard.data && entries.length <= 3 && leaderboard.data.me && (
+              <div className="p-4">
+                <LeaderboardTable
+                  board={{ entries: [], me: leaderboard.data.me }}
+                  emptyText=""
+                />
+              </div>
+            )}
+            {loaded && !user && (
+              <div className="flex items-center justify-between gap-3 border-t-2 border-border p-4 first:border-t-0">
+                <p className="text-sm text-muted-foreground">
+                  Log in to get ranked.
+                </p>
+                <Button asChild size="sm">
+                  <a href="/login">
+                    <LogIn />
+                    Log in
+                  </a>
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </main>
+  )
+}
+
+// The top three as a game-style podium: each racer's car stands on a pixel block — first in the
+// middle and tallest, with gold, silver and bronze tops.
+const PODIUM_ORDER = [1, 0, 2]
+const PODIUM_STYLE = [
+  { height: 'h-36', color: '#facc15' },
+  { height: 'h-24', color: '#cbd5e1' },
+  { height: 'h-16', color: '#c2703d' },
+]
+
+function Podium({ entries }: { entries: Array<LeaderboardEntry> }) {
+  return (
+    <div className="relative flex items-end justify-center gap-3 px-4 pt-8 [text-shadow:2px_2px_0_#1a0b2e] sm:gap-6">
+      {PODIUM_ORDER.map((slot) => {
+        const entry = entries[slot] as LeaderboardEntry | undefined
+        const style = PODIUM_STYLE[slot]
+        return (
+          <div
+            key={slot}
+            className="flex w-28 flex-col items-center gap-2 sm:w-48"
+          >
+            {entry ? (
+              <>
+                <CarIcon
+                  model={entry.carModel}
+                  className={cn('w-20 sm:w-32', slot === 0 && 'race-car-bob')}
+                />
+                <div className="text-center">
+                  <p className="flex items-center justify-center gap-1.5 text-sm font-bold">
+                    <span className="truncate">
+                      {entry.displayName || 'Racer'}
+                    </span>
+                    {entry.isMe && (
+                      <span className="text-xs text-primary">(you)</span>
+                    )}
+                  </p>
+                  <p className="font-display text-2xl leading-none">
+                    {entry.wpm}
+                    <span className="ml-1 text-sm text-muted-foreground">
+                      wpm
+                    </span>
+                  </p>
+                </div>
+                {entry.replayId !== null && (
+                  <Link
+                    to="/replays/$replayId"
+                    params={{ replayId: String(entry.replayId) }}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+                  >
+                    <PlayCircle className="size-3.5" />
+                    Replay
+                  </Link>
+                )}
+              </>
+            ) : (
+              <div className="h-24" />
+            )}
+            <div
+              className={cn(
+                'flex w-full items-start justify-center pt-3',
+                style.height,
+              )}
+              // A solid pixel block: bright top edge, the medal colour darkening downward, a lit left side.
+              style={{
+                background: `linear-gradient(to bottom, ${style.color} 0 6px, color-mix(in oklab, ${style.color} 55%, #000) 6px 50%, color-mix(in oklab, ${style.color} 40%, #000) 50%)`,
+                boxShadow: `inset 6px 0 0 color-mix(in oklab, ${style.color} 75%, #fff), inset -6px 0 0 color-mix(in oklab, ${style.color} 30%, #000)`,
+              }}
+            >
+              <span className="font-display text-4xl text-white [text-shadow:3px_3px_0_rgb(0_0_0/0.45)]">
+                {slot + 1}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }

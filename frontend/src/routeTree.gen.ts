@@ -19,6 +19,7 @@ import { Route as GuideRouteImport } from './routes/guide'
 import { Route as LeaderboardsRouteImport } from './routes/leaderboards'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LogoutRouteImport } from './routes/logout'
+import { Route as PracticeRouteImport } from './routes/practice'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as RaceRoomCodeRouteImport } from './routes/race.$roomCode'
@@ -78,6 +79,11 @@ const LoginRoute = LoginRouteImport.update({
 const LogoutRoute = LogoutRouteImport.update({
   id: '/logout',
   path: '/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PracticeRoute = PracticeRouteImport.update({
+  id: '/practice',
+  path: '/practice',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StatsRoute = StatsRouteImport.update({
@@ -142,6 +148,7 @@ export interface FileRoutesByFullPath {
   '/leaderboards': typeof LeaderboardsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/practice': typeof PracticeRoute
   '/stats': typeof StatsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/leaderboards': typeof LeaderboardsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/practice': typeof PracticeRoute
   '/stats': typeof StatsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
@@ -186,6 +194,7 @@ export interface FileRoutesById {
   '/leaderboards': typeof LeaderboardsRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/practice': typeof PracticeRoute
   '/stats': typeof StatsRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/race/$roomCode': typeof RaceRoomCodeRoute
@@ -210,6 +219,7 @@ export interface FileRouteTypes {
     | '/leaderboards'
     | '/login'
     | '/logout'
+    | '/practice'
     | '/stats'
     | '/auth/callback'
     | '/race/$roomCode'
@@ -232,6 +242,7 @@ export interface FileRouteTypes {
     | '/leaderboards'
     | '/login'
     | '/logout'
+    | '/practice'
     | '/stats'
     | '/auth/callback'
     | '/race/$roomCode'
@@ -253,6 +264,7 @@ export interface FileRouteTypes {
     | '/leaderboards'
     | '/login'
     | '/logout'
+    | '/practice'
     | '/stats'
     | '/auth/callback'
     | '/race/$roomCode'
@@ -276,6 +288,7 @@ export interface RootRouteChildren {
   LeaderboardsRoute: typeof LeaderboardsRoute
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
+  PracticeRoute: typeof PracticeRoute
   StatsRoute: typeof StatsRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   RaceRoomCodeRoute: typeof RaceRoomCodeRoute
@@ -356,6 +369,13 @@ declare module '@tanstack/react-router' {
       path: '/logout'
       fullPath: '/logout'
       preLoaderRoute: typeof LogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/practice': {
+      id: '/practice'
+      path: '/practice'
+      fullPath: '/practice'
+      preLoaderRoute: typeof PracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/stats': {
@@ -456,6 +476,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeaderboardsRoute: LeaderboardsRoute,
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
+  PracticeRoute: PracticeRoute,
   StatsRoute: StatsRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   RaceRoomCodeRoute: RaceRoomCodeRoute,

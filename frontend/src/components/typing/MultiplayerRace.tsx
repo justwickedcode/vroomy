@@ -1,21 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { ArrowLeft, Check, Copy, PlayCircle, Trophy, Users } from 'lucide-react'
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  PlayCircle,
+  Users,
+} from '#/components/ui/icons'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
-import { Card, CardContent } from '#/components/ui/card'
 import RaceTrack from '#/components/typing/RaceTrack'
+import {
+  PlayPanel,
+  PlaySection,
+  StartButton,
+  TileGrid,
+  tileClass,
+} from '#/components/play/PlayKit'
 import TypingWords from '#/components/typing/TypingWords'
-import QuoteCredit from '#/components/typing/QuoteCredit'
-import Gauge from '#/components/typing/Gauge'
-import DigitalReadout from '#/components/typing/DigitalReadout'
+import RaceConsole from '#/components/typing/RaceConsole'
+import RaceResults from '#/components/typing/RaceResults'
+import { POWERUPS, powerupLabel } from '#/lib/powerups'
+import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
-import type { Racer } from '#/components/typing/RaceTrack'
-
-const WPM_GAUGE_MAX = 130
+import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
+import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
 function formatTime(ms: number) {
   const totalSeconds = ms / 1000
@@ -72,109 +83,111 @@ function LobbyView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   }))
 
   return (
-    <main className="flex-1 px-4 py-8 sm:py-10">
-      <div className="page-wrap max-w-xl">
-        <Card className="rise-in overflow-hidden">
-          <CardContent className="flex flex-col gap-5 pt-6">
-            <Badge variant="outline" className="w-fit">
-              {mp.code ? 'Private room' : 'Quick match'} · waiting
-            </Badge>
-
-            {mp.code && (
-              <div>
-                <div className="license-plate">
-                  <span>{mp.code}</span>
-                  <span className="license-plate-tab">Share to invite</span>
-                </div>
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-secondary/40 px-3 py-2">
-                  <span className="flex-1 truncate font-mono text-xs text-muted-foreground">
-                    {shareLink}
-                  </span>
-                  <Button size="sm" variant="outline" onClick={handleCopy}>
-                    {copied ? <Check className="text-success" /> : <Copy />}
-                    {copied ? 'Copied' : 'Copy link'}
-                  </Button>
-                </div>
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+      {/* The same play panel as the Play picker: the room, the starting grid, then go. */}
+      <div className="page-wrap rise-in max-w-3xl">
+        <PlayPanel>
+          <PlaySection
+            label={`${mp.code ? 'Private room' : 'Quick match'} · ${
+              mp.mode === 'powerups' ? 'with abilities' : 'without abilities'
+            }`}
+            aside={
+              <Button variant="ghost" size="sm" onClick={onLeave}>
+                <ArrowLeft />
+                Leave
+              </Button>
+            }
+          >
+            {mp.code ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="play-input flex items-center px-4 text-2xl tracking-[0.35em]">
+                  {mp.code}
+                </span>
+                <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+                  {shareLink}
+                </span>
+                <Button variant="outline" onClick={handleCopy}>
+                  {copied ? <Check className="text-success" /> : <Copy />}
+                  {copied ? 'Copied' : 'Copy link'}
+                </Button>
               </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Finding racers for you…
+              </p>
             )}
+          </PlaySection>
 
-            <div className="starting-grid">
+          <PlaySection
+            label="Starting grid"
+            aside={
+              <span className="font-mono text-xs text-muted-foreground">
+                {mp.playersInRoom}/{mp.maxPlayers}
+              </span>
+            }
+          >
+            <TileGrid className="grid-cols-2 sm:grid-cols-5">
               {seats.map((seat) => (
                 <div
                   key={seat.pos}
                   className={cn(
-                    'starting-grid-slot',
-                    seat.isYou && 'is-you',
-                    !seat.filled && 'is-empty',
+                    tileClass(seat.isYou),
+                    !seat.filled && 'opacity-50',
                   )}
                 >
-                  <span className="starting-grid-pos">P{seat.pos}</span>
-                  <span
-                    className={cn(
-                      'starting-grid-dot',
-                      seat.isYou && 'is-you',
-                      seat.filled && !seat.isYou && 'is-filled',
-                    )}
-                  />
-                  <span className="starting-grid-name">
-                    {seat.isYou ? (
-                      <>
-                        You
-                        {mp.isHost && (
-                          <span className="starting-grid-flag">HOST</span>
-                        )}
-                      </>
-                    ) : seat.filled ? (
-                      (seat.name ?? 'Racer')
-                    ) : (
-                      'Open seat'
-                    )}
+                  <span className="font-display text-lg text-muted-foreground">
+                    P{seat.pos}
                   </span>
-                  <span
-                    className={cn(
-                      'starting-grid-state',
-                      !seat.filled && 'is-waiting',
-                    )}
-                  >
-                    {seat.filled ? 'Ready' : 'Waiting'}
+                  <span className="flex min-w-0 flex-col leading-tight">
+                    <span className="truncate text-sm font-bold">
+                      {seat.isYou
+                        ? 'You'
+                        : seat.filled
+                          ? (seat.name ?? 'Racer')
+                          : 'Open seat'}
+                      {seat.isYou && mp.isHost && (
+                        <span className="ml-1.5 font-mono text-[0.6rem] text-signal">
+                          HOST
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className={cn(
+                        'font-mono text-[0.6rem] tracking-widest uppercase',
+                        seat.filled
+                          ? 'text-[#4ade80]'
+                          : 'text-muted-foreground',
+                      )}
+                    >
+                      {seat.filled ? 'Ready' : 'Waiting'}
+                    </span>
                   </span>
                 </div>
               ))}
-            </div>
+            </TileGrid>
+          </PlaySection>
 
+          <div className="flex flex-col items-center gap-2 bg-card p-4">
             {mp.isHost ? (
-              <div className="flex flex-col items-center gap-2">
-                <Button
-                  className="w-full"
-                  onClick={mp.startNow}
-                  disabled={!canStart}
-                >
+              <>
+                <StartButton onClick={mp.startNow} disabled={!canStart}>
                   <Users />
                   Start now
-                </Button>
+                </StartButton>
                 <p className="text-xs text-muted-foreground">
                   {canStart
                     ? 'Starts automatically soon, or start right now'
                     : `Waiting for at least ${mp.minPlayers} players`}
                 </p>
-              </div>
+              </>
             ) : (
-              <p className="text-center text-xs text-muted-foreground">
+              <p className="py-2 text-center text-sm text-muted-foreground">
                 Waiting for {mp.code ? 'the host to start, or for' : ''} the
                 lobby to fill…
               </p>
             )}
-
-            <button
-              type="button"
-              onClick={onLeave}
-              className="text-center text-xs font-semibold text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="mr-1 inline size-3" />
-              Leave
-            </button>
-          </CardContent>
-        </Card>
+          </div>
+        </PlayPanel>
       </div>
     </main>
   )
@@ -210,6 +223,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const { carModel, underglow, underglowColor, trail } = profile
   const [countdown, setCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  useKeepTypingFocus(inputRef, mp.phase === 'racing' && !mp.finished)
 
   useEffect(() => {
     if (mp.phase !== 'countdown') return
@@ -225,6 +239,8 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const { myResult, getReplay } = mp
   // This race's replay, once saved — for the "Watch replay" button on the results screen.
   const [replayId, setReplayId] = useState<string | null>(null)
+  const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
+  const [unlocks, setUnlocks] = useState<Array<UnlockedAchievement>>([])
   useEffect(() => {
     if (!myResult || recordedQuoteRef.current === mp.text) return
     recordedQuoteRef.current = mp.text
@@ -237,7 +253,11 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         mode: 'multiplayer',
         replay: getReplay(),
       })
-      .then(setReplayId)
+      .then((saved) => {
+        setReplayId(saved.replayId)
+        setCoinsEarned(saved.coinsEarned)
+        setUnlocks(saved.achievements)
+      })
   }, [
     myResult,
     mp.text,
@@ -253,6 +273,51 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       return () => cancelAnimationFrame(frame)
     }
   }, [mp.phase])
+
+  // ── Powerups (powerup lobbies only) ────────────────────────────────
+  const powerupsOn = mp.mode === 'powerups'
+  const { equippedPowerup } = profile
+  const equippedDef = POWERUPS.find((p) => p.id === equippedPowerup)
+  const canFire =
+    powerupsOn && mp.powerupReady && mp.phase === 'racing' && !mp.finished
+  const { firePowerup } = mp
+
+  // Tab fires the powerup, same as solo. Swallowed during any race so it never moves focus off
+  // the hidden typing input.
+  useEffect(() => {
+    if (mp.phase !== 'racing' || mp.finished) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'Tab') return
+      event.preventDefault()
+      if (canFire) firePowerup(equippedPowerup)
+      inputRef.current?.focus()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mp.phase, mp.finished, canFire, firePowerup, equippedPowerup])
+
+  // Plays each announced ability on the car that used it, and says who used what. Abilities only
+  // ever help their user (see #/lib/powerups), so nothing here touches anyone else.
+  const [effect, setEffect] = useState<RaceEffect | null>(null)
+  const [eventText, setEventText] = useState<string | null>(null)
+  const { lastPowerup, myId, names } = mp
+  useEffect(() => {
+    if (!lastPowerup) return
+    const { powerup, playerId, key } = lastPowerup
+    const mine = playerId === myId
+    setEffect({ kind: powerup, sourceId: playerId, key })
+    const label = powerupLabel(powerup)
+    setEventText(
+      mine ? `${label}!` : `${shortName(playerId, myId, names)}: ${label}!`,
+    )
+    const timers = [
+      setTimeout(() => setEffect(null), 900),
+      setTimeout(() => setEventText(null), 2200),
+    ]
+    return () => {
+      for (const t of timers) clearTimeout(t)
+    }
+  }, [lastPowerup, myId, names])
 
   const racers: Array<Racer> = [
     {
@@ -282,16 +347,36 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       model: CAR_MODELS[(index + 1) % CAR_MODELS.length].id,
     })),
   ]
+  // A full room's worth of lanes, always: seats nobody filled stay on the track as empty lanes
+  // rather than the road shrinking to fit whoever showed up.
+  for (let seat = racers.length; seat < (mp.maxPlayers || 5); seat++) {
+    racers.push({
+      id: `empty-${seat}`,
+      name: '',
+      progress: 0,
+      wpm: 0,
+      empty: true,
+    })
+  }
 
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap flex flex-col">
-        <Card className="rise-in flex flex-col overflow-hidden">
-          <CardContent className="flex flex-col p-0">
+        {/* One connected panel, like solo: track, words, the dash console, then standings. */}
+        <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+          <div className="relative flex flex-col">
+            {/* What just happened, up in the sky over the track — never over your words. */}
+            {eventText && !mp.finished && (
+              <div className="pointer-events-none absolute top-2 right-3 z-10">
+                <span className="race-announcer">{eventText}</span>
+              </div>
+            )}
             <RaceTrack
               racers={racers}
               countdown={countdown}
               phase={mp.phase === 'countdown' ? 'counting' : 'ready'}
+              epic
+              effect={effect}
               className="flex-shrink-0"
             />
 
@@ -306,115 +391,98 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               inputRef={inputRef}
               className="shrink-0"
               overlay={
-                // We've finished but race_end hasn't arrived yet — that only happens once
-                // everyone still connected has finished (or after 5 minutes), which has nothing
-                // to do with OUR rank: the server already told us that the instant we crossed
-                // the line (player_finished), so there's no reason to leave the screen blank
-                // while someone else is still typing.
-                mp.myResult &&
-                mp.phase === 'racing' && (
-                  <div className="countdown-overlay">
-                    <div className="text-center">
-                      <p className="text-lg font-bold">
-                        Finished #{mp.myResult.rank} · {mp.myResult.wpm} wpm
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Waiting for other racers to finish…
-                      </p>
-                    </div>
-                  </div>
-                )
+                // Our result shows the instant we cross the line (player_finished) — race_end
+                // only arrives once everyone still connected is done (or after 5 minutes), which
+                // has nothing to do with OUR rank.
+                <>
+                  {mp.myResult && (
+                    <RaceResults
+                      place={mp.myResult.rank}
+                      racerCount={Math.max(mp.racerCount, mp.myResult.rank)}
+                      elapsedMs={mp.myResult.elapsedMs}
+                      coinsEarned={coinsEarned}
+                      unlocks={unlocks}
+                      actions={
+                        <>
+                          {mp.phase !== 'finished' && (
+                            <p className="race-waiting">Waiting for racers</p>
+                          )}
+                          {replayId && (
+                            <Button asChild variant="outline">
+                              <Link
+                                to="/replays/$replayId"
+                                params={{ replayId }}
+                              >
+                                <PlayCircle />
+                                Replay
+                              </Link>
+                            </Button>
+                          )}
+                          <Button onClick={onLeave}>
+                            <ArrowLeft />
+                            Back
+                          </Button>
+                        </>
+                      }
+                    />
+                  )}
+                </>
               }
             />
-            <QuoteCredit
-              author={mp.quote?.author}
-              sourceUrl={mp.quote?.sourceUrl}
-              className="px-4 pt-3"
-            />
-          </CardContent>
+          </div>
 
-          {mp.phase === 'finished' && <div className="glass-divider" />}
+          <RaceConsole
+            wpm={mp.myResult ? Math.round(mp.myResult.wpm) : mp.wpm}
+            accuracy={mp.accuracy}
+            elapsedMs={mp.myResult ? mp.myResult.elapsedMs : mp.elapsedMs}
+            powerup={
+              powerupsOn && equippedDef
+                ? {
+                    kind: equippedPowerup,
+                    label: equippedDef.label,
+                    detail: equippedDef.detail,
+                    ready: mp.powerupReady && !mp.finished,
+                    charge: mp.powerupCharge,
+                    canFire,
+                    onFire: () => firePowerup(equippedPowerup),
+                  }
+                : undefined
+            }
+            author={mp.quote?.author}
+            sourceUrl={mp.quote?.sourceUrl}
+          />
 
-          {mp.phase === 'finished' && (
-            <div className="flex flex-col gap-4 bg-success/10 p-6">
-              <div className="flex flex-wrap items-center gap-3">
-                <Trophy className="size-6 shrink-0 text-success" />
-                <p className="text-base leading-none">
-                  {mp.myResult ? (
-                    <>
-                      Finished <strong>#{mp.myResult.rank}</strong> in{' '}
-                      <strong>{formatTime(mp.myResult.elapsedMs)}</strong>
-                    </>
-                  ) : (
-                    'Race finished'
-                  )}
-                </p>
-              </div>
-
-              {mp.results && (
-                <div className="standings">
-                  <div className="standings-head">
-                    <span>Pos</span>
-                    <span>Racer</span>
-                    <span>Wpm</span>
-                    <span className="text-right">Time</span>
-                  </div>
-                  {mp.results.map((result) => (
-                    <div
-                      key={result.playerId}
-                      className={cn(
-                        'standings-row',
-                        result.playerId === mp.myId && 'is-you',
-                      )}
-                    >
-                      <span className="standings-pos">P{result.rank}</span>
-                      <span className="standings-name">
-                        {shortName(result.playerId, mp.myId, mp.names)}
-                      </span>
-                      <span className="standings-wpm">{result.wpm}</span>
-                      <span className="standings-time">
-                        {formatTime(result.elapsedMs)}
-                      </span>
-                    </div>
-                  ))}
+          {mp.phase === 'finished' && mp.results && (
+            <div className="bg-card p-4">
+              <div className="standings">
+                <div className="standings-head">
+                  <span>Pos</span>
+                  <span>Racer</span>
+                  <span>Wpm</span>
+                  <span className="text-right">Time</span>
                 </div>
-              )}
-
-              <div className="flex justify-end gap-3">
-                {replayId && (
-                  <Button asChild variant="outline">
-                    <Link to="/replays/$replayId" params={{ replayId }}>
-                      <PlayCircle />
-                      Watch replay
-                    </Link>
-                  </Button>
-                )}
-                <Button variant="outline" onClick={onLeave}>
-                  <ArrowLeft />
-                  Back to play
-                </Button>
+                {mp.results.map((result) => (
+                  <div
+                    key={result.playerId}
+                    className={cn(
+                      'standings-row',
+                      result.playerId === mp.myId && 'is-you',
+                    )}
+                  >
+                    <span className="standings-pos">P{result.rank}</span>
+                    <span className="standings-name">
+                      {shortName(result.playerId, mp.myId, mp.names)}
+                    </span>
+                    <span className="standings-wpm">{result.wpm}</span>
+                    <span className="standings-time">
+                      {formatTime(result.elapsedMs)}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-
-          {mp.phase !== 'finished' && (
-            <div className="flex items-center justify-between gap-3 p-4">
-              <p className="kicker">
-                {mp.phase === 'racing' ? 'Racing…' : 'Get ready…'}
-              </p>
-              <div className="flex items-center gap-4">
-                <Gauge label="wpm" value={mp.wpm} max={WPM_GAUGE_MAX} />
-                <Gauge
-                  label="accuracy"
-                  value={mp.accuracy}
-                  max={100}
-                  suffix="%"
-                />
-                <DigitalReadout label="time" value={formatTime(mp.elapsedMs)} />
-              </div>
-            </div>
-          )}
-        </Card>
+        </div>
       </div>
     </main>
   )

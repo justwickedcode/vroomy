@@ -67,11 +67,14 @@ function generateBots(
 
 export interface BotRacersResult {
   bots: Array<BotRacer>
-  // Powerup effect (the "tank shell" — see TypingRace.tsx): pulls a bot back roughly one word's
-  // worth of typing time. Bot progress is a pure closed-form function of elapsed time (see the
+  // Powerup effect (shell, magnet, EMP, nuke — see TypingRace.tsx): pulls a bot back `words`
+  // words' worth of typing time (one by default). Bot progress is a pure closed-form function of elapsed time (see the
   // integral below), not accumulated state, so "pulling back" means rewinding that bot's own
   // clock rather than subtracting from a stored progress value.
-  hitBot: (id: string) => void
+  // Negative `words` move a bot forward instead (a bot firing its own Boost or Nitro).
+  hitBot: (id: string, words?: number) => void
+  // The same, in plain milliseconds of the bot's own clock (Time Warp's slow motion).
+  delayBot: (id: string, ms: number) => void
 }
 
 export function useBotRacers({
@@ -111,17 +114,22 @@ export function useBotRacers({
   }, [raceKey])
 
   const hitBot = useCallback(
-    (id: string) => {
+    (id: string, words = 1) => {
       if (finishedRef.current[id] !== undefined) return
       const bot = configs.find((b) => b.id === id)
       if (!bot) return
       // Time to type one 5-char "word" at this bot's own base wpm — wpm is already defined as
       // 5-char words per minute, so one word takes 60000 / wpm ms.
-      const penaltyMs = 60000 / bot.baseWpm
+      const penaltyMs = (60000 / bot.baseWpm) * words
       penaltyRef.current[id] = (penaltyRef.current[id] ?? 0) + penaltyMs
     },
     [configs],
   )
+
+  const delayBot = useCallback((id: string, ms: number) => {
+    if (finishedRef.current[id] !== undefined) return
+    penaltyRef.current[id] = (penaltyRef.current[id] ?? 0) + ms
+  }, [])
 
   useEffect(() => {
     if (!started || playerFinished) return
@@ -188,5 +196,5 @@ export function useBotRacers({
     }
   })
 
-  return { bots, hitBot }
+  return { bots, hitBot, delayBot }
 }

@@ -21,6 +21,8 @@ package main
 //	→ finish         {elapsedMs}                                   "I finished the quote in this long"
 //	← player_finished {playerId, rank, elapsedMs, wpm}              relayed to the whole room, including the finisher
 //	← player_left    {playerId}                                    an opponent disconnected mid-race
+//	→ powerup        {powerup}                                     powerup rooms only: fire your powerup (once per race)
+//	← powerup_used   {playerId, powerup}                           to the whole room: who fired what
 //	← race_end       {results}                                     final standings; connection closes shortly after
 //	← error          {message}                                     something went wrong (e.g. quote selection failed, unknown room code)
 type serverMessage struct {
@@ -50,6 +52,14 @@ type serverMessage struct {
 	// Players is everyone currently in the room, so clients can label opponents by name — sent
 	// with "waiting" and "race_start".
 	Players []playerInfo `json:"players,omitempty"`
+
+	// Mode is the room's lobby mode ("classic" or "powerups"), sent with "waiting" and
+	// "race_start".
+	Mode string `json:"mode,omitempty"`
+
+	// Powerup describes a "powerup_used" event: who fired what (PlayerID, Powerup).
+	Powerup string   `json:"powerup,omitempty"`
+	Targets []string `json:"targets,omitempty"`
 
 	Message string `json:"message,omitempty"`
 }

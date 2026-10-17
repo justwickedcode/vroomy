@@ -6,21 +6,13 @@ import type { CSSProperties } from 'react'
 // need to change.
 export type CarModel = string
 
-export type VehicleCategory = 'Cars' | 'Fleet' | 'Pixel'
-
-export const VEHICLE_CATEGORIES: Array<VehicleCategory> = ['Cars', 'Fleet', 'Pixel']
-
 interface Vehicle {
   id: CarModel
   label: string
-  category: VehicleCategory
   // Sprite's own native pixel aspect ratio (width:height) — used so the <img> never gets
   // stretched off-model inside a consumer's aspect-[8/5] wrapper, which was tuned for the old
   // hand-drawn SVG's fixed 240x150 viewBox, not these varying real sprite dimensions.
   aspect: number
-  // Name of the achievement (see #/lib/achievements) that unlocks this model — undefined means
-  // it's available from the start. Checked by the Garage page against the player's own stats.
-  requiresAchievement?: string
 }
 
 // Real top-down car sprites — all 14 from tokka's "Top Down Cars Sprite Pack 1.0" on itch.io
@@ -36,180 +28,132 @@ interface Vehicle {
 // of it (extracted straight from the pack's own full sheet, not its rotated marketing screenshot).
 export const VEHICLES: Array<Vehicle> = [
   // Cars — the original realistic-car lineup.
-  // No requiresAchievement — the starter car, always available.
-  { id: 'sport', label: 'Sport', category: 'Cars', aspect: 95 / 55 },
+  // Prices live in the shop catalog (#/lib/shop/prices.json), not here.
+  { id: 'sport', label: 'Sport', aspect: 95 / 55 },
   {
     id: 'muscle',
     label: 'Muscle',
-    category: 'Cars',
     aspect: 89 / 48,
-    requiresAchievement: 'First lap',
   },
   {
     id: 'classic',
     label: 'Classic',
-    category: 'Cars',
     aspect: 102 / 54,
-    requiresAchievement: 'Getting warmed up',
   },
   {
     id: 'offroad',
     label: 'Offroad',
-    category: 'Cars',
     aspect: 94 / 50,
-    requiresAchievement: 'On the podium',
   },
   {
     id: 'drift',
     label: 'Drift',
-    category: 'Cars',
     aspect: 106 / 58,
-    requiresAchievement: 'Speed demon',
   },
   {
     id: 'rally',
     label: 'Rally',
-    category: 'Cars',
     aspect: 86 / 45,
-    requiresAchievement: 'Checkered flag',
   },
   {
     id: 'super',
     label: 'Super',
-    category: 'Cars',
     aspect: 99 / 54,
-    requiresAchievement: 'Century club',
   },
   {
     id: 'lambo',
     label: 'Lambo',
-    category: 'Cars',
     aspect: 260 / 130,
-    requiresAchievement: 'Daily driver',
   },
   {
     id: 'convertible',
     label: 'Convertible',
-    category: 'Cars',
     aspect: 260 / 132,
-    requiresAchievement: 'Marathoner',
   },
   {
     id: 'wedge',
     label: 'Wedge',
-    category: 'Cars',
     aspect: 260 / 132,
-    requiresAchievement: 'Road warrior',
   },
   {
     id: 'hot-hatch',
     label: 'Hot Hatch',
-    category: 'Cars',
     aspect: 260 / 132,
-    requiresAchievement: 'Long hauler',
   },
   // The rest of the achievement pool (see #/lib/achievements) is already spoken for by other
   // vehicles/trails/underglow, so these three — from looneybits' "2D Sport Cars" (CC BY 4.0,
   // attribution required) — ship as free starters rather than reusing a name.
-  { id: 'roadster', label: 'Speedster', category: 'Cars', aspect: 260 / 129 },
-  { id: 'coupe-gt', label: 'Coupe GT', category: 'Cars', aspect: 260 / 124 },
-  { id: 'coupe-white', label: 'Coupe White', category: 'Cars', aspect: 260 / 124 },
-  // Fleet — service/utility vehicles, same pack. Taxi is this category's free starter.
-  { id: 'taxi', label: 'Taxi', category: 'Fleet', aspect: 99 / 51 },
+  { id: 'roadster', label: 'Speedster', aspect: 260 / 129 },
+  { id: 'coupe-gt', label: 'Coupe GT', aspect: 260 / 124 },
+  { id: 'coupe-white', label: 'Coupe White', aspect: 260 / 124 },
+  // Service/utility vehicles from the same pack.
+  { id: 'taxi', label: 'Taxi', aspect: 99 / 51 },
   {
     id: 'van',
     label: 'Van',
-    category: 'Fleet',
     aspect: 103 / 55,
-    requiresAchievement: 'Highway cruiser',
   },
   {
     id: 'suv',
     label: 'SUV',
-    category: 'Fleet',
     aspect: 135 / 52,
-    requiresAchievement: 'Turbocharged',
   },
   {
     id: 'limo',
     label: 'Limo',
-    category: 'Fleet',
     aspect: 135 / 52,
-    requiresAchievement: 'Sharpshooter',
   },
   {
     id: 'police',
     label: 'Police Cruiser',
-    category: 'Fleet',
     aspect: 93 / 48,
-    requiresAchievement: 'Giant slayer',
   },
   {
     id: 'ambulance',
     label: 'Ambulance',
-    category: 'Fleet',
     aspect: 97 / 48,
-    requiresAchievement: 'Flawless streak',
   },
   {
     id: 'firetruck',
     label: 'Fire Truck',
-    category: 'Fleet',
     aspect: 137 / 60,
-    requiresAchievement: 'Win streak',
   },
-  // Pixel — genuine chunky pixel art from two more free/permissively-licensed itch.io packs
-  // (marcusvh's "2D Top Down Pixel Art Car Pack" and Aim Studios' "Top down pixel art Race
-  // cars"), rather than another painterly set — mixing painterly and pixel art *within* one
-  // roster would be the same inconsistency problem as before, so it gets its own category
-  // instead of blending into Cars/Fleet. (The pack's semi trailer was dropped — a flatbed with
-  // no cab attached to pull it doesn't read as a vehicle on its own.)
-  { id: 'pixel-compact', label: 'Compact', category: 'Pixel', aspect: 58 / 26 },
+  // Chunky pixel art from two more free/permissively-licensed itch.io packs (marcusvh's "2D Top
+  // Down Pixel Art Car Pack" and Aim Studios' "Top down pixel art Race cars"). (The pack's semi
+  // trailer was dropped — a flatbed with no cab attached doesn't read as a vehicle on its own.)
+  { id: 'pixel-compact', label: 'Compact', aspect: 58 / 26 },
   {
     id: 'pixel-coupe',
     label: 'Coupe',
-    category: 'Pixel',
     aspect: 75 / 29,
-    requiresAchievement: 'Ludicrous speed',
   },
-  { id: 'pixel-sedan', label: 'Sedan', category: 'Pixel', aspect: 78 / 30 },
+  { id: 'pixel-sedan', label: 'Sedan', aspect: 78 / 30 },
   {
     id: 'pixel-sport',
     label: 'Roadster',
-    category: 'Pixel',
     aspect: 71 / 31,
-    requiresAchievement: 'Early bird',
   },
   {
     id: 'pixel-racer-blue',
     label: 'Blue Racer',
-    category: 'Pixel',
     aspect: 280 / 142,
   },
   {
     id: 'pixel-racer-red',
     label: 'Red Racer',
-    category: 'Pixel',
     aspect: 280 / 142,
-    requiresAchievement: 'Night owl',
   },
   {
     id: 'pixel-buggy-neon',
     label: 'Neon Buggy',
-    category: 'Pixel',
     aspect: 239 / 132,
   },
   {
     id: 'pixel-buggy-woods',
     label: 'Forest Buggy',
-    category: 'Pixel',
     aspect: 239 / 132,
   },
 ]
-
-// The achievement (see #/lib/achievements) that unlocks underglow — matches its "neon glow"
-// theming rather than a milestone tied to a specific model.
-export const UNDERGLOW_ACHIEVEMENT = 'Nitro boost'
 
 const VEHICLE_BY_ID: Record<string, Vehicle | undefined> = Object.fromEntries(
   VEHICLES.map((v) => [v.id, v]),
@@ -278,7 +222,7 @@ export default function CarIcon({
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: '-18%',
+            inset: '-28%',
             borderRadius: '9999px',
             background: `radial-gradient(ellipse at center, ${underglowColor}88 0%, transparent 70%)`,
           }}

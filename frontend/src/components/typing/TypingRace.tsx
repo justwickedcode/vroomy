@@ -1,72 +1,33 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import {
-  Crosshair,
-  Flame,
-  Magnet,
-  Medal,
-  PlayCircle,
-  Radar,
-  RotateCcw,
-  Sparkles,
-  Trophy,
-  Zap,
-} from 'lucide-react'
+import { PlayCircle, RotateCcw } from '#/components/ui/icons'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
-import { Card, CardContent } from '#/components/ui/card'
-import { cn, ordinal } from '#/lib/utils'
-import { POWERUPS } from '#/lib/powerups'
+import { powerupDef } from '#/lib/powerups'
+import { useSoloPowerups } from '#/lib/typing/useSoloPowerups'
 import RaceTrack from '#/components/typing/RaceTrack'
-import Gauge from '#/components/typing/Gauge'
-import DigitalReadout from '#/components/typing/DigitalReadout'
 import TypingWords from '#/components/typing/TypingWords'
-import QuoteCredit from '#/components/typing/QuoteCredit'
-import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
+import RaceConsole from '#/components/typing/RaceConsole'
+import RaceResults from '#/components/typing/RaceResults'
+import type { UnlockedAchievement } from '#/lib/profile/useProfile'
+import type { Racer } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
-import type { PowerupKind } from '#/lib/powerups'
-
-const POWERUP_ICONS: Record<PowerupKind, typeof Zap> = {
-  boost: Zap,
-  nitro: Flame,
-  shell: Crosshair,
-  emp: Radar,
-  magnet: Magnet,
-}
-
-// Matches each powerup's `--pu-c` accent in styles.css (activation burst/impact effects) so the
-// status chip and the effect that fires when you use it read as the same thing.
-const POWERUP_COLORS: Record<PowerupKind, string> = {
-  boost: '#fbbf24',
-  nitro: '#fb5607',
-  shell: '#ef4444',
-  emp: '#38bdf8',
-  magnet: '#a855f7',
-}
-
-const MEDAL_COLORS: Record<number, string> = {
-  1: '#facc15',
-  2: '#cbd5e1',
-  3: '#c2703d',
-}
-
-const WPM_GAUGE_MAX = 130
+import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
 // Solo vs AI has nobody else to wait on, so the countdown just needs to be
 // long enough to get fingers on the keys — not a real multiplayer-room wait.
 const RACE_COUNTDOWN_START = 3
 
-function formatTime(ms: number) {
-  const totalSeconds = ms / 1000
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = (totalSeconds % 60).toFixed(1).padStart(4, '0')
-  return `${minutes}:${seconds}`
-}
-
-export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
+export default function TypingRace({
+  speedRange,
+  abilities = true,
+}: {
+  speedRange: SpeedRange
+  // Abilities on: your equipped one recharges, and the bots use them too (useSoloPowerups).
+  abilities?: boolean
+}) {
   const {
     text,
     spans,
@@ -113,6 +74,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   const [countdown, setCountdown] = useState(RACE_COUNTDOWN_START)
 
   const locked = phase !== 'ready'
+  useKeepTypingFocus(inputRef, !locked && !finished)
 
   useEffect(() => {
     if (!locked) {
@@ -147,120 +109,39 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     return () => clearTimeout(t)
   }, [phase, countdown, start])
 
-  // ── Powerups ─────────────────────────────────────────────────────
-  // One per race: the equipped powerup (see Garage) is ready from GO and can be fired at any
-  // moment with Tab, then it's spent until the next race. Picking the moment is the skill.
-  const [powerupUsed, setPowerupUsed] = useState(false)
-  const powerup: PowerupKind | null =
-    powerupUsed || finished ? null : profile.equippedPowerup
-  const [lastEvent, setLastEvent] = useState<string | null>(null)
-  // Drives the one-shot activation animation (RaceTrack's PowerupBurst/PowerupImpact/emp-flash)
-  // — a plain object, not a boolean, so RaceTrack knows which kind/target to render; `key` is
-  // bumped on every use (see triggerEffect) so using the same kind twice in a row still remounts
-  // and replays instead of no-op'ing on unchanged props.
-  const [activeEffect, setActiveEffect] = useState<RaceEffect | null>(null)
-  const eventTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const effectKeyRef = useRef(0)
-  const effectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const triggerEffect = useCallback(
-    (effect: { kind: PowerupKind; targetId?: string }) => {
-      effectKeyRef.current += 1
-      setActiveEffect({ ...effect, key: effectKeyRef.current })
-      if (effectTimeoutRef.current) clearTimeout(effectTimeoutRef.current)
-      effectTimeoutRef.current = setTimeout(() => setActiveEffect(null), 650)
-    },
-    [],
-  )
-
-  // A new passage is a new race, with a fresh powerup.
-  useEffect(() => {
-    setPowerupUsed(false)
-    setLastEvent(null)
-  }, [text])
-
-  useEffect(() => {
-    return () => {
-      if (eventTimeoutRef.current) clearTimeout(eventTimeoutRef.current)
-      if (effectTimeoutRef.current) clearTimeout(effectTimeoutRef.current)
-    }
-  }, [])
-
-  // Boost/nitro force-commit word(s) (see useTypingRace's skipWord — nitro just passes a count of
-  // 2). Shell hits whoever's currently leading; magnet hits whoever's closest ahead of the player
-  // specifically (your direct rival, not necessarily 1st overall — falls back to the leader if
-  // you're already out front); EMP hits every bot still racing at once. All four bot-targeting
-  // kinds ignore anyone already finished, since there's nothing left to pull back.
-  const usePowerup = useCallback(() => {
-    if (!powerup || finished || locked) return
-    const contenders = bots.filter((b) => !b.finished)
-
-    if (powerup === 'boost') {
-      skipWord()
-      setLastEvent('Boost!')
-      triggerEffect({ kind: 'boost' })
-    } else if (powerup === 'nitro') {
-      skipWord(2)
-      setLastEvent('Nitro!')
-      triggerEffect({ kind: 'nitro' })
-    } else if (powerup === 'shell') {
-      if (contenders.length > 0) {
-        const leader = contenders.reduce((a, b) =>
-          b.progress > a.progress ? b : a,
-        )
-        hitBot(leader.id)
-        setLastEvent(`Shelled ${leader.name}!`)
-        triggerEffect({ kind: 'shell', targetId: leader.id })
-      }
-    } else if (powerup === 'emp') {
-      if (contenders.length > 0) {
-        for (const bot of contenders) hitBot(bot.id)
-        setLastEvent('EMP!')
-        triggerEffect({ kind: 'emp' })
-      }
-    } else {
-      const ahead = contenders.filter((b) => b.progress > progress)
-      const rival =
-        ahead.length > 0
-          ? ahead.reduce((a, b) => (b.progress < a.progress ? b : a))
-          : contenders.length > 0
-            ? contenders.reduce((a, b) => (b.progress > a.progress ? b : a))
-            : undefined
-      if (rival) {
-        hitBot(rival.id)
-        setLastEvent(`Yanked back ${rival.name}!`)
-        triggerEffect({ kind: 'magnet', targetId: rival.id })
-      }
-    }
-
-    setPowerupUsed(true)
-    if (eventTimeoutRef.current) clearTimeout(eventTimeoutRef.current)
-    eventTimeoutRef.current = setTimeout(() => setLastEvent(null), 1800)
-  }, [
-    powerup,
+  // ── Abilities ────────────────────────────────────────────────────
+  // Classic: the equipped one, once per race. Chaos: an item roulette for you and the bots,
+  // who fire theirs at you (see useSoloPowerups).
+  const powers = useSoloPowerups({
+    enabled: abilities,
+    equipped: profile.equippedPowerup,
+    raceKey: text,
+    startedAt,
     finished,
     locked,
-    skipWord,
+    progress,
+    activeWordIndex,
+    textLength: text.length,
     bots,
     hitBot,
-    progress,
-    triggerEffect,
-  ])
+    skipWord,
+  })
+  const { fire, slot } = powers
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      // Always swallow Tab during an active race, whether or not a powerup happens to be
+      // Always swallow Tab during an active race, whether or not an ability happens to be
       // available right now — letting its default focus-shift through even once yanks focus
       // off the hidden typing input, which then dumps subsequent keystrokes onto whatever
       // element Tab landed on instead.
       if (event.key !== 'Tab' || locked || finished) return
       event.preventDefault()
-      if (powerup) usePowerup()
+      if (slot) fire()
       inputRef.current?.focus()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [powerup, locked, finished, usePowerup])
+  }, [slot, locked, finished, fire])
 
   const racers: Array<Racer> = [
     {
@@ -274,6 +155,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       underglow: profile.underglow,
       underglowColor: profile.underglowColor,
       trail: profile.trail,
+      overdrive: powers.overdrive,
     },
     ...bots.map((bot) => ({
       id: bot.id,
@@ -296,6 +178,8 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   const [newBest, setNewBest] = useState(false)
   // The just-finished race's replay, once it's saved — for the "Watch replay" button.
   const [replayId, setReplayId] = useState<string | null>(null)
+  const [coinsEarned, setCoinsEarned] = useState<number | null>(null)
+  const [unlocks, setUnlocks] = useState<Array<UnlockedAchievement>>([])
 
   useEffect(() => {
     if (!finished || !place) return
@@ -303,6 +187,8 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     recordedRaceRef.current = text
     setNewBest(profile.stats.racesPlayed > 0 && wpm > profile.stats.bestWpm)
     setReplayId(null)
+    setCoinsEarned(null)
+    setUnlocks([])
     const raceText = text
     void profile
       .addRace({
@@ -313,9 +199,12 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
         mode: 'solo',
         replay: getReplay(),
       })
-      .then((id) => {
+      .then((saved) => {
         // Ignore a save that lands after the player already started the next race.
-        if (recordedRaceRef.current === raceText) setReplayId(id)
+        if (recordedRaceRef.current !== raceText) return
+        setReplayId(saved.replayId)
+        setCoinsEarned(saved.coinsEarned)
+        setUnlocks(saved.achievements)
       })
   }, [
     finished,
@@ -330,26 +219,26 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     profile.stats.racesPlayed,
   ])
 
-  const analytics = (
-    <div className="flex items-center gap-4">
-      <Gauge label="wpm" value={wpm} max={WPM_GAUGE_MAX} size="lg" />
-      <Gauge label="accuracy" value={accuracy} max={100} suffix="%" />
-      <DigitalReadout label="time" value={formatTime(elapsedMs)} />
-    </div>
-  )
-
-  // Shown for the whole race, ready or spent, so the chip never pops in and out.
-  const equippedDef = POWERUPS.find((p) => p.id === profile.equippedPowerup)
-  const EquippedIcon = POWERUP_ICONS[profile.equippedPowerup]
+  const ability = profile.equippedPowerup
+  // What the item box says under the ability's name.
+  const abilityStatus = powers.overdrive ? 'Overdrive!' : undefined
 
   return (
-    <Card className="rise-in flex flex-col overflow-hidden">
-      <CardContent className="flex flex-col p-0">
+    // One connected panel: the track, the words, a slim status bar, then the results.
+    <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
+      <div className="relative flex flex-col">
+        {/* What just happened, up in the sky over the track — never over your words. */}
+        {!finished && powers.event && (
+          <div className="pointer-events-none absolute top-2 right-3 z-10">
+            <span className="race-announcer">{powers.event}</span>
+          </div>
+        )}
         <RaceTrack
           racers={racers}
           countdown={countdown}
           phase={phase}
-          effect={activeEffect}
+          epic
+          effect={powers.effect}
           className="flex-shrink-0"
         />
 
@@ -366,99 +255,55 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
           overlay={
             <>
               {finished && (
-                <div className="countdown-overlay gap-3">
-                  <Button
-                    onClick={reset}
-                    size="lg"
-                    className="pointer-events-auto"
-                  >
-                    <RotateCcw />
-                    Race Again
-                  </Button>
-                  {replayId && (
-                    <Button
-                      asChild
-                      size="lg"
-                      className="pointer-events-auto"
-                    >
-                      <Link to="/replays/$replayId" params={{ replayId }}>
-                        <PlayCircle />
-                        Watch replay
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              )}
-              {!finished && lastEvent && (
-                <div className="pointer-events-none absolute top-3 right-3 z-10">
-                  <span className="rounded-full bg-secondary/80 px-3 py-1 text-[0.7rem] font-semibold text-muted-foreground">
-                    {lastEvent}
-                  </span>
-                </div>
+                <RaceResults
+                  place={place ?? null}
+                  racerCount={bots.length + 1}
+                  elapsedMs={elapsedMs}
+                  coinsEarned={coinsEarned}
+                  newBest={newBest}
+                  unlocks={unlocks}
+                  actions={
+                    <>
+                      <Button onClick={reset}>
+                        <RotateCcw />
+                        Race again
+                      </Button>
+                      {replayId && (
+                        <Button asChild variant="outline">
+                          <Link to="/replays/$replayId" params={{ replayId }}>
+                            <PlayCircle />
+                            Replay
+                          </Link>
+                        </Button>
+                      )}
+                    </>
+                  }
+                />
               )}
             </>
           }
         />
-        <div className="flex flex-wrap items-center justify-between gap-3 px-1 pt-3">
-          {equippedDef && !finished ? (
-            <button
-              type="button"
-              onClick={usePowerup}
-              disabled={!powerup || locked}
-              title={equippedDef.detail}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-opacity',
-                powerup ? 'hover:text-foreground' : 'opacity-40',
-              )}
-            >
-              <EquippedIcon
-                className="size-3.5"
-                style={{ color: POWERUP_COLORS[profile.equippedPowerup] }}
-              />
-              {equippedDef.label}
-              <span>{powerup ? '· once per race' : '· used'}</span>
-              {powerup && (
-                <kbd className="rounded border border-border px-1 font-mono text-[0.65rem]">
-                  Tab
-                </kbd>
-              )}
-            </button>
-          ) : (
-            <span />
-          )}
-          <QuoteCredit {...credit} />
-        </div>
-      </CardContent>
-
-      {finished && <div className="glass-divider" />}
-
-      {finished ? (
-        <div className="flex flex-wrap items-center justify-between gap-5 bg-success/10 p-6">
-          <div className="flex flex-wrap items-center gap-3">
-            {place && place <= 3 ? (
-              <Medal
-                className="size-6 shrink-0"
-                style={{ color: MEDAL_COLORS[place] }}
-              />
-            ) : (
-              <Trophy className="size-6 shrink-0 text-success" />
-            )}
-            <div className="flex flex-col gap-1">
-              <p className="text-base leading-none">
-                Finished <strong>{place && ordinal(place)}</strong> of{' '}
-                {bots.length + 1} in <strong>{formatTime(elapsedMs)}</strong>
-              </p>
-              {newBest && (
-                <Badge variant="success" className="w-fit gap-1">
-                  <Sparkles className="size-3" />
-                  New personal best
-                </Badge>
-              )}
-            </div>
-          </div>
-          <div className="race-footer-controls">{analytics}</div>
-        </div>
-      ) : null}
-    </Card>
+      </div>
+      <RaceConsole
+        wpm={wpm}
+        accuracy={accuracy}
+        elapsedMs={elapsedMs}
+        powerup={
+          abilities
+            ? {
+                kind: ability,
+                label: powerupDef(ability).label,
+                detail: powerupDef(ability).detail,
+                ready: Boolean(slot),
+                charge: powers.charge,
+                status: abilityStatus,
+                canFire: Boolean(slot) && !locked && !finished,
+                onFire: fire,
+              }
+            : undefined
+        }
+        {...credit}
+      />
+    </div>
   )
 }
