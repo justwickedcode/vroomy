@@ -8,11 +8,15 @@ import type { PowerupKind } from '#/lib/powerups'
 // readouts in the middle, and the quote's author and source on the car radio on the right.
 
 export interface ConsolePowerup {
-  kind: PowerupKind
+  // What the box shows; null for an empty box (chaos, recharging).
+  kind: PowerupKind | null
   label: string
   detail: string
-  // Still unused this race.
+  // Loaded and unused.
   ready: boolean
+  // Chaos: the roulette is spinning, and how far the empty box has recharged (0..1).
+  rolling?: boolean
+  charge?: number
   // Can be fired right now (ready, and the race is on).
   canFire: boolean
   onFire: () => void
@@ -38,7 +42,8 @@ function safeSource(sourceUrl?: string | null): URL | null {
 }
 
 function ItemBox({ powerup }: { powerup: ConsolePowerup }) {
-  const { kind, label, detail, ready, canFire, onFire } = powerup
+  const { kind, label, detail, ready, rolling, charge, canFire, onFire } =
+    powerup
   return (
     <button
       type="button"
@@ -50,21 +55,40 @@ function ItemBox({ powerup }: { powerup: ConsolePowerup }) {
       <span
         className={cn(
           'race-itembox',
-          ready ? 'race-itembox--ready' : 'race-itembox--used',
+          ready && 'race-itembox--ready',
+          rolling && 'race-itembox--rolling',
+          !ready && !rolling && 'race-itembox--used',
         )}
       >
-        <PixelIcon name={kind} className="size-8" />
+        {kind ? (
+          <PixelIcon name={kind} className="size-8" />
+        ) : (
+          <span className="race-itembox-q">?</span>
+        )}
+        {/* Chaos: the empty box fills back up from the bottom. */}
+        {!ready && !rolling && charge !== undefined && charge < 1 && (
+          <span
+            className="race-itembox-charge"
+            style={{ height: `${Math.round(charge * 100)}%` }}
+          />
+        )}
         {ready && <kbd className="race-keycap">Tab</kbd>}
       </span>
       <span className="flex flex-col leading-tight">
-        <span className="text-sm font-bold">{label}</span>
+        <span className="text-sm font-bold">{rolling ? 'Rolling' : label}</span>
         <span
           className={cn(
             'font-mono text-[0.65rem] tracking-widest uppercase',
             ready ? 'text-signal' : 'text-muted-foreground',
           )}
         >
-          {ready ? 'Ready' : 'Used'}
+          {ready
+            ? 'Ready'
+            : rolling
+              ? '...'
+              : charge !== undefined
+                ? 'Charging'
+                : 'Used'}
         </span>
       </span>
     </button>

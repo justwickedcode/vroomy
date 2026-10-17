@@ -20,6 +20,9 @@ function parseCustomSpeed(id: string): SpeedRange | null {
 }
 
 export const Route = createFileRoute('/race/solo/$speed')({
+  // ?chaos=true: the item-roulette mode where the bots fire abilities too.
+  validateSearch: (search: Record<string, unknown>): { chaos?: boolean } =>
+    search.chaos === true || search.chaos === 'true' ? { chaos: true } : {},
   loader: ({ params }) => {
     const range =
       SPEED_RANGES.find((r) => r.id === params.speed) ??
@@ -32,6 +35,7 @@ export const Route = createFileRoute('/race/solo/$speed')({
 
 function SoloRace() {
   const speedRange = Route.useLoaderData()
+  const { chaos } = Route.useSearch()
   const isDesktop = useIsDesktopViewport()
 
   if (isDesktop === false) return <DesktopOnlyRace />
@@ -40,7 +44,11 @@ function SoloRace() {
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-6">
       <div className="page-wrap flex flex-col">
-        <TypingRace speedRange={speedRange} />
+        <TypingRace
+          key={chaos ? 'chaos' : 'classic'}
+          speedRange={speedRange}
+          chaos={chaos ?? false}
+        />
       </div>
     </main>
   )

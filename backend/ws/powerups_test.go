@@ -136,3 +136,35 @@ func TestPowerup_UnknownKindIgnored(t *testing.T) {
 		t.Error("a bogus powerup used up the player's real one")
 	}
 }
+
+func TestPowerup_OilHitsWhoeverIsRightBehind(t *testing.T) {
+	r, _, b, _ := powerupRace(t, 2, 7, 4)
+	r.handlePowerup(b, "oil")
+
+	msg, ok := lastPowerup(t, b)
+	if !ok || !slices.Equal(msg.Targets, []string{"c"}) || msg.FreezeMs != 1200 {
+		t.Errorf("got %+v, want c (right behind b) frozen 1.2s", msg)
+	}
+}
+
+func TestPowerup_MirrorHitsLeaderWithScreenEffectOnly(t *testing.T) {
+	r, a, _, _ := powerupRace(t, 2, 7, 4)
+	r.handlePowerup(a, "mirror")
+
+	msg, ok := lastPowerup(t, a)
+	if !ok || !slices.Equal(msg.Targets, []string{"b"}) || msg.FreezeMs != 0 {
+		t.Errorf("got %+v, want b targeted with no freeze", msg)
+	}
+}
+
+func TestPowerup_GhostDodgesHits(t *testing.T) {
+	r, a, b, c := powerupRace(t, 2, 7, 4)
+	r.handlePowerup(b, "ghost")
+	drain(t, a)
+	r.handlePowerup(a, "ink")
+
+	msg, ok := lastPowerup(t, c)
+	if !ok || !slices.Equal(msg.Targets, []string{"c"}) {
+		t.Errorf("got %+v, want only c hit — b is ghosted", msg)
+	}
+}

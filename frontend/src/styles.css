@@ -988,37 +988,6 @@ body::before {
   width: 6.5rem;
 }
 
-.race-speedlines {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-/* The wind only blows when you're moving: --speed (0..1, set by RaceTrack's loop; the showcase
-   leaves it unset, so full) fades it in and out. */
-.race-speedlines {
-  opacity: clamp(0, var(--speed, 1) * 1.5 - 0.15, 1);
-}
-
-/* Each line is a full-width strip of streaks, scrolled by --road-pos (see SPEEDLINES). The
-   streaks are stepped, not smooth: three hard bands brightening toward the front, pixel style. */
-.race-speedlines span {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background-image: linear-gradient(
-    90deg,
-    transparent 0 80%,
-    rgb(255 255 255 / 14%) 80% 87%,
-    rgb(255 255 255 / 30%) 87% 94%,
-    rgb(255 255 255 / 60%) 94% 100%
-  );
-  background-repeat: repeat-x;
-}
-
 /* Your exhaust burns as hard as you're driving: no flames while you're parked. */
 .race-car-wrap--you
   :is(
@@ -1471,8 +1440,8 @@ body::before {
 }
 
 /* Chase camera: a rival (or the finish gate) sits where its progress (--p) is relative to the
-   camera's (--cam, set every frame on the track), CAMERA_X/CAMERA_SCALE in RaceTrack.tsx. --p is
-   registered so it can ease between progress updates; --cam moves every frame on its own. */
+   camera's (--cam), CAMERA_X/CAMERA_SCALE in RaceTrack.tsx. Both are spring-smoothed and written
+   every frame by RaceTrack's loop (--p on each rival's lane, inherited by its car and tags). */
 @property --p {
   syntax: '<number>';
   inherits: true;
@@ -1482,10 +1451,6 @@ body::before {
 .race-follow {
   left: calc(26% + (var(--p) - var(--cam, 0)) * 400%);
   transition: none;
-}
-
-.race-lane--follow {
-  transition: --p 450ms linear;
 }
 
 /* A rival out of sight: a small tag pinned to the edge of their lane. */
@@ -2603,4 +2568,408 @@ button:not(:disabled):hover .race-itembox--ready {
   z-index: 1;
   pointer-events: none;
   image-rendering: pixelated;
+}
+
+/* ── Abilities: item box extras ──────────────────────────────────── */
+
+.race-itembox {
+  overflow: hidden;
+}
+
+.race-itembox-q {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #8a7ca3;
+}
+
+/* Chaos recharge: the empty box fills up from the bottom. */
+.race-itembox-charge {
+  position: absolute;
+  inset: auto 0 0;
+  background: repeating-linear-gradient(
+    rgb(255 47 180 / 45%) 0 3px,
+    rgb(255 47 180 / 25%) 3px 6px
+  );
+  transition: height 100ms linear;
+  pointer-events: none;
+}
+
+/* The roulette: faces flick past under a strobing frame. */
+.race-itembox--rolling {
+  animation: race-itembox 0.3s steps(1) infinite;
+}
+
+.race-itembox--rolling svg {
+  animation: race-itembox-flick 0.1s steps(1) infinite;
+}
+
+@keyframes race-itembox-flick {
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+/* ── Abilities on the track ──────────────────────────────────────── */
+
+/* The ability's icon pops up over each car it touched. */
+.race-ability-pop {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  z-index: 6;
+  transform: translateX(-50%);
+  filter: drop-shadow(2px 2px 0 rgb(0 0 0 / 60%));
+  animation: race-ability-pop 0.9s steps(6) both;
+  pointer-events: none;
+}
+
+@keyframes race-ability-pop {
+  0% {
+    transform: translate(-50%, 10px) scale(0.4);
+    opacity: 0;
+  }
+  25% {
+    transform: translate(-50%, -6px) scale(1.25);
+    opacity: 1;
+  }
+  75% {
+    transform: translate(-50%, -12px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -22px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* Oil slick: a full spin-out. */
+.race-car-wrap--spin .race-car-svg {
+  animation: race-spin 0.9s steps(8);
+}
+
+@keyframes race-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Ghost: see-through, flickering. */
+.race-car-wrap--ghost {
+  opacity: 0.45;
+  filter: saturate(0.3) brightness(1.4)
+    drop-shadow(0 0 6px rgb(216 180 254 / 80%));
+  animation: race-ghost 0.6s steps(2) infinite;
+}
+
+@keyframes race-ghost {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* Track-wide flashes for the abilities that hit everyone. */
+.race-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  animation: race-flash 0.9s steps(6) forwards;
+}
+
+.race-flash--ink {
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgb(49 46 129 / 55%),
+    transparent 70%
+  );
+}
+
+.race-flash--disco {
+  background: repeating-linear-gradient(
+    90deg,
+    rgb(255 47 180 / 30%) 0 40px,
+    rgb(34 211 238 / 30%) 40px 80px,
+    rgb(250 204 21 / 30%) 80px 120px
+  );
+  animation:
+    race-flash 0.9s steps(6) forwards,
+    race-disco-slide 0.3s steps(3) infinite;
+}
+
+.race-flash--timewarp {
+  background: repeating-radial-gradient(
+    circle at 50% 50%,
+    rgb(168 85 247 / 30%) 0 10px,
+    transparent 10px 24px
+  );
+}
+
+.race-flash--quake {
+  background: linear-gradient(transparent 60%, rgb(124 45 18 / 35%));
+}
+
+.race-flash--mirror {
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgb(165 243 252 / 45%) 50%,
+    transparent 60%
+  );
+}
+
+@keyframes race-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes race-disco-slide {
+  to {
+    background-position: 120px 0;
+  }
+}
+
+.race-track-panel--quake {
+  animation: race-quake 0.9s steps(12);
+}
+
+@keyframes race-quake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translate(-5px, 3px);
+  }
+  40% {
+    transform: translate(6px, -2px);
+  }
+  60% {
+    transform: translate(-4px, -3px);
+  }
+  80% {
+    transform: translate(3px, 2px);
+  }
+}
+
+/* ── Abilities that hit you: your typing screen ──────────────────── */
+
+/* What just happened, top right of the typing screen. */
+.race-announcer {
+  display: inline-block;
+  padding: 3px 10px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #15101f;
+  box-shadow:
+    0 0 0 2px #ff2fb4,
+    0 0 14px rgb(255 47 180 / 45%);
+  animation: race-announce 0.25s steps(3) both;
+}
+
+@keyframes race-announce {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+.race-frozen-tag {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 10;
+  padding: 2px 8px;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  color: #0b0614;
+  background: #a5f3fc;
+  box-shadow: 0 0 12px rgb(165 243 252 / 70%);
+  pointer-events: none;
+}
+
+/* Frozen: the screen ices over. */
+.race-hit--frozen .race-words {
+  box-shadow:
+    inset 0 0 0 3px #a5f3fc,
+    inset 0 0 40px rgb(165 243 252 / 35%);
+}
+
+.race-hit--frozen .race-words-inner {
+  filter: saturate(0.4) brightness(1.2);
+}
+
+/* Shell / magnet: a jolt. */
+.race-hit--shake .race-words-inner {
+  animation: race-quake 0.6s steps(8);
+}
+
+/* EMP: static fizz over the words. */
+.race-hit--static .race-words::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    rgb(255 255 255 / 12%) 0 2px,
+    transparent 2px 5px
+  );
+  animation: race-static 0.15s steps(2) infinite;
+  pointer-events: none;
+}
+
+@keyframes race-static {
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+/* Nuke: a white-out. */
+.race-hit--flash .race-words::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #fff8e1;
+  animation: race-flash 1.2s steps(6) forwards;
+  pointer-events: none;
+}
+
+/* Oil: your car spins out and the words wobble with it. */
+.race-hit--spin .race-words-inner {
+  animation: race-wobble 1.2s steps(10);
+}
+
+@keyframes race-wobble {
+  25% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+  75% {
+    transform: rotate(-1deg);
+  }
+}
+
+/* Mirror: the text runs back to front. */
+.race-hit--mirror .race-words-inner {
+  transform: scaleX(-1);
+}
+
+/* Quake: the whole screen and track shake. */
+.race-hit--quake {
+  animation: race-quake 0.5s steps(8) 5;
+}
+
+/* Disco: the words strobe through the neon colours. */
+.race-hit--disco .race-words-inner {
+  animation: race-disco 0.4s steps(1) infinite;
+}
+
+.race-hit--disco .race-words {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      rgb(255 47 180 / 18%) 0 32px,
+      rgb(34 211 238 / 18%) 32px 64px,
+      rgb(250 204 21 / 18%) 64px 96px
+    ),
+    #120c1c;
+  animation: race-disco-slide 0.4s steps(4) infinite;
+}
+
+@keyframes race-disco {
+  0% {
+    filter: hue-rotate(0deg) saturate(2.5);
+  }
+  33% {
+    filter: hue-rotate(120deg) saturate(2.5);
+  }
+  66% {
+    filter: hue-rotate(240deg) saturate(2.5);
+  }
+}
+
+/* Time warp: the words ripple in slow motion. */
+.race-hit--warp .race-words-inner {
+  animation: race-warp 0.8s steps(8) infinite;
+}
+
+@keyframes race-warp {
+  0%,
+  100% {
+    transform: skewX(0) scaleY(1);
+    filter: hue-rotate(0deg) blur(0);
+  }
+  50% {
+    transform: skewX(-8deg) scaleY(0.92);
+    filter: hue-rotate(260deg) blur(1px);
+  }
+}
+
+/* Ink Bomb: pixel ink blots slapped over the words, then dripping away. */
+.race-ink {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.race-ink span {
+  position: absolute;
+  width: calc(110px * var(--s, 1));
+  height: calc(80px * var(--s, 1));
+  margin: calc(-40px * var(--s, 1)) 0 0 calc(-55px * var(--s, 1));
+  background: #1e1b4b;
+  box-shadow: inset -6px -6px 0 #312e81;
+  clip-path: polygon(
+    10% 20%,
+    30% 0,
+    45% 15%,
+    65% 2%,
+    80% 20%,
+    100% 30%,
+    88% 52%,
+    100% 75%,
+    75% 82%,
+    60% 100%,
+    42% 84%,
+    20% 96%,
+    12% 72%,
+    0 55%,
+    8% 40%
+  );
+  animation: race-ink 4s steps(16) both;
+}
+
+@keyframes race-ink {
+  0% {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+  6% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  10% {
+    transform: scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(8px) scaleY(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(24px) scaleY(1.2);
+  }
 }

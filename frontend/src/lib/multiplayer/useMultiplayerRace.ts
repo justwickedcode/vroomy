@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { computeWordSpans } from '#/lib/typing/useTypingRace'
 import { useReplayRecorder } from '#/lib/replay/recorder'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import { SELF_SKIP_WORDS, SLIPSTREAM_MAX_WORDS } from '#/lib/powerups'
 import type { PowerupKind } from '#/lib/powerups'
 
 // Talks to backend/ws (a separate Go service — see backend/ws/README.md) over a raw WebSocket,
@@ -27,12 +28,6 @@ export interface PowerupEvent {
   powerup: PowerupKind
   targets: Array<string>
   freezeMs: number
-}
-
-// Boost and nitro skip the user's own words; everything else freezes other players' keyboards.
-const SELF_SKIP_WORDS: Partial<Record<PowerupKind, number>> = {
-  boost: 1,
-  nitro: 2,
 }
 
 export type MultiplayerPhase =
@@ -301,6 +296,18 @@ export function useMultiplayerRace() {
   }
   const skipWordsRef = useRef(skipWords)
   skipWordsRef.current = skipWords
+  const slipstreamWordsRef = useRef((): number => 1)
+  slipstreamWordsRef.current = () => {
+    const ahead = Object.values(opponents)
+      .filter((o): o is Opponent => o !== undefined && !o.finished)
+      .map((o) => o.wordIndex)
+      .filter((w) => w > activeWordIndex)
+    if (ahead.length === 0) return 1
+    return Math.min(
+      SLIPSTREAM_MAX_WORDS,
+      Math.max(1, Math.min(...ahead) - activeWordIndex),
+    )
+  }
 
   const socketRef = useRef<WebSocket | null>(null)
   const finishSentRef = useRef(false)
@@ -485,7 +492,12 @@ export function useMultiplayerRace() {
             setLastPowerup(fired)
             if (msg.playerId === myIdRef.current) {
               setPowerupUsed(true)
-              const skip = SELF_SKIP_WORDS[msg.powerup]
+              // Boost/nitro skip a fixed count; slipstream rides up behind the nearest player
+              // ahead (up to SLIPSTREAM_MAX_WORDS).
+              const skip =
+                msg.powerup === 'slipstream'
+                  ? slipstreamWordsRef.current()
+                  : SELF_SKIP_WORDS[msg.powerup]
               if (skip) skipWordsRef.current(skip)
             } else if (
               myIdRef.current &&

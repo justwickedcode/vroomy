@@ -27,6 +27,7 @@ import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 import LeaderboardTable from '#/components/social/LeaderboardTable'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
+import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
 const WPM_GAUGE_MAX = 130
 // Matches TypingRace's own solo countdown length — long enough to get fingers on the keys,
@@ -90,6 +91,7 @@ export default function DailyChallengeCard() {
   latestAttemptRef.current = attempt
 
   const locked = phase !== 'ready'
+  useKeepTypingFocus(inputRef, !locked && !finished)
 
   useEffect(() => {
     if (locked || finished) return

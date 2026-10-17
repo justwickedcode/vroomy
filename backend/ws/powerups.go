@@ -1,6 +1,9 @@
 package main
 
-import "sort"
+import (
+	"sort"
+	"time"
+)
 
 // lobbyMode is the kind of race a room runs. Players only ever share a room with others who
 // picked the same mode — the matchmaker keeps one waiting room per mode, and a private room's
@@ -22,19 +25,31 @@ func parseLobbyMode(raw string) lobbyMode {
 	return modeClassic
 }
 
-// powerupFreezeMs is how long each powerup freezes the keyboards it hits. In solo these knock
-// bots back words; against real people that would mean deleting text they've typed, which feels
-// awful, so a hit locks their input briefly instead — the same cost (time), without undoing
-// their work. Boost and nitro hit nobody: they skip the user's own words, client-side, and the
-// server sees that as ordinary progress.
+// powerupFreezeMs is how long each powerup freezes the keyboards it hits (it must match
+// HIT_EFFECTS in frontend/src/lib/powerups.ts). In solo these knock bots back words; against real
+// people that would mean deleting text they've typed, which feels awful, so a hit locks their
+// input briefly instead — the same cost (time), without undoing their work. Some hit with only a
+// screen effect, drawn by the client (0 here: ink, mirror, quake, disco). Boost, nitro and
+// slipstream hit nobody: they skip the user's own words, client-side, and the server sees that as
+// ordinary progress; ghost makes the user immune to hits for ghostDuration.
 var powerupFreezeMs = map[string]int64{
-	"boost":  0,
-	"nitro":  0,
-	"shell":  1500,
-	"magnet": 1500,
-	"emp":    1000,
-	"nuke":   3000,
+	"boost":      0,
+	"nitro":      0,
+	"slipstream": 0,
+	"ghost":      0,
+	"shell":      1500,
+	"magnet":     1500,
+	"oil":        1200,
+	"mirror":     0,
+	"emp":        1000,
+	"ink":        0,
+	"quake":      0,
+	"disco":      0,
+	"timewarp":   1500,
+	"nuke":       3000,
 }
+
+const ghostDuration = 10 * time.Second
 
 // handlePowerup applies c firing kind: once per race, only in a powerup room, only while racing.
 // The server picks the targets from its own view of everyone's progress, so every player sees
@@ -55,6 +70,9 @@ func (r *Room) handlePowerup(c *Client, kind string) {
 		return
 	}
 	state.usedPowerup = true
+	if kind == "ghost" {
+		state.ghostUntil = time.Now().Add(ghostDuration)
+	}
 	targets := r.powerupTargetsLocked(c, kind)
 	r.mu.Unlock()
 
@@ -67,17 +85,19 @@ func (r *Room) handlePowerup(c *Client, kind string) {
 	})
 }
 
-// powerupTargetsLocked returns the ids a powerup hits, chosen among opponents still racing.
-// Caller must hold r.mu.
+// powerupTargetsLocked returns the ids a powerup hits, chosen among opponents still racing and
+// not ghosted. Caller must hold r.mu. Mirrors pickTargets in frontend/src/lib/powerups.ts:
 //
-//   - shell: whoever is leading
+//   - shell, mirror: whoever is leading
 //   - magnet: whoever is directly ahead of the user (the leader if the user is in front)
-//   - emp, nuke: everyone
-//   - boost, nitro: nobody
+//   - oil: whoever is right behind the user (whoever's directly ahead if nobody is behind)
+//   - emp, ink, quake, disco, timewarp, nuke: everyone
+//   - boost, nitro, slipstream, ghost: nobody
 func (r *Room) powerupTargetsLocked(user *Client, kind string) []string {
+	now := time.Now()
 	var rivals []*playerState
 	for c, p := range r.players {
-		if c != user && p.connected && !p.finished {
+		if c != user && p.connected && !p.finished && !now.Before(p.ghostUntil) {
 			rivals = append(rivals, p)
 		}
 	}
@@ -97,22 +117,39 @@ func (r *Room) powerupTargetsLocked(user *Client, kind string) []string {
 		return out
 	}
 
+	mine := r.players[user].wordIndex
+	// The closest rival ahead of the user, or nil.
+	nextAhead := func() *playerState {
+		for i := len(rivals) - 1; i >= 0; i-- {
+			if rivals[i].wordIndex > mine {
+				return rivals[i]
+			}
+		}
+		return nil
+	}
+
 	switch kind {
-	case "shell":
+	case "shell", "mirror":
 		if len(rivals) > 0 {
 			return ids(rivals[:1])
 		}
 	case "magnet":
-		mine := r.players[user].wordIndex
-		for i := len(rivals) - 1; i >= 0; i-- {
-			if rivals[i].wordIndex > mine {
-				return ids(rivals[i : i+1])
-			}
+		if p := nextAhead(); p != nil {
+			return []string{p.client.id}
 		}
 		if len(rivals) > 0 {
 			return ids(rivals[:1])
 		}
-	case "emp", "nuke":
+	case "oil":
+		for _, p := range rivals {
+			if p.wordIndex <= mine {
+				return []string{p.client.id}
+			}
+		}
+		if p := nextAhead(); p != nil {
+			return []string{p.client.id}
+		}
+	case "emp", "ink", "quake", "disco", "timewarp", "nuke":
 		return ids(rivals)
 	}
 	return nil

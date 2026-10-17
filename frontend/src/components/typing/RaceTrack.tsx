@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { cn } from '#/lib/utils'
 import CarIcon from '#/components/typing/CarIcon'
 import PixelSkyline from '#/components/typing/PixelSkyline'
+import PixelIcon from '#/components/ui/PixelIcon'
+import { TARGETING } from '#/lib/powerups'
 import type { CSSProperties } from 'react'
 import type { CarModel } from '#/components/typing/CarIcon'
 import type { TrailVariant } from '#/lib/trails'
@@ -20,6 +22,8 @@ export interface Racer {
   underglow?: boolean
   underglowColor?: string
   trail?: TrailVariant
+  // Fired Ghost: see-through, and attacks pass through it.
+  ghost?: boolean
 }
 
 // One-shot powerup activation effect (see TypingRace.tsx's usePowerup) — `key` changes on every
@@ -30,22 +34,19 @@ export interface Racer {
 export interface RaceEffect {
   kind: PowerupKind
   targetId?: string
+  // Everyone it hit, and who fired it (when that isn't simply "you"): each of their lanes pops
+  // the ability's icon over the car.
+  targetIds?: Array<string>
+  sourceId?: string
   key: number
 }
 
-// The wind: pixel streaks riding the road position faster than the asphalt (`rate` x road
-// speed, so they read as air rushing past nearer than the road), one per height (% of the lanes
-// area). `tile` spaces the streaks along each line, `shift` staggers the lines. Because they're
-// driven by --road-pos, they move exactly as fast as you do — and stand still when you do.
-const SPEEDLINES = [
-  { top: 8, tile: 620, rate: 2.6, shift: 40 },
-  { top: 22, tile: 860, rate: 3.2, shift: 410 },
-  { top: 37, tile: 540, rate: 2.2, shift: 230 },
-  { top: 51, tile: 980, rate: 3.5, shift: 120 },
-  { top: 66, tile: 700, rate: 2.8, shift: 560 },
-  { top: 80, tile: 900, rate: 2.4, shift: 300 },
-  { top: 93, tile: 760, rate: 3, shift: 650 },
-]
+// Lanes an effect lands on: whoever it hit, or for a self ability, whoever fired it.
+function effectLanes(effect: RaceEffect): Array<string> {
+  if (TARGETING[effect.kind] === 'self')
+    return effect.sourceId ? [effect.sourceId] : []
+  return effect.targetIds ?? (effect.targetId ? [effect.targetId] : [])
+}
 
 // Cars start at 12% and cross the line at 92%.
 const CAR_START = 12
@@ -65,6 +66,17 @@ const GATE_LEAD = 30
 // stays parked on the line, sliding past exactly as fast as the road.
 const CAMERA_X = 26
 const CAMERA_SCALE = 400
+
+// How stiff the chase camera's and the rivals' springs are (higher follows tighter).
+const CAMERA_STIFFNESS = 3.2
+const RIVAL_STIFFNESS = 5
+
+// One step of a critically damped spring at `x` moving at `v` toward `goal`: returns the new
+// velocity (the caller advances x by it).
+function spring(x: number, v: number, goal: number, omega: number, dt: number) {
+  const accel = omega * omega * (goal - x) - 2 * omega * v
+  return v + accel * dt
+}
 
 function clamp01(n: number) {
   return Math.min(Math.max(n, 0), 1)
@@ -376,36 +388,47 @@ function Lane({
   const follow = camera !== null && !racer.isYou
   const racing = racer.progress > 0 && !racer.finished
 
-  // Boost/nitro play on the player's own car (there's no bot equivalent); shell/magnet play on
-  // whichever bot the hit actually landed on. Narrowed into a {kind, key} pair up front so the
-  // JSX below doesn't need to re-check `effect` is non-null just to read its fields.
+  // Boost/nitro/slipstream play on whoever fired them (you, unless a bot did); shell/magnet play
+  // on whoever the hit landed on; every ability pops its icon over the cars it touched, and an
+  // oil slick spins them out. Narrowed into {kind, key} pairs up front so the JSX below doesn't
+  // need to re-check `effect` is non-null just to read its fields.
+  const mine = effect
+    ? effect.sourceId
+      ? effect.sourceId === racer.id
+      : Boolean(racer.isYou)
+    : false
   const burst =
     effect &&
-    racer.isYou &&
-    (effect.kind === 'boost' || effect.kind === 'nitro')
-      ? { kind: effect.kind, key: effect.key }
+    mine &&
+    (effect.kind === 'boost' ||
+      effect.kind === 'nitro' ||
+      effect.kind === 'slipstream')
+      ? {
+          kind: effect.kind === 'slipstream' ? 'nitro' : effect.kind,
+          key: effect.key,
+        }
       : null
+  const landed = effect ? effectLanes(effect).includes(racer.id) : false
   const impact =
-    effect &&
-    effect.targetId === racer.id &&
-    (effect.kind === 'shell' || effect.kind === 'magnet')
+    effect && landed && (effect.kind === 'shell' || effect.kind === 'magnet')
       ? { kind: effect.kind, key: effect.key }
       : null
+  const pop = effect && landed ? { kind: effect.kind, key: effect.key } : null
+  const spin = effect?.kind === 'oil' && landed
 
   return (
     <div
       className={cn('race-lane', follow && 'race-lane--follow')}
-      style={
-        follow
-          ? // A bot that's done parks on the line (progress 1) and rides along with the road.
-            followStyle(racer.finished ? 1 : clamp01(racer.progress))
-          : undefined
-      }
+      // Under the chase camera, RaceTrack's loop writes this lane's --p every frame (a finished
+      // bot parks on the line, progress 1, and rides along with the road).
+      data-racer={racer.id}
     >
       <div
         className={cn(
           'race-car-wrap',
           impact && 'race-car-wrap--hit',
+          spin && 'race-car-wrap--spin',
+          racer.ghost && 'race-car-wrap--ghost',
           racer.isYou && 'race-car-wrap--you',
           follow && 'race-follow',
         )}
@@ -424,6 +447,11 @@ function Lane({
         {racing && <Trail variant={trailVariant} />}
         {racer.isYou && racer.finished && <FinishBurst />}
         {burst && <PowerupBurst key={burst.key} kind={burst.kind} />}
+        {pop && (
+          <span key={pop.key} className="race-ability-pop" aria-hidden="true">
+            <PixelIcon name={pop.kind} className="size-7" />
+          </span>
+        )}
         {impact && <PowerupImpact key={impact.key} kind={impact.kind} />}
         <CarIcon
           model={racer.model ?? 'sport'}
@@ -507,6 +535,8 @@ export default function RaceTrack({
   // Where the chase camera is headed (your progress), for the loop below; null for the showcase.
   const cameraRef = useRef(camera)
   cameraRef.current = camera
+  const racersRef = useRef(racers)
+  racersRef.current = racers
 
   // rAF-driven scroll: runs once for the lifetime of this component instance.
   // All road elements (curbs, dashes, asphalt) share the same roadPos so they're
@@ -520,14 +550,15 @@ export default function RaceTrack({
     let roadPos = 0
     let lastTime = performance.now()
     let rafId = 0
-    // Chase camera state, in progress units: a smoothed position and speed, plus recent samples
-    // of your real progress to measure your pace from.
+    // Chase camera state, in progress units: a smoothed position and speed. Rivals get the same
+    // treatment, each in `rivals`, so every car on the road glides instead of stepping.
     let camPos = 0
     let camVel = 0
-    // The wind/exhaust level, eased on its own slower curve so gusts build and die down
+    const rivals = new Map<string, { x: number; v: number }>()
+    const laneEls = new Map<string, HTMLElement>()
+    // The exhaust level, eased on its own slower curve so gusts build and die down
     // gradually instead of flicking on and off with each burst of typing.
-    let wind = 0
-    let samples: Array<[number, number]> = []
+    let exhaust = 0
 
     function tick(now: number) {
       const dt = Math.min((now - lastTime) / 1000, 0.05)
@@ -540,41 +571,49 @@ export default function RaceTrack({
         if (target < 0.001 && camPos > 0.01) {
           camPos = 0
           camVel = 0
-          samples = []
+          rivals.clear()
         }
-        // Your pace over the last 2s, so the camera glides between keystrokes instead of
-        // lurching on each one.
-        samples.push([now, target])
-        while (samples.length > 1 && now - samples[0][0] > 2000) samples.shift()
-        const [t0, p0] = samples[0]
-        const pace = now > t0 ? (target - p0) / ((now - t0) / 1000) : 0
-        // Accelerate toward that pace like a car would, not instantly.
-        camVel += (pace - camVel) * Math.min(dt * 3, 1)
-        let next = camPos + Math.max(camVel, 0) * dt
-        // Falling behind you: a gentle pull forward so the camera never drifts off you.
-        if (target > next) next += (target - next) * Math.min(dt * 0.8, 1)
-        // Running ahead of you (you paused): brake smoothly to a stop just past you — the
-        // further past, the harder the brakes — instead of hitting a wall or rolling back.
-        const over = next - target
-        if (over > 0)
-          next = camPos + (next - camPos) * Math.max(0, 1 - over / 0.012)
-        next = Math.min(Math.max(next, camPos), 1)
-        // The speed is what actually moved, so the wind dies exactly when the road does.
-        if (dt > 0) camVel = (next - camPos) / dt
-        camPos = next
+        // A critically damped spring toward your progress: it follows your keystrokes as one
+        // smooth motion, speeds up and slows down like a car (no jolts on a burst of typing or a
+        // sudden stop), and never overshoots enough to matter. It never rolls backward.
+        const before = camPos
+        camVel = spring(camPos, camVel, target, CAMERA_STIFFNESS, dt)
+        camPos = Math.min(Math.max(camPos + camVel * dt, before), 1)
+        if (dt > 0) camVel = (camPos - before) / dt
+
+        // Rivals: the same spring toward their own progress, written straight onto their lanes
+        // (--p) so a 120ms bot tick or a knock-back becomes a glide, not a step.
+        for (const racer of racersRef.current) {
+          if (racer.isYou) continue
+          const goal = racer.finished ? 1 : clamp01(racer.progress)
+          const state = rivals.get(racer.id) ?? { x: goal, v: 0 }
+          state.v = spring(state.x, state.v, goal, RIVAL_STIFFNESS, dt)
+          state.x += state.v * dt
+          rivals.set(racer.id, state)
+          let lane = laneEls.get(racer.id)
+          if (!lane?.isConnected) {
+            lane =
+              el.querySelector<HTMLElement>(
+                `[data-racer="${CSS.escape(racer.id)}"]`,
+              ) ?? undefined
+            if (lane) laneEls.set(racer.id, lane)
+          }
+          lane?.style.setProperty('--p', state.x.toFixed(5))
+        }
         el.style.setProperty('--cam', camPos.toFixed(5))
         // The road is the same world the cars live in: one unit of progress is CAMERA_SCALE % of
         // the track's width, on the asphalt and on screen alike.
         roadPos = ((camPos * CAMERA_SCALE) / 100) * el.clientWidth
         el.style.setProperty('--road-pos', `${roadPos}px`)
-        // How fast you're going right now, 0..1 (~1 around 100 wpm): fades the wind and your
-        // exhaust in and out with your actual speed.
+        // How fast you're going right now, 0..1 (~1 around 100 wpm): fades your exhaust in and
+        // out with your actual speed.
         const pxPerSec = ((camVel * CAMERA_SCALE) / 100) * el.clientWidth
-        const windTarget = Math.min(Math.max(pxPerSec / 180, 0), 1)
+        const exhaustTarget = Math.min(Math.max(pxPerSec / 180, 0), 1)
         // Picks up in ~0.4s, dies down over ~0.7s.
-        wind +=
-          (windTarget - wind) * Math.min(dt * (windTarget > wind ? 5 : 3), 1)
-        el.style.setProperty('--speed', wind.toFixed(3))
+        exhaust +=
+          (exhaustTarget - exhaust) *
+          Math.min(dt * (exhaustTarget > exhaust ? 5 : 3), 1)
+        el.style.setProperty('--speed', exhaust.toFixed(3))
         rafId = requestAnimationFrame(tick)
         return
       }
@@ -610,6 +649,7 @@ export default function RaceTrack({
       className={cn(
         'race-track-panel',
         epic && 'race-track-panel--epic',
+        effect?.kind === 'quake' && 'race-track-panel--quake',
         showcase && 'race-track-panel--showcase',
         className,
       )}
@@ -644,20 +684,6 @@ export default function RaceTrack({
           )
         })}
         <div className="race-curb" aria-hidden="true" />
-        {epic && (
-          <div className="race-speedlines" aria-hidden="true">
-            {SPEEDLINES.map((line) => (
-              <span
-                key={line.top}
-                style={{
-                  top: `${line.top}%`,
-                  backgroundSize: `${line.tile}px 100%`,
-                  backgroundPositionX: `calc(var(--road-pos, 0px) * ${-line.rate} + ${line.shift}px)`,
-                }}
-              />
-            ))}
-          </div>
-        )}
         {finishLine && (
           <FinishGate
             left={gateLeft(player, camera)}
@@ -679,6 +705,18 @@ export default function RaceTrack({
             aria-hidden="true"
           />
         )}
+        {effect &&
+          (effect.kind === 'ink' ||
+            effect.kind === 'disco' ||
+            effect.kind === 'timewarp' ||
+            effect.kind === 'quake' ||
+            effect.kind === 'mirror') && (
+            <span
+              key={effect.key}
+              className={cn('race-flash', `race-flash--${effect.kind}`)}
+              aria-hidden="true"
+            />
+          )}
       </div>
 
       {phase === 'counting' && countdown !== undefined && (

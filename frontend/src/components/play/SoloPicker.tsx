@@ -14,7 +14,8 @@ import PixelMeter from '#/components/ui/PixelMeter'
 import { SPEED_RANGES } from '#/lib/typing/useBotRacers'
 import { useLastPace } from '#/lib/typing/useLastPace'
 import { useProfile } from '#/lib/profile/useProfile'
-import { handleTiltLeave, handleTiltMove } from '#/lib/utils'
+import { cn, handleTiltLeave, handleTiltMove } from '#/lib/utils'
+import PixelIcon from '#/components/ui/PixelIcon'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
 
 // Solo setup: pick a preset bot pace, or "Choose yourself" to dial in an exact WPM. Used in the
@@ -40,14 +41,17 @@ const PACE_COLORS = [
 function SpeedPresetTile({
   range,
   index,
+  chaos,
 }: {
   range: SpeedRange
   index: number
+  chaos: boolean
 }) {
   return (
     <Link
       to="/race/solo/$speed"
       params={{ speed: range.id }}
+      search={chaos ? { chaos: true } : {}}
       onMouseMove={handleTiltMove}
       onMouseLeave={handleTiltLeave}
       className="tilt-card glass-chip flex flex-col gap-3 p-4 text-left transition-colors hover:border-primary/50"
@@ -84,7 +88,7 @@ function CustomPaceTile({ onOpen }: { onOpen: () => void }) {
   )
 }
 
-function CustomPace({ onBack }: { onBack: () => void }) {
+function CustomPace({ onBack, chaos }: { onBack: () => void; chaos: boolean }) {
   const { hydrated, stats } = useProfile()
   const bestWpm = hydrated && stats.bestWpm > 0 ? stats.bestWpm : undefined
   const [wpm, setWpm] = useLastPace()
@@ -159,7 +163,11 @@ function CustomPace({ onBack }: { onBack: () => void }) {
         </div>
       </div>
       <Button size="lg" className="w-full" asChild>
-        <Link to="/race/solo/$speed" params={{ speed: `custom-${wpm}` }}>
+        <Link
+          to="/race/solo/$speed"
+          params={{ speed: `custom-${wpm}` }}
+          search={chaos ? { chaos: true } : {}}
+        >
           Race at {wpm} wpm
           <ArrowRight />
         </Link>
@@ -168,15 +176,80 @@ function CustomPace({ onBack }: { onBack: () => void }) {
   )
 }
 
+// Classic: your equipped ability, once. Chaos: an item roulette for everyone, bots included.
+const MODES = [
+  {
+    id: 'classic',
+    label: 'Classic',
+    icon: 'flag',
+    blurb: 'Your ability, once',
+  },
+  {
+    id: 'chaos',
+    label: 'Chaos',
+    icon: 'disco',
+    blurb: 'Random abilities for everyone — bots fight back',
+  },
+] as const
+
+function ModeSwitch({
+  chaos,
+  onChange,
+}: {
+  chaos: boolean
+  onChange: (chaos: boolean) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-[2px] border-2 border-border bg-border">
+      {MODES.map((mode) => {
+        const active = (mode.id === 'chaos') === chaos
+        return (
+          <button
+            key={mode.id}
+            type="button"
+            onClick={() => onChange(mode.id === 'chaos')}
+            className={cn(
+              'flex items-center gap-3 p-3 text-left transition-colors',
+              active
+                ? 'bg-[#2a1238] shadow-[inset_0_-3px_0_#ff2fb4]'
+                : 'bg-card hover:bg-accent',
+            )}
+          >
+            <PixelIcon name={mode.icon} className="size-7" />
+            <span className="flex flex-col leading-tight">
+              <span className="font-display text-lg uppercase">
+                {mode.label}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {mode.blurb}
+              </span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function SoloPicker() {
   const [custom, setCustom] = useState(false)
-  if (custom) return <CustomPace onBack={() => setCustom(false)} />
+  const [chaos, setChaos] = useState(false)
+  if (custom)
+    return <CustomPace onBack={() => setCustom(false)} chaos={chaos} />
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {SPEED_RANGES.map((range, i) => (
-        <SpeedPresetTile key={range.id} range={range} index={i} />
-      ))}
-      <CustomPaceTile onOpen={() => setCustom(true)} />
+    <div className="flex flex-col gap-4">
+      <ModeSwitch chaos={chaos} onChange={setChaos} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {SPEED_RANGES.map((range, i) => (
+          <SpeedPresetTile
+            key={range.id}
+            range={range}
+            index={i}
+            chaos={chaos}
+          />
+        ))}
+        <CustomPaceTile onOpen={() => setCustom(true)} />
+      </div>
     </div>
   )
 }

@@ -73,6 +73,8 @@ type playerState struct {
 	// usedPowerup is set once this player fires their powerup — one per race (see
 	// handlePowerup).
 	usedPowerup bool
+	// ghostUntil: until then, this player fired Ghost and powerups pass right through them.
+	ghostUntil time.Time
 }
 
 // Room is one race: a fixed set of players racing the same quote from the same start signal.

@@ -71,7 +71,10 @@ export interface BotRacersResult {
   // words' worth of typing time (one by default). Bot progress is a pure closed-form function of elapsed time (see the
   // integral below), not accumulated state, so "pulling back" means rewinding that bot's own
   // clock rather than subtracting from a stored progress value.
+  // Negative `words` move a bot forward instead (a bot firing its own Boost or Nitro).
   hitBot: (id: string, words?: number) => void
+  // The same, in plain milliseconds of the bot's own clock (Time Warp's slow motion).
+  delayBot: (id: string, ms: number) => void
 }
 
 export function useBotRacers({
@@ -122,6 +125,11 @@ export function useBotRacers({
     },
     [configs],
   )
+
+  const delayBot = useCallback((id: string, ms: number) => {
+    if (finishedRef.current[id] !== undefined) return
+    penaltyRef.current[id] = (penaltyRef.current[id] ?? 0) + ms
+  }, [])
 
   useEffect(() => {
     if (!started || playerFinished) return
@@ -188,5 +196,5 @@ export function useBotRacers({
     }
   })
 
-  return { bots, hitBot }
+  return { bots, hitBot, delayBot }
 }

@@ -48,12 +48,12 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 
 ### Client → server messages
 
-| `type`     | Fields      | Meaning                                                                                                                                                                        |
-| ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `progress` | `wordIndex` | "I'm now at word N" — purely cosmetic, for opponents' UI                                                                                                                       |
-| `finish`   | `elapsedMs` | "I finished the quote in this many milliseconds"                                                                                                                               |
-| `start`    | —           | Private-room host only: skip the wait and start now (requires at least `minPlayers` already joined; ignored from anyone else, on a public room, or before `minPlayers` is met) |
-| `powerup`  | `powerup`   | Powerup rooms only: fire your powerup (`boost`, `nitro`, `shell`, `magnet`, `emp`, `nuke`), once per race. The server picks targets from its own view of progress              |
+| `type`     | Fields      | Meaning                                                                                                                                                                                                                                        |
+| ---------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `progress` | `wordIndex` | "I'm now at word N" — purely cosmetic, for opponents' UI                                                                                                                                                                                       |
+| `finish`   | `elapsedMs` | "I finished the quote in this many milliseconds"                                                                                                                                                                                               |
+| `start`    | —           | Private-room host only: skip the wait and start now (requires at least `minPlayers` already joined; ignored from anyone else, on a public room, or before `minPlayers` is met)                                                                 |
+| `powerup`  | `powerup`   | Powerup rooms only: fire your powerup (`boost`, `nitro`, `slipstream`, `ghost`, `shell`, `magnet`, `oil`, `mirror`, `emp`, `ink`, `quake`, `disco`, `timewarp`, `nuke`), once per race. The server picks targets from its own view of progress |
 
 `wpm` is always computed server-side from the room's own authoritative word count and the client-reported `elapsedMs` — never trusted as a value the client sends directly.
 
@@ -61,7 +61,7 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 
 `/ws/race` and `/ws/private/create` take `?mode=classic` (the default) or `?mode=powerups`. The matchmaker keeps a separate waiting room per mode, so classic and powerup players are never matched together; joining a private room by code gets whatever mode its host chose. `waiting` and `race_start` include `mode`.
 
-In powerup rooms each player may send one `powerup` message per race. Boost and nitro skip the user's own words (applied client-side when `powerup_used` comes back). The rest freeze opponents' keyboards instead of knocking words back, since deleting a real person's typed text would feel awful: shell freezes the leader and magnet whoever is directly ahead (1.5s each), EMP everyone else (1s), nuke everyone else (3s). Which powerup a player fires isn't checked against their purchases — ws has no login to look that up with.
+In powerup rooms each player may send one `powerup` message per race. Boost, nitro and slipstream skip the user's own words (applied client-side when `powerup_used` comes back); ghost makes the user immune to hits for 10s. The rest hit opponents with a keyboard freeze and/or a screen effect the client draws, instead of knocking words back, since deleting a real person's typed text would feel awful: shell (the leader) and magnet (whoever is directly ahead) freeze for 1.5s, oil (whoever is right behind) 1.2s, time warp everyone 1.5s, EMP everyone 1s, nuke everyone 3s; mirror (the leader), ink, quake and disco (everyone) are screen effects only. `powerupFreezeMs` in powerups.go must match `HIT_EFFECTS` in frontend/src/lib/powerups.ts. Which powerup a player fires isn't checked against their purchases — ws has no login to look that up with.
 
 ## Matchmaking rules
 

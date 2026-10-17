@@ -14,13 +14,16 @@ import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceConsole from '#/components/typing/RaceConsole'
 import RaceResults from '#/components/typing/RaceResults'
-import { POWERUPS } from '#/lib/powerups'
+import { GHOST_MS, HIT_EFFECTS, POWERUPS, powerupLabel } from '#/lib/powerups'
+import InkSplats from '#/components/typing/InkSplats'
+import type { ScreenHit } from '#/lib/typing/useSoloPowerups'
 import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import { CAR_MODELS } from '#/components/typing/CarIcon'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
 import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
+import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
 function formatTime(ms: number) {
   const totalSeconds = ms / 1000
@@ -216,6 +219,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const { carModel, underglow, underglowColor, trail } = profile
   const [countdown, setCountdown] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  useKeepTypingFocus(inputRef, mp.phase === 'racing' && !mp.finished)
 
   useEffect(() => {
     if (mp.phase !== 'countdown') return
@@ -288,25 +292,26 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [mp.phase, mp.finished, canFire, firePowerup, equippedPowerup])
 
-  // Plays each announced powerup on the track: a burst on our own car for boost/nitro, a hit on
-  // the target's lane for shell/magnet, and a full-track flash for EMP/nuke.
+  // Plays each announced ability: its icon pops over the cars it touched (a burst on the user's
+  // own car for boost/nitro/slipstream), track-wide flashes for the ones that hit everyone, a
+  // screen effect over our words when it hit us, and a see-through car while someone's ghosted.
   const [effect, setEffect] = useState<RaceEffect | null>(null)
   const [eventText, setEventText] = useState<string | null>(null)
+  const [screenHit, setScreenHit] = useState<ScreenHit | null>(null)
+  const [ghosts, setGhosts] = useState<ReadonlySet<string>>(new Set())
   const { lastPowerup, myId, names } = mp
   useEffect(() => {
     if (!lastPowerup) return
     const { powerup, playerId, targets, key } = lastPowerup
     const mine = playerId === myId
-    const selfOnly = powerup === 'boost' || powerup === 'nitro'
-    if (!selfOnly || mine) {
-      setEffect({
-        kind: powerup,
-        targetId:
-          powerup === 'shell' || powerup === 'magnet' ? targets[0] : undefined,
-        key,
-      })
-    }
-    const label = POWERUPS.find((p) => p.id === powerup)?.label ?? powerup
+    setEffect({
+      kind: powerup,
+      sourceId: playerId,
+      targetIds: targets,
+      targetId: targets[0],
+      key,
+    })
+    const label = powerupLabel(powerup)
     const by = mine ? 'You' : shortName(playerId, myId, names)
     const hitMe = myId !== null && targets.includes(myId)
     setEventText(
@@ -316,17 +321,38 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
           ? `${label}!`
           : `${by} used ${label}`,
     )
-    const clearEffect = setTimeout(() => setEffect(null), 650)
-    const clearText = setTimeout(() => setEventText(null), 2200)
+    const timers = [
+      setTimeout(() => setEffect(null), 900),
+      setTimeout(() => setEventText(null), 2200),
+    ]
+    const hit = HIT_EFFECTS[powerup]
+    if (hitMe && hit?.screen) {
+      setScreenHit({ screen: hit.screen, key })
+      timers.push(setTimeout(() => setScreenHit(null), hit.screenMs ?? 1000))
+    }
+    if (powerup === 'ghost') {
+      setGhosts((prev) => new Set(prev).add(playerId))
+      timers.push(
+        setTimeout(
+          () =>
+            setGhosts((prev) => {
+              const next = new Set(prev)
+              next.delete(playerId)
+              return next
+            }),
+          GHOST_MS,
+        ),
+      )
+    }
     return () => {
-      clearTimeout(clearEffect)
-      clearTimeout(clearText)
+      for (const t of timers) clearTimeout(t)
     }
   }, [lastPowerup, myId, names])
 
   const racers: Array<Racer> = [
     {
       id: mp.myId ?? 'you',
+      ghost: mp.myId !== null && ghosts.has(mp.myId),
       name: 'You',
       progress: mp.progress,
       wpm: mp.wpm,
@@ -339,6 +365,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     },
     ...mp.opponents.map((opponent, index) => ({
       id: opponent.id,
+      ghost: ghosts.has(opponent.id),
       name:
         shortName(opponent.id, mp.myId, mp.names) +
         (opponent.left ? ' (left)' : ''),
@@ -358,7 +385,13 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       <div className="page-wrap flex flex-col">
         {/* One connected panel, like solo: track, words, the dash console, then standings. */}
         <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
-          <div className="flex flex-col">
+          <div
+            className={cn(
+              'flex flex-col',
+              screenHit && `race-hit race-hit--${screenHit.screen}`,
+              mp.frozen && 'race-hit--frozen',
+            )}
+          >
             <RaceTrack
               racers={racers}
               countdown={countdown}
@@ -413,6 +446,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                         </>
                       }
                     />
+                  )}
+                  {screenHit?.screen === 'ink' && !mp.finished && (
+                    <InkSplats key={screenHit.key} />
                   )}
                   {(mp.frozen || eventText) && !mp.finished && (
                     <div className="pointer-events-none absolute top-3 right-3 z-10">

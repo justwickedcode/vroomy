@@ -1,28 +1,35 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { PlayCircle, RotateCcw } from '#/components/ui/icons'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
 import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
-import { POWERUPS } from '#/lib/powerups'
+import { powerupDef } from '#/lib/powerups'
+import { useSoloPowerups } from '#/lib/typing/useSoloPowerups'
+import InkSplats from '#/components/typing/InkSplats'
+import { cn } from '#/lib/utils'
 import RaceTrack from '#/components/typing/RaceTrack'
 import TypingWords from '#/components/typing/TypingWords'
 import RaceConsole from '#/components/typing/RaceConsole'
 import RaceResults from '#/components/typing/RaceResults'
 import type { UnlockedAchievement } from '#/lib/profile/useProfile'
-import type { Racer, RaceEffect } from '#/components/typing/RaceTrack'
+import type { Racer } from '#/components/typing/RaceTrack'
 import type { SpeedRange } from '#/lib/typing/useBotRacers'
-import type { PowerupKind } from '#/lib/powerups'
-
-// How far the Nuke throws every bot back — the strongest powerup, priced to match (see shop).
-const NUKE_WORDS = 3
+import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
 // Solo vs AI has nobody else to wait on, so the countdown just needs to be
 // long enough to get fingers on the keys — not a real multiplayer-room wait.
 const RACE_COUNTDOWN_START = 3
 
-export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
+export default function TypingRace({
+  speedRange,
+  chaos = false,
+}: {
+  speedRange: SpeedRange
+  // Chaos mode: item roulette for everyone, and the bots fight back.
+  chaos?: boolean
+}) {
   const {
     text,
     spans,
@@ -46,7 +53,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
 
   const profile = useProfile()
 
-  const { bots, hitBot } = useBotRacers({
+  const { bots, hitBot, delayBot } = useBotRacers({
     raceKey: text,
     started,
     startedAt,
@@ -69,6 +76,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
   const [countdown, setCountdown] = useState(RACE_COUNTDOWN_START)
 
   const locked = phase !== 'ready'
+  useKeepTypingFocus(inputRef, !locked && !finished)
 
   useEffect(() => {
     if (!locked) {
@@ -103,126 +111,45 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     return () => clearTimeout(t)
   }, [phase, countdown, start])
 
-  // ── Powerups ─────────────────────────────────────────────────────
-  // One per race: the equipped powerup (see Garage) is ready from GO and can be fired at any
-  // moment with Tab, then it's spent until the next race. Picking the moment is the skill.
-  const [powerupUsed, setPowerupUsed] = useState(false)
-  const powerup: PowerupKind | null =
-    powerupUsed || finished ? null : profile.equippedPowerup
-  const [lastEvent, setLastEvent] = useState<string | null>(null)
-  // Drives the one-shot activation animation (RaceTrack's PowerupBurst/PowerupImpact/emp-flash)
-  // — a plain object, not a boolean, so RaceTrack knows which kind/target to render; `key` is
-  // bumped on every use (see triggerEffect) so using the same kind twice in a row still remounts
-  // and replays instead of no-op'ing on unchanged props.
-  const [activeEffect, setActiveEffect] = useState<RaceEffect | null>(null)
-  const eventTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const effectKeyRef = useRef(0)
-  const effectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const triggerEffect = useCallback(
-    (effect: { kind: PowerupKind; targetId?: string }) => {
-      effectKeyRef.current += 1
-      setActiveEffect({ ...effect, key: effectKeyRef.current })
-      if (effectTimeoutRef.current) clearTimeout(effectTimeoutRef.current)
-      effectTimeoutRef.current = setTimeout(() => setActiveEffect(null), 650)
-    },
-    [],
-  )
-
-  // A new passage is a new race, with a fresh powerup.
-  useEffect(() => {
-    setPowerupUsed(false)
-    setLastEvent(null)
-  }, [text])
-
-  useEffect(() => {
-    return () => {
-      if (eventTimeoutRef.current) clearTimeout(eventTimeoutRef.current)
-      if (effectTimeoutRef.current) clearTimeout(effectTimeoutRef.current)
-    }
-  }, [])
-
-  // Boost/nitro force-commit word(s) (see useTypingRace's skipWord — nitro just passes a count of
-  // 2). Shell hits whoever's currently leading; magnet hits whoever's closest ahead of the player
-  // specifically (your direct rival, not necessarily 1st overall — falls back to the leader if
-  // you're already out front); EMP hits every bot still racing at once. All four bot-targeting
-  // kinds ignore anyone already finished, since there's nothing left to pull back.
-  const usePowerup = useCallback(() => {
-    if (!powerup || finished || locked) return
-    const contenders = bots.filter((b) => !b.finished)
-
-    if (powerup === 'boost') {
-      skipWord()
-      setLastEvent('Boost!')
-      triggerEffect({ kind: 'boost' })
-    } else if (powerup === 'nitro') {
-      skipWord(2)
-      setLastEvent('Nitro!')
-      triggerEffect({ kind: 'nitro' })
-    } else if (powerup === 'shell') {
-      if (contenders.length > 0) {
-        const leader = contenders.reduce((a, b) =>
-          b.progress > a.progress ? b : a,
-        )
-        hitBot(leader.id)
-        setLastEvent(`Shelled ${leader.name}!`)
-        triggerEffect({ kind: 'shell', targetId: leader.id })
-      }
-    } else if (powerup === 'emp') {
-      if (contenders.length > 0) {
-        for (const bot of contenders) hitBot(bot.id)
-        setLastEvent('EMP!')
-        triggerEffect({ kind: 'emp' })
-      }
-    } else if (powerup === 'nuke') {
-      if (contenders.length > 0) {
-        for (const bot of contenders) hitBot(bot.id, NUKE_WORDS)
-        setLastEvent('Nuked!')
-        triggerEffect({ kind: 'nuke' })
-      }
-    } else {
-      const ahead = contenders.filter((b) => b.progress > progress)
-      const rival =
-        ahead.length > 0
-          ? ahead.reduce((a, b) => (b.progress < a.progress ? b : a))
-          : contenders.length > 0
-            ? contenders.reduce((a, b) => (b.progress > a.progress ? b : a))
-            : undefined
-      if (rival) {
-        hitBot(rival.id)
-        setLastEvent(`Yanked back ${rival.name}!`)
-        triggerEffect({ kind: 'magnet', targetId: rival.id })
-      }
-    }
-
-    setPowerupUsed(true)
-    if (eventTimeoutRef.current) clearTimeout(eventTimeoutRef.current)
-    eventTimeoutRef.current = setTimeout(() => setLastEvent(null), 1800)
-  }, [
-    powerup,
+  // ── Abilities ────────────────────────────────────────────────────
+  // Classic: the equipped one, once per race. Chaos: an item roulette for you and the bots,
+  // who fire theirs at you (see useSoloPowerups).
+  const powers = useSoloPowerups({
+    chaos,
+    equipped: profile.equippedPowerup,
+    raceKey: text,
+    startedAt,
     finished,
     locked,
-    skipWord,
+    progress,
+    textLength: text.length,
     bots,
     hitBot,
-    progress,
-    triggerEffect,
-  ])
+    delayBot,
+    skipWord,
+  })
+  const { fire, slot } = powers
+
+  // A hit that freezes you swallows keystrokes until it wears off.
+  const onInputChange = (value: string) => {
+    if (powers.frozen) return
+    handleInputChange(value)
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      // Always swallow Tab during an active race, whether or not a powerup happens to be
+      // Always swallow Tab during an active race, whether or not an ability happens to be
       // available right now — letting its default focus-shift through even once yanks focus
       // off the hidden typing input, which then dumps subsequent keystrokes onto whatever
       // element Tab landed on instead.
       if (event.key !== 'Tab' || locked || finished) return
       event.preventDefault()
-      if (powerup) usePowerup()
+      if (slot) fire()
       inputRef.current?.focus()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [powerup, locked, finished, usePowerup])
+  }, [slot, locked, finished, fire])
 
   const racers: Array<Racer> = [
     {
@@ -236,6 +163,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       underglow: profile.underglow,
       underglowColor: profile.underglowColor,
       trail: profile.trail,
+      ghost: powers.ghostYou,
     },
     ...bots.map((bot) => ({
       id: bot.id,
@@ -244,6 +172,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
       wpm: bot.wpm,
       finished: bot.finished,
       model: bot.model,
+      ghost: powers.ghostBots.has(bot.id),
     })),
   ]
 
@@ -299,19 +228,26 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
     profile.stats.racesPlayed,
   ])
 
-  // Shown for the whole race, ready or spent, so the chip never pops in and out.
-  const equippedDef = POWERUPS.find((p) => p.id === profile.equippedPowerup)
+  // The item box shows whatever's in your slot (or spinning in it); in classic, the equipped
+  // ability stays on show, spent or not, so the box never pops in and out.
+  const boxKind = powers.face ?? (chaos ? null : profile.equippedPowerup)
 
   return (
     // One connected panel: the track, the words, a slim status bar, then the results.
     <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
-      <div className="flex flex-col">
+      <div
+        className={cn(
+          'flex flex-col',
+          powers.screen && `race-hit race-hit--${powers.screen.screen}`,
+          powers.frozen && 'race-hit--frozen',
+        )}
+      >
         <RaceTrack
           racers={racers}
           countdown={countdown}
           phase={phase}
           epic
-          effect={activeEffect}
+          effect={powers.effect}
           className="flex-shrink-0"
         />
 
@@ -322,7 +258,7 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
           finished={finished}
           locked={locked}
           errorSeq={errorSeq}
-          onInputChange={handleInputChange}
+          onInputChange={onInputChange}
           inputRef={inputRef}
           className="shrink-0"
           overlay={
@@ -353,11 +289,15 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
                   }
                 />
               )}
-              {!finished && lastEvent && (
+              {!finished && powers.screen?.screen === 'ink' && (
+                <InkSplats key={powers.screen.key} />
+              )}
+              {!finished && powers.frozen && (
+                <span className="race-frozen-tag">Frozen</span>
+              )}
+              {!finished && powers.event && (
                 <div className="pointer-events-none absolute top-3 right-3 z-10">
-                  <span className="px-corners pixel-text bg-secondary/80 px-3 py-1 text-[0.7rem] font-semibold text-muted-foreground">
-                    {lastEvent}
-                  </span>
+                  <span className="race-announcer">{powers.event}</span>
                 </div>
               )}
             </>
@@ -368,16 +308,16 @@ export default function TypingRace({ speedRange }: { speedRange: SpeedRange }) {
         wpm={wpm}
         accuracy={accuracy}
         elapsedMs={elapsedMs}
-        powerup={
-          equippedDef && {
-            kind: profile.equippedPowerup,
-            label: equippedDef.label,
-            detail: equippedDef.detail,
-            ready: Boolean(powerup),
-            canFire: Boolean(powerup) && !locked && !finished,
-            onFire: usePowerup,
-          }
-        }
+        powerup={{
+          kind: boxKind,
+          label: boxKind ? powerupDef(boxKind).label : 'Item box',
+          detail: boxKind ? powerupDef(boxKind).detail : '',
+          ready: Boolean(slot),
+          rolling: powers.rolling,
+          charge: chaos ? powers.charge : undefined,
+          canFire: Boolean(slot) && !locked && !finished,
+          onFire: fire,
+        }}
         {...credit}
       />
     </div>

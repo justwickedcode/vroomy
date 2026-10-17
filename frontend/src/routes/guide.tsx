@@ -10,6 +10,7 @@ import RaceTrack from '#/components/typing/RaceTrack'
 import { useWordStream } from '#/lib/guide/useWordStream'
 import { useProfile } from '#/lib/profile/useProfile'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 
 export const Route = createFileRoute('/guide')({ component: GuidePage })
 
@@ -20,6 +21,7 @@ function Practice() {
     useWordStream()
 
   const inputRef = useRef<HTMLInputElement>(null)
+  useKeepTypingFocus(inputRef, true)
   const profile = useProfile()
   const { user } = useCurrentUser()
   const currentWord = queue[0]
