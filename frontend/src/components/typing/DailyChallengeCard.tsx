@@ -20,9 +20,7 @@ import type { UnlockedAchievement } from '#/lib/profile/useProfile'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useDailyChallenge } from '#/lib/daily/useDailyChallenge'
 import { getDailyQuote, todayKey } from '#/lib/typing/sentences'
-import { useLeaderboard } from '#/lib/social/useLeaderboard'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
-import LeaderboardTable from '#/components/social/LeaderboardTable'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
@@ -30,6 +28,8 @@ import { useKeepTypingFocus } from '#/lib/typing/useKeepTypingFocus'
 // Matches TypingRace's own solo countdown length — long enough to get fingers on the keys,
 // short enough that clicking Start doesn't feel like a wait.
 const COUNTDOWN_START = 3
+// How many past days the history shows.
+const HISTORY_LIMIT = 7
 
 // entry.date is "YYYY-MM-DD" (local, see dateKey in sentences.ts) — parsed as y/m/d components
 // rather than `new Date(entry.date)`, which treats a bare date string as UTC midnight and can
@@ -62,8 +62,6 @@ export default function DailyChallengeCard() {
     getReplay,
     credit,
   } = useTypingRace(getDailyQuote)
-  // Keyed on the local date, so the board rolls over at the same midnight the passage does.
-  const leaderboard = useLeaderboard({ board: 'daily', date: todayKey() })
   const { user } = useCurrentUser()
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -288,32 +286,10 @@ export default function DailyChallengeCard() {
         {...credit}
       />
 
-      {leaderboard.data && (
-        <PlaySection
-          label="Today's top racers"
-          aside={
-            <Link
-              to="/leaderboards"
-              search={{ board: 'daily' }}
-              className="text-xs font-semibold text-muted-foreground hover:text-primary"
-            >
-              Full board
-            </Link>
-          }
-        >
-          <LeaderboardTable
-            board={leaderboard.data}
-            compact
-            limit={5}
-            emptyText="No runs yet"
-          />
-        </PlaySection>
-      )}
-
       {hydrated && history.length > 0 && (
-        <PlaySection label="History">
+        <PlaySection label="Recent days">
           <div className="flex flex-col">
-            {history.map((entry) => (
+            {history.slice(0, HISTORY_LIMIT).map((entry) => (
               <div
                 key={entry.date}
                 className="flex items-center justify-between py-1.5 text-sm"
