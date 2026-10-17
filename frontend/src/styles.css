@@ -3091,3 +3091,24 @@ button:not(:disabled):hover .race-itembox--ready {
   color: var(--color-muted-foreground);
   font-variant-numeric: tabular-nums;
 }
+
+/* A starry night sky to sit above a PixelSkyline that's shorter than its box: the skyline's own
+   top colour, with scattered pixel stars. */
+.night-sky {
+  background-color: #1a0b2e;
+  background-image:
+    radial-gradient(circle, #fff3e0 1px, transparent 1.5px),
+    radial-gradient(circle, rgb(255 243 224 / 55%) 1px, transparent 1.5px),
+    radial-gradient(circle, rgb(165 243 252 / 45%) 1px, transparent 1.5px),
+    linear-gradient(transparent 55%, #2b0f45);
+  background-size:
+    173px 97px,
+    109px 139px,
+    251px 71px,
+    100% 100%;
+  background-position:
+    23px 11px,
+    71px 53px,
+    137px 31px,
+    0 0;
+}

@@ -67,7 +67,8 @@ function Segmented<T extends string>({
   disabled?: (id: T) => boolean
 }) {
   return (
-    <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-secondary/30 p-1">
+    // Pixel tabs, like the Play picker's tiles: one connected strip, the pick framed in pink.
+    <div className="flex flex-wrap gap-[2px] border-2 border-border bg-border">
       {options.map((option) => (
         <button
           key={option.id}
@@ -75,10 +76,10 @@ function Segmented<T extends string>({
           onClick={() => onSelect(option.id)}
           disabled={disabled?.(option.id)}
           className={cn(
-            'rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+            'px-3 py-1.5 font-mono text-xs font-semibold uppercase transition-colors disabled:cursor-not-allowed disabled:opacity-40',
             value === option.id
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
+              ? 'bg-[#2a1238] text-foreground shadow-[inset_0_-2px_0_#ff2fb4]'
+              : 'bg-card text-muted-foreground hover:bg-accent hover:text-foreground',
           )}
         >
           {option.label}
@@ -111,10 +112,10 @@ function LeaderboardsPage() {
   const entries = leaderboard.data?.entries ?? []
 
   return (
-    <main className="flex flex-1 flex-col px-4 py-8 sm:py-10">
-      <div className="page-wrap flex flex-1 flex-col">
+    <main className="flex flex-1 flex-col justify-center px-4 py-8 sm:py-10">
+      <div className="page-wrap flex flex-col">
         {/* One connected panel: controls, the podium, then everyone else. */}
-        <div className="rise-in px-corners grid flex-1 grid-rows-[auto_1fr_auto] gap-[2px] border-2 border-border bg-border">
+        <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
           <div className="flex flex-col gap-3 bg-card p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <Segmented
               options={BOARDS}
@@ -138,9 +139,11 @@ function LeaderboardsPage() {
             </div>
           </div>
 
-          <div className="relative flex min-h-80 flex-col justify-end overflow-hidden bg-card">
+          <div className="relative flex h-80 flex-col justify-end overflow-hidden bg-card sm:h-96">
             {/* The podium stands on the same synthwave street as the dashboard's title track. */}
-            <PixelSkyline className="absolute inset-0 h-full sm:h-full" />
+            {/* Night sky above, the city at its natural size along the bottom. */}
+            <div className="night-sky absolute inset-0" />
+            <PixelSkyline className="absolute inset-x-0 bottom-0 h-32 sm:h-40" />
             {leaderboard.isError ? (
               <p className="relative py-10 text-center text-sm font-semibold">
                 Couldn't load the leaderboard. Try again in a moment.
@@ -156,7 +159,7 @@ function LeaderboardsPage() {
             )}
           </div>
 
-          <div className="flex flex-col bg-card empty:hidden">
+          <div className="flex flex-col bg-card">
             {leaderboard.data && entries.length > 3 && (
               <div className="p-4">
                 <LeaderboardTable
