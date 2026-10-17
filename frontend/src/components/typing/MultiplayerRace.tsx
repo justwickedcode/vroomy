@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  Flag,
   PlayCircle,
   Users,
 } from '#/components/ui/icons'
@@ -163,6 +164,39 @@ function LobbyCard({ mp }: { mp: Mp }) {
   )
 }
 
+// Taken out by the anti-cheat mid-race: shown where the results would be, while the race goes on
+// around your pulled-over car.
+function DisqualifiedCard({
+  reason,
+  onLeave,
+}: {
+  reason: string
+  onLeave: () => void
+}) {
+  return (
+    <div className="race-results pointer-events-auto">
+      <div className="flex items-center gap-4">
+        <Flag className="size-14 shrink-0 text-destructive" />
+        <div className="flex flex-col gap-1">
+          <p className="font-display text-5xl leading-none text-destructive uppercase [text-shadow:4px_4px_0_rgb(0_0_0/0.5)]">
+            Out
+          </p>
+          <p className="font-mono text-xs text-[#8a7ca3]">Disqualified</p>
+        </div>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {reason} This race won't count.
+      </p>
+      <div className="flex flex-col gap-2">
+        <Button onClick={onLeave}>
+          <ArrowLeft />
+          Back
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function ConnectingView() {
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-8">
@@ -212,7 +246,10 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const profile = useProfile()
   const { carModel, underglow, underglowColor, trail } = profile
   const inputRef = useRef<HTMLInputElement>(null)
-  useKeepTypingFocus(inputRef, mp.phase === 'racing' && !mp.finished)
+  useKeepTypingFocus(
+    inputRef,
+    mp.phase === 'racing' && !mp.finished && !mp.disqualified,
+  )
 
   // One countdown on the track, all the way to GO: in a public lobby it starts as soon as a
   // second racer joins (the server's short wait, plus the race's own countdown after it) and
@@ -356,7 +393,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       name: inLobby && mp.isHost ? 'You · host' : 'You',
       progress: mp.progress,
       wpm: mp.wpm,
-      finished: mp.finished,
+      // No finish-line celebration for a run the anti-cheat threw out.
+      finished: mp.finished && mp.disqualified === null,
+      out: mp.disqualified !== null,
       isYou: true,
       model: carModel,
       underglow,
@@ -426,7 +465,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               typed={mp.typed}
               activeWordIndex={mp.activeWordIndex}
               finished={mp.finished}
-              locked={mp.phase !== 'racing'}
+              locked={mp.phase !== 'racing' || mp.disqualified !== null}
               errorSeq={mp.errorSeq}
               onInputChange={mp.handleInputChange}
               inputRef={inputRef}
@@ -437,6 +476,12 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 // has nothing to do with OUR rank.
                 <>
                   {inLobby && <LobbyCard mp={mp} />}
+                  {mp.disqualified !== null && !mp.myResult && (
+                    <DisqualifiedCard
+                      reason={mp.disqualified}
+                      onLeave={onLeave}
+                    />
+                  )}
                   {mp.myResult && (
                     <RaceResults
                       place={mp.myResult.rank}

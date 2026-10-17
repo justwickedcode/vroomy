@@ -213,6 +213,9 @@ export function useMultiplayerRace() {
   // because someone else is still typing.
   const [myResult, setMyResult] = useState<RaceResult | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Why the anti-cheat took us out of this race (backend/ws's anticheat.go), if it did: the race
+  // carries on around us, our car pulled over.
+  const [disqualified, setDisqualified] = useState<string | null>(null)
   // Trying to get back into the race after the connection dropped.
   const [reconnecting, setReconnecting] = useState(false)
   // Bumped each time we're back in, so progress and the finish get re-sent on the new socket.
@@ -280,7 +283,7 @@ export function useMultiplayerRace() {
   }, [typed, text, spans, activeWordIndex, finished])
 
   function handleInputChange(value: string) {
-    if (finished || phase !== 'racing') return
+    if (finished || disqualified || phase !== 'racing') return
     const raceStart = startedAt ?? Date.now()
     if (!startedAt) setStartedAt(raceStart)
 
@@ -439,6 +442,7 @@ export function useMultiplayerRace() {
     setMyResult(null)
     receiptRef.current = undefined
     setErrorMessage(null)
+    setDisqualified(null)
     setReconnecting(false)
     reconnectTriesRef.current = 0
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
@@ -732,6 +736,10 @@ export function useMultiplayerRace() {
             break
           case 'error':
             saveSeat(null)
+            if (msg.message?.startsWith('Disqualified:')) {
+              setDisqualified(msg.message.slice('Disqualified:'.length).trim())
+              break
+            }
             setErrorMessage(msg.message ?? 'Something went wrong.')
             setPhase('error')
             break
@@ -875,6 +883,7 @@ export function useMultiplayerRace() {
     lastPowerup,
     firePowerup,
     errorMessage,
+    disqualified,
     reconnecting,
     quickMatch,
     createRoom,

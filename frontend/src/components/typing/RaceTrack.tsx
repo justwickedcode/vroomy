@@ -26,6 +26,8 @@ export interface Racer {
   overdrive?: boolean
   // A seat nobody filled: the lane stays, with no car in it.
   empty?: boolean
+  // Disqualified: the car pulls over onto the shoulder, greyed out, and stays there.
+  out?: boolean
 }
 
 // One-shot ability effect (see useSoloPowerups / MultiplayerRace) — `key` changes on every use,
@@ -371,7 +373,7 @@ function Lane({
   const left = carLeft(racer, camera)
   const follow = camera !== null && !racer.isYou && !racer.empty
   if (racer.empty) return <div className="race-lane" />
-  const racing = racer.progress > 0 && !racer.finished
+  const racing = racer.progress > 0 && !racer.finished && !racer.out
 
   // An ability plays on whoever used it: its icon pops over the car, with an exhaust burst for
   // the ones that move it forward. Narrowed into {kind, key} pairs up front so the JSX below
@@ -404,6 +406,7 @@ function Lane({
           'race-car-wrap',
           racer.overdrive && 'race-car-wrap--overdrive',
           racer.isYou && 'race-car-wrap--you',
+          racer.out && 'race-car-wrap--out',
           arrive && 'race-car-wrap--arrive',
           follow && 'race-follow',
         )}
