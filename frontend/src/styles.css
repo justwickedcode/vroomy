@@ -2792,3 +2792,23 @@ button:not(:disabled):hover .race-itembox--ready {
   left: 70%;
   scale: 0.75;
 }
+
+/* Neon underglow (see CarIcon): a pool of light on the road under the car in hard pixel rings
+   — solid at the core, stepping out to faint — pulsing gently. */
+.car-underglow {
+  position: absolute;
+  inset: 14% 4%;
+  background: color-mix(in oklab, var(--glow) 70%, transparent);
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--glow) 45%, transparent),
+    0 0 0 8px color-mix(in oklab, var(--glow) 22%, transparent),
+    0 0 0 12px color-mix(in oklab, var(--glow) 10%, transparent),
+    0 0 22px 10px color-mix(in oklab, var(--glow) 30%, transparent);
+  animation: car-underglow 1.6s steps(4) infinite alternate;
+}
+
+@keyframes car-underglow {
+  to {
+    opacity: 0.65;
+  }
+}

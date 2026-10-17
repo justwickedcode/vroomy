@@ -40,20 +40,52 @@ const SORTED_POWERUPS = byPrice(
   (p) => p.label,
 )
 
-// One purchase flow for every tile on the page: clicking something you don't own first asks
-// "Buy for N?", and only the confirm actually spends coins — a single stray click never does.
+// The slot an item previews in: its id's prefix ("car:lambo" → "car"), or the whole id for
+// one-offs like "underglow".
+function previewSlot(itemId: string) {
+  return itemId.split(':')[0]
+}
+
+// One purchase flow for every tile on the page. Clicking something you don't own previews it —
+// one preview per slot, so a locked car, trail and neon can all be tried on together in the
+// showroom — and offers "Buy for N?"; only that confirm actually spends coins.
 function useShop() {
   const { coins, owns, buy } = useProfile()
-  const [confirming, setConfirming] = useState<string | null>(null)
+  const [previews, setPreviews] = useState<Record<string, string | undefined>>(
+    {},
+  )
   const [buying, setBuying] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  function isPreviewing(itemId: string) {
+    return previews[previewSlot(itemId)] === itemId
+  }
+
+  // Clicking a locked item previews it, or stops previewing it if it already was.
+  function togglePreview(itemId: string) {
+    const slot = previewSlot(itemId)
+    setPreviews((prev) => ({
+      ...prev,
+      [slot]: prev[slot] === itemId ? undefined : itemId,
+    }))
+  }
+
+  // Equipping something you own ends the preview in its slot.
+  function endPreview(itemId: string) {
+    const slot = previewSlot(itemId)
+    setPreviews((prev) => ({ ...prev, [slot]: undefined }))
+  }
+
+  function clearPreviews() {
+    setPreviews({})
+  }
 
   async function purchase(itemId: string, thenEquip: () => void) {
     setBuying(itemId)
     setError(null)
     try {
       await buy(itemId)
-      setConfirming(null)
+      endPreview(itemId)
       thenEquip()
     } catch (err) {
       setError(
@@ -66,7 +98,18 @@ function useShop() {
     }
   }
 
-  return { coins, owns, confirming, setConfirming, buying, error, purchase }
+  return {
+    coins,
+    owns,
+    previews,
+    isPreviewing,
+    togglePreview,
+    endPreview,
+    clearPreviews,
+    buying,
+    error,
+    purchase,
+  }
 }
 
 type Shop = ReturnType<typeof useShop>
@@ -91,7 +134,7 @@ function ShopTile({
   const owned = shop.owns(itemId)
   const price = priceOf(itemId)
   const affordable = shop.coins >= price
-  const confirming = shop.confirming === itemId
+  const previewing = shop.isPreviewing(itemId)
 
   return (
     <div
@@ -99,13 +142,19 @@ function ShopTile({
         'relative flex flex-col bg-card transition-colors hover:bg-accent',
         selected &&
           'bg-primary/10 shadow-[inset_0_0_0_2px_var(--color-primary)]',
+        previewing && 'bg-[#2a1238] shadow-[inset_0_0_0_2px_#ff2fb4]',
       )}
     >
       <button
         type="button"
-        onClick={() =>
-          owned ? onEquip() : shop.setConfirming(confirming ? null : itemId)
-        }
+        onClick={() => {
+          if (owned) {
+            shop.endPreview(itemId)
+            onEquip()
+          } else {
+            shop.togglePreview(itemId)
+          }
+        }}
         onMouseMove={handleTiltMove}
         onMouseLeave={handleTiltLeave}
         className={cn('tilt-card flex flex-1 flex-col', className)}
@@ -126,7 +175,7 @@ function ShopTile({
               {price === 0 ? 'Free' : 'Owned'}
             </span>
           )
-        ) : confirming ? (
+        ) : previewing ? (
           <Button
             size="sm"
             className="h-7 px-2 text-xs"
@@ -168,14 +217,13 @@ function GaragePage() {
   const shop = useShop()
   const ownsUnderglow = shop.owns(UNDERGLOW_ITEM)
 
-  // Preview mode: while a locked item's "Buy" is open, the showroom puts it on your car so you
-  // can see it before spending anything.
-  const preview = shop.confirming
-  const previewCar = preview?.startsWith('car:') ? preview.slice(4) : null
-  const previewTrail = preview?.startsWith('trail:')
-    ? (preview.slice(6) as typeof trail)
-    : null
-  const previewUnderglow = preview === UNDERGLOW_ITEM
+  // Preview mode: every locked item being previewed goes on your car in the showroom, together,
+  // before you spend anything.
+  const previewCar = shop.previews.car?.slice('car:'.length)
+  const previewTrail = shop.previews.trail?.slice('trail:'.length) as
+    typeof trail | undefined
+  const previewUnderglow = shop.previews[UNDERGLOW_ITEM] !== undefined
+  const previewing = Boolean(previewCar || previewTrail || previewUnderglow)
 
   return (
     <main className="flex flex-1 flex-col px-4 py-8 sm:py-10">
@@ -185,10 +233,17 @@ function GaragePage() {
         <div className="rise-in px-corners grid flex-1 gap-[2px] border-2 border-border bg-border lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
           <aside className="bg-card">
             <div className="relative flex flex-col lg:sticky lg:top-0">
-              {preview && (previewCar || previewTrail || previewUnderglow) && (
-                <span className="race-announcer pointer-events-none absolute top-2 left-3 z-10">
-                  Preview
-                </span>
+              {previewing && (
+                <div className="absolute top-2 left-3 z-10 flex items-center gap-2">
+                  <span className="race-announcer">Preview</span>
+                  <button
+                    type="button"
+                    onClick={shop.clearPreviews}
+                    className="race-announcer cursor-pointer hover:bg-[#2a1238]"
+                  >
+                    Clear
+                  </button>
+                </div>
               )}
               <RaceTrack
                 racers={[
@@ -366,7 +421,7 @@ function GaragePage() {
                   </span>
                 </ShopTile>
               )}
-              {ownsUnderglow && underglow && (
+              {((ownsUnderglow && underglow) || previewUnderglow) && (
                 <div className="flex flex-wrap items-center gap-3 pl-1">
                   {CAR_COLORS.map((swatch) => (
                     <button

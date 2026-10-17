@@ -217,15 +217,13 @@ export default function CarIcon({
         ...style,
       }}
     >
+      {/* Neon underglow: hard-edged pixel rings of light on the road under the car, fading
+          outward in steps, with a slow pulse (see .car-underglow in styles.css). */}
       {underglow && (
         <div
           aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: '-28%',
-            borderRadius: '9999px',
-            background: `radial-gradient(ellipse at center, ${underglowColor}88 0%, transparent 70%)`,
-          }}
+          className="car-underglow"
+          style={{ '--glow': underglowColor } as CSSProperties}
         />
       )}
       <img
