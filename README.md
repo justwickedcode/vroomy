@@ -14,7 +14,7 @@ cd frontend    && bun install && bun --bun run dev   # :3000
 
 Logging in needs the `OIDC_*`, `PUBLIC_URL` and `SESSION_SECRET` vars in `frontend/.env`; everything else works as a guest.
 
-Tests: `go test ./...` in `backend/api` and `backend/ws`.
+Tests: `go test ./...` in `backend/api` and `backend/ws`. Browser tests of the main flows (solo, quick match, friends room, disqualification, rejoining, ghosts): `bun run test:e2e` in `frontend`, with the backends running; they use your installed Chrome.
 
 ## Deploy
 

@@ -885,6 +885,16 @@ body::before {
 }
 
 /* Your exhaust burns as hard as you're driving: no flames while you're parked. */
+.race-car-wrap--out {
+  filter: grayscale(1) brightness(0.7);
+  opacity: 0.55;
+  translate: 0 38%;
+  transition:
+    translate 600ms ease-out,
+    opacity 600ms ease-out,
+    filter 600ms ease-out;
+}
+
 .race-car-wrap--you .trail {
   opacity: clamp(0, var(--speed, 1) * 1.6, 1);
 }

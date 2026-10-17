@@ -47,6 +47,10 @@ func main() {
 		log.Fatal("Could not migrate api's own tables: ", err)
 	}
 	log.Println("api's own tables are up to date")
+	if err := backfillVerification(ctx, pool); err != nil {
+		log.Printf("Could not re-check older races: %s\n", err)
+	}
+	go sweepTickets(ctx, pool)
 
 	allowedOrigin := os.Getenv("CORS_ALLOWED_ORIGIN")
 	if allowedOrigin == "" {

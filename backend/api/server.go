@@ -40,13 +40,14 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 	mux.Handle("GET /api/leaderboards", withRateLimit(handleLeaderboard(pool)))
 	mux.Handle("GET /api/replays/{id}", withRateLimit(handleGetReplay(pool)))
 	mux.HandleFunc("GET /health", handleHealth(pool))
-	// No rate limit on these: unlike /api/quotes/random, every caller here already has to carry
-	// a verified identity (see withIdentity in users.go) — there's no anonymous-abuse surface
-	// the way there is on the one endpoint a logged-out visitor can hit freely.
+	// Everything that earns coins or a leaderboard spot is rate-limited per player, so the
+	// anti-cheat can't be probed by brute force. The rest needs a verified identity (see
+	// withIdentity in users.go) and has nothing to gain from being hammered.
+	mux.Handle("POST /api/users/me/race-tickets", withUserRateLimit(handlePostRaceTicket(pool)))
+	mux.Handle("POST /api/users/me/races", withUserRateLimit(handlePostRace(pool)))
+	mux.Handle("POST /api/users/me/races/import", withUserRateLimit(handlePostRacesImport(pool)))
 	mux.HandleFunc("GET /api/users/me", handleGetMe(pool))
 	mux.HandleFunc("PUT /api/users/me/cosmetics", handlePutCosmetics(pool))
-	mux.HandleFunc("POST /api/users/me/races", handlePostRace(pool))
-	mux.HandleFunc("POST /api/users/me/races/import", handlePostRacesImport(pool))
 	mux.HandleFunc("POST /api/users/me/purchases", handlePurchase(pool))
 	mux.HandleFunc("GET /api/users/me/daily", handleGetMyDaily(pool))
 	mux.HandleFunc("POST /api/users/me/daily/import", handleImportDaily(pool))

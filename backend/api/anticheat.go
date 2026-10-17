@@ -37,7 +37,8 @@ const (
 )
 
 // checkReplayIntegrity returns why a race's replay (already validated as well-formed by
-// validateReplay) doesn't hold up as an honest run of claimedWPM, or "" if it does.
+// validateReplay) doesn't hold up as an honest run of claimedWPM, or "" if it does. A negative
+// claimedWPM means there's no claim to check (the ws server measured the result itself).
 func checkReplayIntegrity(passage string, events []replayEvent, claimedWPM int) string {
 	durationMs := events[len(events)-1][0]
 	if durationMs < 1000 {
@@ -66,7 +67,7 @@ func checkReplayIntegrity(passage string, events []replayEvent, claimedWPM int) 
 
 	replayWPM := float64(len(passage)) / 5 / minutes
 	tolerance := math.Max(wpmToleranceAbs, replayWPM*wpmToleranceShare)
-	if math.Abs(float64(claimedWPM)-replayWPM) > tolerance {
+	if claimedWPM >= 0 && math.Abs(float64(claimedWPM)-replayWPM) > tolerance {
 		return "wpm doesn't match the replay"
 	}
 

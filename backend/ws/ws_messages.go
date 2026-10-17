@@ -15,10 +15,15 @@ package main
 //	← waiting        {code, playersInRoom, minPlayers, maxPlayers, players} lobby changed (code empty for public rooms)
 //	→ start          {}                                            private-room host only: skip the wait, start now
 //	← race_start     {quote, wordCount, startsInMs, players}       quote chosen, countdown begins
+//	← seat           {seat}                                        to each player alone, with race_start: their token to rejoin with
 //	← go             {}                                            countdown elapsed, race is live
+//	← resume         {playerId, quote, wordCount, wordIndex, players, startsInMs|elapsedMs, seat}
+//	                                                               back in after reconnecting with ?seat= (then the others' progress)
+//	← player_back    {playerId, wordIndex}                         an opponent who'd left rejoined
 //	→ progress       {wordIndex}                                   "I've correctly typed this many words"
 //	← player_progress {playerId, wordIndex}                        relayed to this player's opponents only
 //	→ finish         {elapsedMs}                                   "I finished the quote in this long"
+//	← receipt        {ticket}                                     to the finisher only, just before player_finished: saves the race to their account
 //	← player_finished {playerId, rank, elapsedMs, wpm}              relayed to the whole room, including the finisher
 //	← player_left    {playerId}                                    an opponent disconnected mid-race
 //	→ powerup        {powerup}                                     powerup rooms only: fire your powerup (once per race)
@@ -62,6 +67,13 @@ type serverMessage struct {
 	Targets []string `json:"targets,omitempty"`
 
 	Message string `json:"message,omitempty"`
+
+	// Seat is a "seat" (and "resume"): the token that gets this player back into the race if they
+	// drop out (rejoin.go).
+	Seat string `json:"seat,omitempty"`
+
+	// Ticket is a "receipt": the race ticket the finisher saves this race against (receipts.go).
+	Ticket string `json:"ticket,omitempty"`
 }
 
 // playerInfo identifies one player in a room. Name is whatever the client asked to be called

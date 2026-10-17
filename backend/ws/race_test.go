@@ -527,3 +527,92 @@ func TestAntiCheat_BurstAfterIdlingDisqualified(t *testing.T) {
 		t.Error("30 words in an instant after idling 8s was accepted")
 	}
 }
+
+// A finisher gets a receipt carrying the server's own result, before their player_finished.
+func TestRace_FinisherGetsReceipt(t *testing.T) {
+	r, a, _ := raceOf(t)
+	var got raceReceipt
+	r.issueReceipt = func(rc raceReceipt) (string, error) { got = rc; return "ticket-1", nil }
+	r.mu.Lock()
+	r.startedAt = time.Now().Add(-time.Minute)
+	r.mu.Unlock()
+	for w := 10; w <= 80; w += 10 {
+		r.mu.Lock()
+		r.players[a].pace = nil // spread out over the minute, as far as the burst check knows
+		r.mu.Unlock()
+		r.handleMessage(a, clientMessage{Type: "progress", WordIndex: w})
+	}
+	r.handleMessage(a, clientMessage{Type: "finish", ElapsedMs: 60000})
+
+	msgs := drain(t, a)
+	receiptAt, finishedAt := -1, -1
+	for i, m := range msgs {
+		switch m.Type {
+		case "receipt":
+			receiptAt = i
+			if m.Ticket != "ticket-1" {
+				t.Errorf("receipt ticket = %q", m.Ticket)
+			}
+		case "player_finished":
+			finishedAt = i
+		}
+	}
+	if receiptAt < 0 || finishedAt < 0 || receiptAt > finishedAt {
+		t.Fatalf("receipt at %d, player_finished at %d: want the receipt first", receiptAt, finishedAt)
+	}
+	if got.placement != 1 || got.racerCount != 2 || got.wpm < 50 || got.wpm > 100 {
+		t.Errorf("receipt = %+v, want 1st of 2 at the server's measured pace", got)
+	}
+}
+
+// Rejoin: a racer who drops out comes back with their seat token, under the same id and with
+// their progress; the others see them back.
+func TestRejoin_SeatTokenResumesRace(t *testing.T) {
+	r, a, b := raceOf(t)
+	r.handleMessage(a, clientMessage{Type: "progress", WordIndex: 2})
+	r.mu.Lock()
+	seat := r.players[a].seat
+	r.mu.Unlock()
+	if seat == "" || seats.lookup(seat) != r {
+		t.Fatal("no seat token registered at race start")
+	}
+	r.removeClient(a)
+	drain(t, b)
+
+	if r.resume(testClient("intruder"), "not-the-token") {
+		t.Fatal("a wrong token took a seat")
+	}
+	back := testClient("new-conn")
+	if !r.resume(back, seat) {
+		t.Fatal("the seat token didn't get the racer back in")
+	}
+	if back.id != "a" {
+		t.Errorf("rejoined as %q, want the old id %q", back.id, "a")
+	}
+	msg, ok := lastOfType(drain(t, back), "resume")
+	if !ok || msg.WordIndex != 2 || msg.Quote == nil || msg.ElapsedMs <= 0 {
+		t.Errorf("resume = %+v, want the passage, word 2 and the race clock", msg)
+	}
+	if _, ok := lastOfType(drain(t, b), "player_back"); !ok {
+		t.Error("the opponent wasn't told the racer is back")
+	}
+	if r.resume(testClient("again"), seat) {
+		t.Error("a seat that's already taken back was taken again")
+	}
+}
+
+// A race that's over can't be rejoined, and forgets its seats.
+func TestRejoin_NotAfterTheRaceEnds(t *testing.T) {
+	r, a, _ := raceOf(t)
+	r.mu.Lock()
+	seat := r.players[a].seat
+	r.mu.Unlock()
+	r.removeClient(a)
+	r.finishRace()
+	if seats.lookup(seat) != nil {
+		t.Error("a finished race's seat is still registered")
+	}
+	if r.resume(testClient("late"), seat) {
+		t.Error("rejoined a finished race")
+	}
+}

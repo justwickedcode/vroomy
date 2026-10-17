@@ -76,6 +76,8 @@ export interface ApiRaceInput {
   // Hour (0-23) on the player's clock when they finished — for Early bird / Night owl.
   localHour?: number
   date?: string // import only
+  // The race ticket it's saved against (backend/api/tickets.go).
+  ticket?: string
 }
 
 // daily.go DailyResult

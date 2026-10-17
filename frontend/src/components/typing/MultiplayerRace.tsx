@@ -53,11 +53,11 @@ const START_LIGHTS = 5
 // How long "GO!" stays up once the race has started.
 const GO_HOLD_MS = 800
 
-// How long a lone racer waits in quick match before being offered a solo race instead.
+// How long a lone racer waits in quick match before ghosts join instead (backend/ws's ghostWait).
 const ALONE_WAIT_MS = 30000
 
 // While the room fills, the typing screen holds the lobby instead of a quote.
-//   Quick match: a hard 30s countdown while you're alone (then the offer to race bots instead),
+//   Quick match: a hard 30s countdown while you're alone (then ghosts of other players' races join),
 //   and once a second racer is in, "get ready" while the track counts down to GO.
 //   Friends: the room code to share, and the host's Start now.
 function LobbyCard({ mp }: { mp: Mp }) {
@@ -103,7 +103,7 @@ function LobbyCard({ mp }: { mp: Mp }) {
               {startsSoon
                 ? 'Get ready'
                 : aloneLeft === 0
-                  ? 'Nobody around'
+                  ? 'Ghosts incoming'
                   : 'Finding racers'}
             </span>
           </>
@@ -123,7 +123,9 @@ function LobbyCard({ mp }: { mp: Mp }) {
             <span className="font-display text-5xl leading-none">
               0:{String(aloneLeft).padStart(2, '0')}
             </span>
-            <span className="race-lcd-label">waiting for racers</span>
+            <span className="race-lcd-label">
+              {aloneLeft === 0 ? 'racing ghosts' : 'then ghosts race you'}
+            </span>
           </>
         ) : (
           <>
@@ -145,14 +147,6 @@ function LobbyCard({ mp }: { mp: Mp }) {
       </div>
 
       <div className="flex flex-col gap-2">
-        {quick && aloneLeft === 0 && (
-          <Button asChild>
-            <Link to="/race/solo">
-              <Flag />
-              Race solo
-            </Link>
-          </Button>
-        )}
         {!quick && mp.isHost && (
           <Button onClick={mp.startNow} disabled={!canStart}>
             <Users />
@@ -165,6 +159,39 @@ function LobbyCard({ mp }: { mp: Mp }) {
             {copied ? 'Copied' : 'Copy link'}
           </Button>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Taken out by the anti-cheat mid-race: shown where the results would be, while the race goes on
+// around your pulled-over car.
+function DisqualifiedCard({
+  reason,
+  onLeave,
+}: {
+  reason: string
+  onLeave: () => void
+}) {
+  return (
+    <div className="race-results pointer-events-auto">
+      <div className="flex items-center gap-4">
+        <Flag className="size-14 shrink-0 text-destructive" />
+        <div className="flex flex-col gap-1">
+          <p className="font-display text-5xl leading-none text-destructive uppercase [text-shadow:4px_4px_0_rgb(0_0_0/0.5)]">
+            Out
+          </p>
+          <p className="font-mono text-xs text-[#8a7ca3]">Disqualified</p>
+        </div>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {reason} This race won't count.
+      </p>
+      <div className="flex flex-col gap-2">
+        <Button onClick={onLeave}>
+          <ArrowLeft />
+          Back
+        </Button>
       </div>
     </div>
   )
@@ -219,7 +246,10 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const profile = useProfile()
   const { carModel, underglow, underglowColor, trail } = profile
   const inputRef = useRef<HTMLInputElement>(null)
-  useKeepTypingFocus(inputRef, mp.phase === 'racing' && !mp.finished)
+  useKeepTypingFocus(
+    inputRef,
+    mp.phase === 'racing' && !mp.finished && !mp.disqualified,
+  )
 
   // One countdown on the track, all the way to GO: in a public lobby it starts as soon as a
   // second racer joins (the server's short wait, plus the race's own countdown after it) and
@@ -276,6 +306,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         racerCount: Math.max(mp.racerCount, myResult.rank),
         mode: 'multiplayer',
         replay: getReplay(),
+        ticket: myResult.ticket,
       })
       .then((saved) => {
         setReplayId(saved.replayId)
@@ -362,7 +393,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
       name: inLobby && mp.isHost ? 'You · host' : 'You',
       progress: mp.progress,
       wpm: mp.wpm,
-      finished: mp.finished,
+      // No finish-line celebration for a run the anti-cheat threw out.
+      finished: mp.finished && mp.disqualified === null,
+      out: mp.disqualified !== null,
       isYou: true,
       model: carModel,
       underglow,
@@ -404,10 +437,17 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
         <div className="rise-in px-corners grid gap-[2px] border-2 border-border bg-border">
           <div className="relative flex flex-col">
             {/* What just happened, up in the sky over the track — never over your words. */}
-            {eventText && !mp.finished && (
+            {mp.reconnecting ? (
               <div className="pointer-events-none absolute top-2 right-3 z-10">
-                <span className="race-announcer">{eventText}</span>
+                <span className="race-announcer race-waiting">Reconnecting</span>
               </div>
+            ) : (
+              eventText &&
+              !mp.finished && (
+                <div className="pointer-events-none absolute top-2 right-3 z-10">
+                  <span className="race-announcer">{eventText}</span>
+                </div>
+              )
             )}
             <RaceTrack
               racers={racers}
@@ -425,7 +465,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               typed={mp.typed}
               activeWordIndex={mp.activeWordIndex}
               finished={mp.finished}
-              locked={mp.phase !== 'racing'}
+              locked={mp.phase !== 'racing' || mp.disqualified !== null}
               errorSeq={mp.errorSeq}
               onInputChange={mp.handleInputChange}
               inputRef={inputRef}
@@ -436,6 +476,12 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 // has nothing to do with OUR rank.
                 <>
                   {inLobby && <LobbyCard mp={mp} />}
+                  {mp.disqualified !== null && !mp.myResult && (
+                    <DisqualifiedCard
+                      reason={mp.disqualified}
+                      onLeave={onLeave}
+                    />
+                  )}
                   {mp.myResult && (
                     <RaceResults
                       place={mp.myResult.rank}

@@ -95,6 +95,9 @@ export interface NewRace {
   // The player's local date, for a mode "daily" race — the server also records it as that
   // day's daily-challenge result (see backend/api's handlePostRace).
   dailyDate?: string
+  // The race ticket to save it against (see useRaceTicket, or a multiplayer receipt) — only
+  // needed for a logged-in player, and may still be on its way.
+  ticket?: Promise<string | null> | string | null
 }
 
 interface Profile {
@@ -605,7 +608,12 @@ export function useProfile() {
           : prev,
       )
 
-      return postRaceFn({ data: raceInput(race) })
+      return Promise.resolve(race.ticket)
+        .then((ticket) =>
+          postRaceFn({
+            data: { ...raceInput(race), ticket: ticket ?? undefined },
+          }),
+        )
         .then((saved) => ({
           replayId: saved.hasReplay ? String(saved.id) : null,
           coinsEarned: saved.coinsEarned ?? coinsEarned,

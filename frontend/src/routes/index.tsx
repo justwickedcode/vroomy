@@ -133,6 +133,9 @@ function Dashboard() {
                   underglow,
                   underglowColor,
                   trail,
+                  // Until the profile has loaded, the lane stays empty: drawing the default car
+                  // first and then swapping in yours flashes the wrong one.
+                  empty: !hydrated,
                 }
                 return [...others.slice(0, 2), you, ...others.slice(2)]
               })()}

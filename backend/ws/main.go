@@ -25,9 +25,10 @@ func main() {
 		log.Fatal("Error loading .env file: ", err)
 	}
 
-	// This service only ever reads the quotes table — it deliberately does not run migrations.
-	// quotes-crawler (a separate project) owns the schema; run it at least once against a fresh
-	// database before starting this service.
+	// This service reads the quotes table and writes multiplayer receipts into race_tickets — it
+	// deliberately does not run migrations. quotes-crawler (a separate project) owns the quotes
+	// schema and backend/api owns race_tickets; run both at least once against a fresh database
+	// before starting this service.
 	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal("Could not connect to Postgres: ", err)

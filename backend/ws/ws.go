@@ -94,8 +94,17 @@ func upgradeWS(w http.ResponseWriter, r *http.Request, conns *ipConnCounter, ass
 		conn:  conn,
 		send:  make(chan []byte, sendBufferSize),
 	}
-	client.sendJSON(serverMessage{Type: "welcome", PlayerID: client.id})
-	assign(client)
+	// Back into a running race with a seat token (rejoin.go), or in the normal way.
+	resumed := false
+	if seat := r.URL.Query().Get("seat"); seat != "" {
+		if room := seats.lookup(seat); room != nil {
+			resumed = room.resume(client, seat)
+		}
+	}
+	if !resumed {
+		client.sendJSON(serverMessage{Type: "welcome", PlayerID: client.id})
+		assign(client)
+	}
 
 	go client.writePump()
 	go func() {

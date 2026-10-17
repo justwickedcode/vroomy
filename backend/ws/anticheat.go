@@ -85,6 +85,6 @@ func (r *Room) disqualifyLocked(state *playerState) {
 }
 
 func (r *Room) announceDisqualified(c *Client) {
-	c.sendJSON(serverMessage{Type: "error", Message: "Disqualified: that pace isn't humanly possible."})
+	c.sendJSON(serverMessage{Type: "error", Message: "Disqualified: That pace isn't humanly possible."})
 	r.broadcastExcept(c, serverMessage{Type: "player_left", PlayerID: c.id})
 }

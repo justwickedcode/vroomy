@@ -64,6 +64,9 @@ export interface RaceResult {
   rank: number
   elapsedMs: number
   wpm: number
+  // Our own result only: the receipt the server sent with it, to save the race to our account
+  // against (see backend/ws/receipts.go).
+  ticket?: string
 }
 
 // Mirrors backend/ws's serverMessage (see ws_messages.go) — only the fields this client actually
@@ -88,6 +91,8 @@ interface ServerMessage {
   mode?: LobbyMode
   powerup?: PowerupKind
   targets?: Array<string>
+  ticket?: string
+  seat?: string
 }
 
 const GUEST_RACER_KEY = 'vroomy:racer-id:v1'
@@ -103,6 +108,46 @@ function guestRacerId(): string {
     return id
   } catch {
     return `guest-${crypto.randomUUID()}`
+  }
+}
+
+// Our seat in the race underway (see backend/ws's rejoin.go): kept in the browser, so a dropped
+// connection — or a reload — gets us back into the same car instead of out of the race.
+const SEAT_KEY = 'vroomy:seat:v1'
+// A race can't run longer than this (backend/ws's raceMaxDuration, plus the countdown).
+const SEAT_MAX_AGE_MS = 6 * 60 * 1000
+// Tries at getting back in after the connection drops mid-race, and the wait before each.
+const RECONNECT_DELAYS_MS = [300, 1000, 2000, 3000, 5000]
+
+function savedSeat(): string | null {
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(SEAT_KEY) ?? 'null',
+    ) as {
+      seat?: string
+      at?: number
+    } | null
+    if (!saved?.seat || !saved.at || Date.now() - saved.at > SEAT_MAX_AGE_MS) {
+      return null
+    }
+    return saved.seat
+  } catch {
+    return null
+  }
+}
+
+function saveSeat(seat: string | null) {
+  try {
+    if (seat) {
+      window.localStorage.setItem(
+        SEAT_KEY,
+        JSON.stringify({ seat, at: Date.now() }),
+      )
+    } else {
+      window.localStorage.removeItem(SEAT_KEY)
+    }
+  } catch {
+    // No storage: rejoining after a reload just isn't possible.
   }
 }
 
@@ -168,6 +213,13 @@ export function useMultiplayerRace() {
   // because someone else is still typing.
   const [myResult, setMyResult] = useState<RaceResult | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Why the anti-cheat took us out of this race (backend/ws's anticheat.go), if it did: the race
+  // carries on around us, our car pulled over.
+  const [disqualified, setDisqualified] = useState<string | null>(null)
+  // Trying to get back into the race after the connection dropped.
+  const [reconnecting, setReconnecting] = useState(false)
+  // Bumped each time we're back in, so progress and the finish get re-sent on the new socket.
+  const [connection, setConnection] = useState(0)
 
   const text = quote?.text ?? ''
   const [typed, setTyped] = useState('')
@@ -231,7 +283,7 @@ export function useMultiplayerRace() {
   }, [typed, text, spans, activeWordIndex, finished])
 
   function handleInputChange(value: string) {
-    if (finished || phase !== 'racing') return
+    if (finished || disqualified || phase !== 'racing') return
     const raceStart = startedAt ?? Date.now()
     if (!startedAt) setStartedAt(raceStart)
 
@@ -348,12 +400,28 @@ export function useMultiplayerRace() {
   // connection. A ref, updated synchronously in the same 'welcome' handler that sets myId
   // state, is what lets later messages in that same closure compare against the current value.
   const myIdRef = useRef<string | null>(null)
+  // For the socket handlers, which outlive renders: where we are, what we're racing on, and how
+  // to get back in.
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase
+  const textRef = useRef(text)
+  textRef.current = text
+  const pathRef = useRef('')
+  const reconnectTriesRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Set when we rejoined after a reload: the keystrokes before it are gone, so there's no replay.
+  const replayLostRef = useRef(false)
+  // Our receipt for this race, which arrives just before our own player_finished.
+  const receiptRef = useRef<string | undefined>(undefined)
 
-  const send = useCallback((message: Record<string, unknown>) => {
+  // Whether it went out: not while the connection is down.
+  const send = useCallback((message: Record<string, unknown>): boolean => {
     const ws = socketRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(message))
+      return true
     }
+    return false
   }, [])
 
   const resetRoomState = useCallback(() => {
@@ -372,7 +440,13 @@ export function useMultiplayerRace() {
     overdriveRef.current = { until: 0, left: 0, landedOn: -1 }
     setResults(null)
     setMyResult(null)
+    receiptRef.current = undefined
     setErrorMessage(null)
+    setDisqualified(null)
+    setReconnecting(false)
+    reconnectTriesRef.current = 0
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    replayLostRef.current = false
     finishSentRef.current = false
     setTyped('')
     setWordIndex(0)
@@ -385,15 +459,23 @@ export function useMultiplayerRace() {
     recorder.reset()
   }, [recorder])
 
+  // rejoin: getting back into the race underway after the connection dropped, keeping everything
+  // we have — rather than a fresh connection to path.
   const connect = useCallback(
-    (path: string) => {
+    (path: string, rejoin = false) => {
       socketRef.current?.close()
-      resetRoomState()
-      setPhase('connecting')
+      if (!rejoin) {
+        resetRoomState()
+        setPhase('connecting')
+      }
+      pathRef.current = path
 
       const target = new URL(`${WS_URL}${path}`)
       if (nameRef.current) target.searchParams.set('name', nameRef.current)
       target.searchParams.set('racer', racerRef.current ?? guestRacerId())
+      // A race of ours still running (a dropped connection, or a reload): straight back into it.
+      const seat = savedSeat()
+      if (seat) target.searchParams.set('seat', seat)
       const url = target.toString()
       const ws = new WebSocket(url)
       socketRef.current = ws
@@ -431,6 +513,19 @@ export function useMultiplayerRace() {
 
         switch (msg.type) {
           case 'welcome':
+            // Asked to rejoin, but the seat's gone (the race ended meanwhile): that race is over
+            // for us, rather than this turning into a new lobby out of nowhere.
+            if (rejoin) {
+              saveSeat(null)
+              socketRef.current = null
+              ws.close()
+              setReconnecting(false)
+              setErrorMessage(
+                'Lost the connection, and the race went on without you.',
+              )
+              setPhase('error')
+              break
+            }
             myIdRef.current = msg.playerId ?? null
             setMyId(msg.playerId ?? null)
             setLobbySince(Date.now())
@@ -478,6 +573,68 @@ export function useMultiplayerRace() {
             setStartsInMs(msg.startsInMs ?? 0)
             setPhase('countdown')
             break
+          case 'seat':
+            saveSeat(msg.seat ?? null)
+            break
+          case 'resume': {
+            myIdRef.current = msg.playerId ?? null
+            setMyId(msg.playerId ?? null)
+            reconnectTriesRef.current = 0
+            setReconnecting(false)
+            setConnection((n) => n + 1)
+            saveSeat(msg.seat ?? null)
+            const racing = Boolean(msg.elapsedMs)
+            const quoteText = msg.quote?.text ?? ''
+            if (msg.quote && textRef.current !== quoteText) {
+              // Back after a reload: rebuild the race from what the server kept.
+              const players = msg.players ?? []
+              setNames(namesFrom(players))
+              setRacerCount(players.length)
+              setOpponents(
+                Object.fromEntries(
+                  players
+                    .filter((p) => p.playerId !== msg.playerId)
+                    .map((p) => [
+                      p.playerId,
+                      {
+                        id: p.playerId,
+                        wordIndex: 0,
+                        finished: false,
+                        left: false,
+                      },
+                    ]),
+                ),
+              )
+              if (msg.mode) setMode(msg.mode)
+              setQuote(msg.quote)
+              setWordCount(msg.wordCount ?? 0)
+              const resumeSpans = computeWordSpans(quoteText)
+              const at = Math.min(msg.wordIndex ?? 0, resumeSpans.length - 1)
+              setTyped(at > 0 ? quoteText.slice(0, resumeSpans[at].start) : '')
+              setWordIndex(at)
+              replayLostRef.current = true
+            }
+            setStartsInMs(msg.startsInMs ?? 0)
+            if (racing) {
+              setStartedAt(
+                (current) => current ?? Date.now() - (msg.elapsedMs ?? 0),
+              )
+            }
+            setPhase(racing ? 'racing' : 'countdown')
+            break
+          }
+          case 'player_back':
+            if (!msg.playerId) break
+            setOpponents((prev) => ({
+              ...prev,
+              [msg.playerId!]: {
+                id: msg.playerId!,
+                wordIndex: msg.wordIndex ?? prev[msg.playerId!]?.wordIndex ?? 0,
+                finished: false,
+                left: false,
+              },
+            }))
+            break
           case 'go':
             setPhase('racing')
             setStartedAt((current) => current ?? Date.now())
@@ -498,6 +655,9 @@ export function useMultiplayerRace() {
               },
             }))
             break
+          case 'receipt':
+            receiptRef.current = msg.ticket
+            break
           case 'player_finished':
             if (!msg.playerId) break
             // Unlike player_progress, this one IS relayed to the whole room including the
@@ -510,6 +670,7 @@ export function useMultiplayerRace() {
                 rank: msg.rank ?? 0,
                 elapsedMs: msg.elapsedMs ?? 0,
                 wpm: msg.wpm ?? 0,
+                ticket: receiptRef.current,
               })
               break
             }
@@ -569,10 +730,16 @@ export function useMultiplayerRace() {
             break
           }
           case 'race_end':
+            saveSeat(null)
             setResults(msg.results ?? [])
             setPhase('finished')
             break
           case 'error':
+            saveSeat(null)
+            if (msg.message?.startsWith('Disqualified:')) {
+              setDisqualified(msg.message.slice('Disqualified:'.length).trim())
+              break
+            }
             setErrorMessage(msg.message ?? 'Something went wrong.')
             setPhase('error')
             break
@@ -584,6 +751,24 @@ export function useMultiplayerRace() {
         console.log(
           `[multiplayer] disconnected from ${url} (code=${event.code}, reason=${event.reason || '(none)'}, clean=${event.wasClean})`,
         )
+        // Dropped mid-race, before our finish was in: try to get back into the same seat.
+        const midRace =
+          phaseRef.current === 'countdown' || phaseRef.current === 'racing'
+        const tries = reconnectTriesRef.current
+        if (
+          midRace &&
+          !finishSentRef.current &&
+          savedSeat() &&
+          tries < RECONNECT_DELAYS_MS.length
+        ) {
+          reconnectTriesRef.current = tries + 1
+          setReconnecting(true)
+          reconnectTimerRef.current = setTimeout(() => {
+            if (socketRef.current === ws) connect(pathRef.current, true)
+          }, RECONNECT_DELAYS_MS[tries])
+          return
+        }
+        setReconnecting(false)
         // race_end always closes the socket ~10s later (see backend/ws's finishRace) — that's
         // an expected, successful end, not a connection failure, so only fall back to an error
         // state from a phase that wasn't already a deliberate terminal one.
@@ -637,6 +822,7 @@ export function useMultiplayerRace() {
   const startNow = useCallback(() => send({ type: 'start' }), [send])
 
   const leave = useCallback(() => {
+    saveSeat(null)
     const ws = socketRef.current
     socketRef.current = null
     resetRoomState()
@@ -649,16 +835,16 @@ export function useMultiplayerRace() {
   useEffect(() => {
     if (phase !== 'racing') return
     send({ type: 'progress', wordIndex: activeWordIndex })
-  }, [phase, activeWordIndex, send])
+  }, [phase, activeWordIndex, send, connection])
 
   // Report finishing exactly once — finished flips permanently true the instant the last word
   // is committed, so a ref (not state) guards against a stray extra render sending it twice.
   useEffect(() => {
     if (phase === 'racing' && finished && !finishSentRef.current) {
-      finishSentRef.current = true
-      send({ type: 'finish', elapsedMs })
+      // Only once it's actually out — if the connection is down, it goes once we're back in.
+      finishSentRef.current = send({ type: 'finish', elapsedMs })
     }
-  }, [phase, finished, elapsedMs, send])
+  }, [phase, finished, elapsedMs, send, connection])
 
   useEffect(() => {
     return () => {
@@ -666,7 +852,10 @@ export function useMultiplayerRace() {
     }
   }, [])
 
-  const getReplay = useCallback(() => recorder.snapshot(text), [recorder, text])
+  const getReplay = useCallback(
+    () => (replayLostRef.current ? null : recorder.snapshot(text)),
+    [recorder, text],
+  )
 
   return {
     phase,
@@ -694,6 +883,8 @@ export function useMultiplayerRace() {
     lastPowerup,
     firePowerup,
     errorMessage,
+    disqualified,
+    reconnecting,
     quickMatch,
     createRoom,
     joinRoom,

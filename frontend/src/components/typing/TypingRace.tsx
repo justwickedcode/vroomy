@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { PlayCircle, RotateCcw } from '#/components/ui/icons'
 import { useTypingRace } from '#/lib/typing/useTypingRace'
 import { useBotRacers } from '#/lib/typing/useBotRacers'
+import { useRaceTicket } from '#/lib/profile/useRaceTicket'
 import { useProfile } from '#/lib/profile/useProfile'
 import { Button } from '#/components/ui/button'
 import { powerupDef } from '#/lib/powerups'
@@ -50,6 +51,7 @@ export default function TypingRace({
   } = useTypingRace()
 
   const profile = useProfile()
+  const getTicket = useRaceTicket({ mode: 'solo', passage: text })
 
   const { bots, hitBot } = useBotRacers({
     raceKey: text,
@@ -198,6 +200,7 @@ export default function TypingRace({
         racerCount: bots.length + 1,
         mode: 'solo',
         replay: getReplay(),
+        ticket: getTicket(),
       })
       .then((saved) => {
         // Ignore a save that lands after the player already started the next race.
@@ -215,6 +218,7 @@ export default function TypingRace({
     bots.length,
     profile.addRace,
     getReplay,
+    getTicket,
     profile.stats.bestWpm,
     profile.stats.racesPlayed,
   ])

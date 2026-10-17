@@ -78,6 +78,13 @@ type playerState struct {
 	disqualified bool
 	// pace is this player's recent progress, for the burst check.
 	pace []pacePoint
+	// seat is the token that lets this player back into the race after dropping out (rejoin.go).
+	seat string
+	// ghost marks a ghost (ghosts.go): a stored race replayed (ghostRun), or a pace car driving at
+	// ghostWPM.
+	ghost    bool
+	ghostRun *ghostRun
+	ghostWPM float64
 	// lastPowerupAt is when this player last fired their ability (zero: not yet this race); it
 	// recharges after abilityRecharge (see handlePowerup).
 	lastPowerupAt time.Time
@@ -94,6 +101,13 @@ type Room struct {
 	// race_test.go injects a fake one so the room lifecycle (join, countdown, race, results)
 	// can be exercised without a real Postgres connection.
 	selectQuote func(ctx context.Context) (TypingQuote, error)
+	// issueReceipt records a finisher's result for their account (see receipts.go); nil in tests
+	// that don't care, where finishers simply get no receipt.
+	issueReceipt func(raceReceipt) (string, error)
+	// loadGhosts fetches stored races to replay as ghosts (see ghosts.go); nil means pace cars only.
+	loadGhosts func(exclude string, n int) ([]ghostRun, error)
+	// ghostTimer fills a public room with ghosts once a lone player has waited ghostWait.
+	ghostTimer *time.Timer
 
 	mu      sync.Mutex
 	state   roomState
@@ -104,6 +118,8 @@ type Room struct {
 	// there's no ambiguity between however the client itself tokenizes words.
 	wordCount int
 	startedAt time.Time
+	// goAt is when the countdown ends, for a player rejoining during it.
+	goAt      time.Time
 	waitTimer *time.Timer
 	// waitDeadline is when waitTimer fires (zero while it isn't running), so every "waiting"
 	// message can tell clients how long until the race starts on its own.
@@ -128,9 +144,17 @@ type Room struct {
 }
 
 func newRoom(id string, mode lobbyMode, pool *pgxpool.Pool) *Room {
+	var issueReceipt func(raceReceipt) (string, error)
+	var loadGhosts func(string, int) ([]ghostRun, error)
+	if pool != nil {
+		issueReceipt = issueReceiptTo(pool)
+		loadGhosts = loadGhostsFrom(pool)
+	}
 	return &Room{
-		id:   id,
-		mode: mode,
+		issueReceipt: issueReceipt,
+		loadGhosts:   loadGhosts,
+		id:           id,
+		mode:         mode,
 		selectQuote: func(ctx context.Context) (TypingQuote, error) {
 			return RandomTypingQuote(ctx, pool, raceLanguage, raceMinWords, raceMaxWords, "")
 		},
@@ -169,6 +193,9 @@ func (r *Room) addClient(c *Client) {
 	}
 	r.players[c] = &playerState{client: c, connected: true}
 	count := len(r.players)
+	// Public rooms: alone for ghostWait, and the ghosts come out (ghosts.go); company first, and
+	// they don't.
+	r.updateGhostTimerLocked()
 	// Public rooms only: a friends room waits for its host to press start.
 	if r.host == nil && count == raceMinPlayers && r.waitTimer == nil {
 		// First time this room has enough to race at all — start the "wait for more, but not
@@ -230,7 +257,17 @@ func (r *Room) removeClient(c *Client) {
 	} else {
 		delete(r.players, c)
 	}
+	// Only ghosts left waiting: nobody to race them, so the room's done.
+	if !wasRacing && len(r.players) > 0 && !r.humansConnectedLocked() {
+		for g := range r.players {
+			delete(r.players, g)
+		}
+		r.state = roomFinished
+	}
 	remaining := len(r.players)
+	if !wasRacing {
+		r.updateGhostTimerLocked()
+	}
 	// Back below enough to race: the wait clock stops, and restarts if someone else joins.
 	if !wasRacing && remaining < raceMinPlayers && r.waitTimer != nil {
 		r.waitTimer.Stop()
@@ -317,7 +354,9 @@ func (r *Room) startCountdown() {
 	r.mu.Lock()
 	r.quote = quote
 	r.wordCount = wordCount
+	r.goAt = time.Now().Add(raceCountdown)
 	players := r.playerListLocked()
+	seatsOut := r.handOutSeatsLocked()
 	r.mu.Unlock()
 
 	r.broadcast(serverMessage{
@@ -328,6 +367,9 @@ func (r *Room) startCountdown() {
 		StartsInMs: raceCountdown.Milliseconds(),
 		Players:    players,
 	})
+	for c, seat := range seatsOut {
+		c.sendJSON(serverMessage{Type: "seat", Seat: seat})
+	}
 
 	time.AfterFunc(raceCountdown, r.beginRacing)
 }
@@ -341,6 +383,7 @@ func (r *Room) beginRacing() {
 	r.state = roomRacing
 	r.startedAt = time.Now()
 	r.raceTimer = time.AfterFunc(raceMaxDuration, r.finishRace)
+	r.startGhostsLocked()
 	r.mu.Unlock()
 
 	r.broadcast(serverMessage{Type: "go"})
@@ -456,8 +499,19 @@ func (r *Room) handleFinish(c *Client, clientElapsedMs int64) {
 	allDone := r.allFinishedLocked()
 	rank := state.rank
 	wpm := state.wpm
+	receipt := raceReceipt{passage: r.quote.Text, wpm: wpm, placement: rank, racerCount: len(r.players)}
+	ghost := state.ghost
 	r.mu.Unlock()
 
+	// The receipt goes to the finisher before their result does, so it's in hand by the time the
+	// browser saves the race.
+	if r.issueReceipt != nil && !ghost {
+		if ticket, err := r.issueReceipt(receipt); err != nil {
+			log.Printf("[race %s] could not issue a receipt: %s\n", r.id, err)
+		} else {
+			c.sendJSON(serverMessage{Type: "receipt", Ticket: ticket})
+		}
+	}
 	r.broadcast(serverMessage{
 		Type:      "player_finished",
 		PlayerID:  c.id,
@@ -499,6 +553,7 @@ func (r *Room) finishRace() {
 	if r.raceTimer != nil {
 		r.raceTimer.Stop()
 	}
+	r.dropSeatsLocked()
 	results := make([]playerResult, 0, len(r.players))
 	unfinished := make([]playerResult, 0)
 	for c, state := range r.players {

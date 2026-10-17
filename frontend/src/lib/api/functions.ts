@@ -43,6 +43,21 @@ export const postRaceFn = createServerFn({ method: 'POST' })
     }),
   )
 
+// A ticket for the race about to start (backend/api/tickets.go): the race can only be saved to
+// the account against it.
+export const requestRaceTicketFn = createServerFn({ method: 'POST' })
+  .validator(
+    (data: { mode: 'solo' | 'daily'; passage: string; dailyDate?: string }) =>
+      data,
+  )
+  .handler(({ data }) =>
+    apiFetch<{ ticket: string }>('/api/users/me/race-tickets', {
+      method: 'POST',
+      body: data,
+      auth: 'required',
+    }),
+  )
+
 export const importRacesFn = createServerFn({ method: 'POST' })
   .validator((data: Array<ApiRaceInput>) => data)
   .handler(({ data }) =>

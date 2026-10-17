@@ -3,6 +3,7 @@ import { Link, createFileRoute } from '@tanstack/react-router'
 import {
   Check,
   Clock,
+  Copy,
   Flag,
   LogIn,
   Search,
@@ -22,7 +23,12 @@ import { useFriends, useUserSearch } from '#/lib/social/useFriends'
 import type { ReactNode } from 'react'
 import type { Friend } from '#/lib/api/types'
 
-export const Route = createFileRoute('/friends')({ component: FriendsPage })
+// ?add=<player id>: someone's friend link — the page opens with them ready to add.
+export const Route = createFileRoute('/friends')({
+  validateSearch: (search: Record<string, unknown>): { add?: string } =>
+    typeof search.add === 'string' && search.add ? { add: search.add } : {},
+  component: FriendsPage,
+})
 
 function useDebounced<T>(value: T, ms: number): T {
   const [debounced, setDebounced] = useState(value)
@@ -100,6 +106,26 @@ function FriendsPage() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebounced(search, 250)
   const results = useUserSearch(user ? debouncedSearch : '')
+  // Arrived through someone's friend link: them, ready to add (unless it's our own link).
+  const { add: invitedId } = Route.useSearch()
+  const invite = useUserSearch(
+    user && invitedId && invitedId !== user.id ? invitedId : '',
+  )
+  const invited = invite.data?.find((person) => person.id === invitedId)
+  const [linkCopied, setLinkCopied] = useState(false)
+
+  async function copyFriendLink() {
+    if (!user) return
+    try {
+      await navigator.clipboard.writeText(
+        `${window.location.origin}/friends?add=${encodeURIComponent(user.id)}`,
+      )
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 1800)
+    } catch {
+      // No clipboard access: nothing to copy to.
+    }
+  }
 
   const pendingId =
     (add.isPending && add.variables) ||
@@ -185,17 +211,32 @@ function FriendsPage() {
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Find racers by name"
+                  placeholder="Find racers by name or email"
                   className="h-10 pl-9"
                   aria-label="Search racers"
                 />
               </div>
+              <Button
+                variant="outline"
+                className="h-10"
+                onClick={copyFriendLink}
+                title="Anyone who opens it can add you in one click"
+              >
+                {linkCopied ? <Check className="text-success" /> : <Copy />}
+                {linkCopied ? 'Link copied' : 'Copy my friend link'}
+              </Button>
               <Button asChild variant="outline" className="h-10">
                 <Link to="/race/friends">
                   <Flag /> Race friends
                 </Link>
               </Button>
             </div>
+
+            {invited && (
+              <Section title="Friend link">
+                <FriendRow friend={invited} actions={searchAction(invited)} />
+              </Section>
+            )}
 
             {debouncedSearch.trim().length >= 2 && (
               <Section title="Search results">
@@ -215,7 +256,8 @@ function FriendsPage() {
                   </div>
                 ) : (
                   <p className="py-2 text-sm text-muted-foreground">
-                    No racers match “{debouncedSearch.trim()}”.
+                    No racers match “{debouncedSearch.trim()}”. Or send them
+                    your friend link.
                   </p>
                 )}
               </Section>
