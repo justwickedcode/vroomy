@@ -116,7 +116,7 @@ export function useMultiplayerRace() {
   const [code, setCode] = useState<string | null>(null)
   const [playersInRoom, setPlayersInRoom] = useState(0)
   const [minPlayers, setMinPlayers] = useState(2)
-  const [maxPlayers, setMaxPlayers] = useState(6)
+  const [maxPlayers, setMaxPlayers] = useState(5)
   const [quote, setQuote] = useState<MultiplayerQuote | null>(null)
   const [wordCount, setWordCount] = useState(0)
   const [startsInMs, setStartsInMs] = useState(0)
@@ -420,12 +420,29 @@ export function useMultiplayerRace() {
             setCode(msg.code || null)
             setPlayersInRoom(msg.playersInRoom ?? 0)
             setMinPlayers(msg.minPlayers ?? 2)
-            setMaxPlayers(msg.maxPlayers ?? 6)
+            setMaxPlayers(msg.maxPlayers ?? 5)
             break
           case 'race_start':
             if (msg.players) {
-              setNames(namesFrom(msg.players))
-              setRacerCount(msg.players.length)
+              const players = msg.players
+              setNames(namesFrom(players))
+              setRacerCount(players.length)
+              // Everyone in the room gets a car on the grid now, at the line, before the quote
+              // shows — not only once their first progress update arrives.
+              setOpponents((prev) => {
+                const next = { ...prev }
+                for (const player of players) {
+                  const id = player.playerId
+                  if (id === myIdRef.current || next[id]) continue
+                  next[id] = {
+                    id,
+                    wordIndex: 0,
+                    finished: false,
+                    left: false,
+                  }
+                }
+                return next
+              })
             }
             if (msg.quote) setQuote(msg.quote)
             setWordCount(msg.wordCount ?? 0)
