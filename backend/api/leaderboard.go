@@ -53,14 +53,18 @@ func scopeFilter(col string) string {
 }
 
 // Both boards rank with RANK() so tied players share a place, and select the top
-// leaderboardSize plus the caller's own row ($3) wherever it falls.
+// leaderboardSize plus the caller's own row ($3) wherever it falls. Only verified results are
+// ranked: races stored with a replay (checked by anticheat.go when they came in), and daily
+// results backed by one of those races — an imported, replay-less result still counts toward the
+// player's own history, just not the boards.
 var (
 	speedBoardQuery = `
 		WITH best AS (
 			SELECT DISTINCT ON (r.user_id)
 				r.user_id, r.id, r.wpm, r.accuracy, r.replay IS NOT NULL AS has_replay
 			FROM race_results r
-			WHERE ($1::int IS NULL OR r.created_at >= NOW() - make_interval(hours => $1::int))
+			WHERE r.replay IS NOT NULL
+				AND ($1::int IS NULL OR r.created_at >= NOW() - make_interval(hours => $1::int))
 				AND ` + scopeFilter("r.user_id") + `
 			ORDER BY r.user_id, r.wpm DESC, r.accuracy DESC, r.created_at
 		), ranked AS (
@@ -77,7 +81,7 @@ var (
 			SELECT d.user_id, d.wpm, d.accuracy, d.race_id,
 			       RANK() OVER (ORDER BY d.wpm DESC, d.accuracy DESC)::int AS rank
 			FROM daily_results d
-			WHERE d.day = $1::date AND ` + scopeFilter("d.user_id") + `
+			WHERE d.day = $1::date AND d.race_id IS NOT NULL AND ` + scopeFilter("d.user_id") + `
 		)
 		SELECT ranked.rank, u.id, u.display_name, COALESCE(u.avatar_url, ''), u.car_model,
 		       ranked.wpm, ranked.accuracy,

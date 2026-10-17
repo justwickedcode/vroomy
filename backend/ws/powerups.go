@@ -57,6 +57,7 @@ func (r *Room) handlePowerup(c *Client, kind string) {
 		return
 	}
 	state.lastPowerupAt = now
+	state.skippedWords += abilitySkipWords[kind]
 	r.mu.Unlock()
 
 	r.broadcast(serverMessage{

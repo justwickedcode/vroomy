@@ -188,14 +188,19 @@ function ConnectingView() {
 }
 
 function ErrorView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
+  const disqualified = mp.errorMessage?.startsWith('Disqualified:') ?? false
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-8">
       <div className="page-wrap rise-in max-w-3xl">
         <PlayPanel>
           <PlaySection label="Multiplayer">
-            <p className="font-display text-2xl uppercase">Can't join</p>
+            <p className="font-display text-2xl uppercase">
+              {disqualified ? 'Disqualified' : "Can't join"}
+            </p>
             <p className="text-sm text-muted-foreground">
-              {mp.errorMessage ?? 'Lost connection to the race server.'}
+              {disqualified
+                ? mp.errorMessage?.slice('Disqualified:'.length).trim()
+                : (mp.errorMessage ?? 'Lost connection to the race server.')}
             </p>
           </PlaySection>
           <div className="bg-card p-4">

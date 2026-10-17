@@ -381,13 +381,19 @@ func (req raceRequest) validate() string {
 	if req.LocalHour != nil && (*req.LocalHour < 0 || *req.LocalHour > 23) {
 		return "localHour out of range"
 	}
-	if len(req.Replay) > 0 {
-		if msg := validateReplay(req.Passage, req.Replay); msg != "" {
-			return msg
-		}
+	// Every race comes with its replay, and the replay has to back the score up (see
+	// anticheat.go) — a race without one can't be checked, so it isn't accepted.
+	if len(req.Replay) == 0 {
+		return "replay required"
+	}
+	if msg := validateReplay(req.Passage, req.Replay); msg != "" {
+		return msg
 	}
 	if req.WPM < 0 || req.WPM > maxWPM {
 		return "wpm out of range"
+	}
+	if msg := checkReplayIntegrity(req.Passage, req.Replay, req.WPM); msg != "" {
+		return msg
 	}
 	if req.Accuracy < 0 || req.Accuracy > 100 {
 		return "accuracy out of range"
@@ -510,15 +516,17 @@ func handlePostRacesImport(pool *pgxpool.Pool) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "too many races in one import")
 			return
 		}
+		// Only races that hold up — with a replay that passes the same checks as a live one — are
+		// carried over; anything else (an old race saved before replays existed, or a forged one)
+		// is left behind rather than failing the whole import.
+		kept := entries[:0]
 		for i := range entries {
 			entries[i].normalize()
-		}
-		for _, e := range entries {
-			if msg := e.validate(); msg != "" {
-				writeError(w, http.StatusBadRequest, "race entry: "+msg)
-				return
+			if entries[i].validate() == "" {
+				kept = append(kept, entries[i])
 			}
 		}
+		entries = kept
 
 		ctx := r.Context()
 		if err := upsertIdentity(ctx, pool, id); err != nil {
