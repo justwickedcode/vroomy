@@ -55,6 +55,9 @@ func newSeatToken() string {
 func (r *Room) handOutSeatsLocked() map[*Client]string {
 	out := make(map[*Client]string, len(r.players))
 	for c, state := range r.players {
+		if state.ghost {
+			continue
+		}
 		state.seat = newSeatToken()
 		if state.seat == "" {
 			continue

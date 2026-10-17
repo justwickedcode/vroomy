@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Check,
   Copy,
-  Flag,
   PlayCircle,
   Users,
 } from '#/components/ui/icons'
@@ -53,11 +52,11 @@ const START_LIGHTS = 5
 // How long "GO!" stays up once the race has started.
 const GO_HOLD_MS = 800
 
-// How long a lone racer waits in quick match before being offered a solo race instead.
+// How long a lone racer waits in quick match before ghosts join instead (backend/ws's ghostWait).
 const ALONE_WAIT_MS = 30000
 
 // While the room fills, the typing screen holds the lobby instead of a quote.
-//   Quick match: a hard 30s countdown while you're alone (then the offer to race bots instead),
+//   Quick match: a hard 30s countdown while you're alone (then ghosts of other players' races join),
 //   and once a second racer is in, "get ready" while the track counts down to GO.
 //   Friends: the room code to share, and the host's Start now.
 function LobbyCard({ mp }: { mp: Mp }) {
@@ -103,7 +102,7 @@ function LobbyCard({ mp }: { mp: Mp }) {
               {startsSoon
                 ? 'Get ready'
                 : aloneLeft === 0
-                  ? 'Nobody around'
+                  ? 'Ghosts incoming'
                   : 'Finding racers'}
             </span>
           </>
@@ -123,7 +122,9 @@ function LobbyCard({ mp }: { mp: Mp }) {
             <span className="font-display text-5xl leading-none">
               0:{String(aloneLeft).padStart(2, '0')}
             </span>
-            <span className="race-lcd-label">waiting for racers</span>
+            <span className="race-lcd-label">
+              {aloneLeft === 0 ? 'racing ghosts' : 'then ghosts race you'}
+            </span>
           </>
         ) : (
           <>
@@ -145,14 +146,6 @@ function LobbyCard({ mp }: { mp: Mp }) {
       </div>
 
       <div className="flex flex-col gap-2">
-        {quick && aloneLeft === 0 && (
-          <Button asChild>
-            <Link to="/race/solo">
-              <Flag />
-              Race solo
-            </Link>
-          </Button>
-        )}
         {!quick && mp.isHost && (
           <Button onClick={mp.startNow} disabled={!canStart}>
             <Users />
