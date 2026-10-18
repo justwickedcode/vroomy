@@ -219,6 +219,8 @@ function Podium({ entries }: { entries: Array<LeaderboardEntry> }) {
               <>
                 <CarIcon
                   model={entry.carModel}
+                  underglow={entry.underglow}
+                  underglowColor={entry.underglowColor}
                   className={cn('w-20 sm:w-32', slot === 0 && 'race-car-bob')}
                 />
                 <div className="text-center">

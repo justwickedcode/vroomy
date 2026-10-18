@@ -7,8 +7,7 @@ import { computeWordSpans } from '#/lib/typing/useTypingRace'
 import { frameAt } from '#/lib/replay/playback'
 import { cn } from '#/lib/utils'
 import type { CSSProperties } from 'react'
-import type { CarModel } from '#/components/typing/CarIcon'
-import type { TrailVariant } from '#/lib/trails'
+import type { CarLook } from '#/lib/carLook'
 import type { ReplayData } from '#/lib/api/types'
 
 const SPEEDS = [1, 2, 4] as const
@@ -45,14 +44,12 @@ function Lcd({
 export default function ReplayPlayer({
   replay,
   driverName,
-  carModel,
-  trail,
+  look,
   finalAccuracy,
 }: {
   replay: ReplayData
   driverName: string
-  carModel?: CarModel
-  trail?: TrailVariant
+  look: CarLook
   finalAccuracy: number
 }) {
   const spans = useMemo(
@@ -114,8 +111,7 @@ export default function ReplayPlayer({
             wpm: frame.wpm,
             finished: frame.finished,
             isYou: true,
-            model: carModel,
-            trail,
+            ...look,
           },
         ]}
         phase="ready"

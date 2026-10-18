@@ -218,13 +218,18 @@ export default function CarIcon({
       }}
     >
       {underglow && (
+        // Neon on the ground under the car: solid out to just past the body, then a soft
+        // falloff, so it reads as a lit halo around the sprite. (A faint blob centred under the
+        // car, as it used to be, was almost entirely hidden by the sprite on top of it.)
         <div
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: '-28%',
+            inset: '-6% -14%',
             borderRadius: '9999px',
-            background: `radial-gradient(ellipse at center, ${underglowColor}88 0%, transparent 70%)`,
+            background: `radial-gradient(closest-side, ${underglowColor} 0%, ${underglowColor} 62%, color-mix(in srgb, ${underglowColor} 55%, transparent) 78%, transparent 100%)`,
+            filter: 'blur(4px)',
+            opacity: 0.95,
           }}
         />
       )}

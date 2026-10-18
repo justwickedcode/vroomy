@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   Check,
   Copy,
-  Flag,
   PlayCircle,
   Users,
 } from '#/components/ui/icons'
@@ -17,7 +16,7 @@ import RaceConsole from '#/components/typing/RaceConsole'
 import RaceResults from '#/components/typing/RaceResults'
 import { POWERUPS, powerupLabel } from '#/lib/powerups'
 import type { UnlockedAchievement } from '#/lib/profile/useProfile'
-import { CAR_MODELS } from '#/components/typing/CarIcon'
+import { lookFromSeat } from '#/lib/carLook'
 import { useProfile } from '#/lib/profile/useProfile'
 import { cn } from '#/lib/utils'
 import type { useMultiplayerRace } from '#/lib/multiplayer/useMultiplayerRace'
@@ -164,39 +163,6 @@ function LobbyCard({ mp }: { mp: Mp }) {
   )
 }
 
-// Taken out by the anti-cheat mid-race: shown where the results would be, while the race goes on
-// around your pulled-over car.
-function DisqualifiedCard({
-  reason,
-  onLeave,
-}: {
-  reason: string
-  onLeave: () => void
-}) {
-  return (
-    <div className="race-results pointer-events-auto">
-      <div className="flex items-center gap-4">
-        <Flag className="size-14 shrink-0 text-destructive" />
-        <div className="flex flex-col gap-1">
-          <p className="font-display text-5xl leading-none text-destructive uppercase [text-shadow:4px_4px_0_rgb(0_0_0/0.5)]">
-            Out
-          </p>
-          <p className="font-mono text-xs text-[#8a7ca3]">Disqualified</p>
-        </div>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        {reason} This race won't count.
-      </p>
-      <div className="flex flex-col gap-2">
-        <Button onClick={onLeave}>
-          <ArrowLeft />
-          Back
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 function ConnectingView() {
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-8">
@@ -215,19 +181,14 @@ function ConnectingView() {
 }
 
 function ErrorView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
-  const disqualified = mp.errorMessage?.startsWith('Disqualified:') ?? false
   return (
     <main className="flex flex-1 flex-col justify-center px-4 py-8">
       <div className="page-wrap rise-in max-w-3xl">
         <PlayPanel>
           <PlaySection label="Multiplayer">
-            <p className="font-display text-2xl uppercase">
-              {disqualified ? 'Disqualified' : "Can't join"}
-            </p>
+            <p className="font-display text-2xl uppercase">Can't join</p>
             <p className="text-sm text-muted-foreground">
-              {disqualified
-                ? mp.errorMessage?.slice('Disqualified:'.length).trim()
-                : (mp.errorMessage ?? 'Lost connection to the race server.')}
+              {mp.errorMessage ?? 'Lost connection to the race server.'}
             </p>
           </PlaySection>
           <div className="bg-card p-4">
@@ -246,10 +207,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
   const profile = useProfile()
   const { carModel, underglow, underglowColor, trail } = profile
   const inputRef = useRef<HTMLInputElement>(null)
-  useKeepTypingFocus(
-    inputRef,
-    mp.phase === 'racing' && !mp.finished && !mp.disqualified,
-  )
+  useKeepTypingFocus(inputRef, mp.phase === 'racing' && !mp.finished)
 
   // One countdown on the track, all the way to GO: in a public lobby it starts as soon as a
   // second racer joins (the server's short wait, plus the race's own countdown after it) and
@@ -374,60 +332,74 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
     }
   }, [lastPowerup, myId, names])
 
-  // While waiting in the lobby, the grid is everyone in the room (by name — guests show as
-  // "Racer"), each car driving in from the left as its player joins; once the race is on, it's
-  // the live opponents.
+  // Lanes are the room's (backend/ws hands each player one as they join), so every player sees
+  // the same grid: you're wherever your lane is, not always on top, and everyone drives the car
+  // they picked. While waiting in the lobby it's everyone in the room (guests show as "Racer"),
+  // each car driving in from the left as its player joins; once the race is on, the live
+  // opponents.
   const inLobby = mp.phase === 'lobby'
-  const lobbyRivals = Object.entries(mp.names)
-    .filter(([id]) => id !== mp.myId)
-    .map(([id, name], index) => ({
-      id,
-      name: name ?? 'Racer',
-      progress: 0,
-      wpm: 0,
-      model: CAR_MODELS[(index + 1) % CAR_MODELS.length].id,
-    }))
-  const racers: Array<Racer> = [
-    {
-      id: mp.myId ?? 'you',
-      name: inLobby && mp.isHost ? 'You · host' : 'You',
-      progress: mp.progress,
-      wpm: mp.wpm,
-      // No finish-line celebration for a run the anti-cheat threw out.
-      finished: mp.finished && mp.disqualified === null,
-      out: mp.disqualified !== null,
-      isYou: true,
-      model: carModel,
-      underglow,
-      underglowColor,
-      trail,
-    },
-    ...(inLobby ? lobbyRivals : []),
-    ...(inLobby ? [] : mp.opponents).map((opponent, index) => ({
-      id: opponent.id,
-      name:
-        shortName(opponent.id, mp.myId, mp.names) +
-        (opponent.left ? ' (left)' : ''),
-      progress: opponent.finished
-        ? 1
-        : mp.wordCount > 0
-          ? Math.min(opponent.wordIndex / mp.wordCount, 1)
-          : 0,
-      wpm: opponent.wpm ?? 0,
-      finished: opponent.finished,
-      model: CAR_MODELS[(index + 1) % CAR_MODELS.length].id,
-    })),
-  ]
+  const { seats } = mp
+  const laneOf = (id: string | null) =>
+    (id !== null ? seats[id]?.lane : undefined) ?? Infinity
+  const me: Racer = {
+    id: mp.myId ?? 'you',
+    name: inLobby && mp.isHost ? 'You · host' : 'You',
+    progress: mp.progress,
+    wpm: mp.wpm,
+    finished: mp.finished,
+    isYou: true,
+    model: carModel,
+    underglow,
+    underglowColor,
+    trail,
+  }
+  const rivals: Array<Racer> = inLobby
+    ? Object.entries(mp.names)
+        .filter(([id]) => id !== mp.myId)
+        .map(([id, name]) => ({
+          id,
+          name: name ?? 'Racer',
+          progress: 0,
+          wpm: 0,
+          ...lookFromSeat(seats[id] ?? { lane: 0 }),
+        }))
+    : mp.opponents.map((opponent) => ({
+        id: opponent.id,
+        name:
+          shortName(opponent.id, mp.myId, mp.names) +
+          (opponent.left ? ' (left)' : ''),
+        progress: opponent.finished
+          ? 1
+          : mp.wordCount > 0
+            ? Math.min(opponent.wordIndex / mp.wordCount, 1)
+            : 0,
+        wpm: opponent.wpm ?? 0,
+        finished: opponent.finished,
+        ...lookFromSeat(seats[opponent.id] ?? { lane: 0 }),
+      }))
   // A full room's worth of lanes, always: seats nobody filled stay on the track as empty lanes
-  // rather than the road shrinking to fit whoever showed up.
-  for (let seat = racers.length; seat < (mp.maxPlayers || 5); seat++) {
-    racers.push({
-      id: `empty-${seat}`,
-      name: '',
-      progress: 0,
-      wpm: 0,
-      empty: true,
-    })
+  // rather than the road shrinking to fit whoever showed up. Anyone whose lane we don't know yet
+  // (a moment before the first lobby update) takes the first free one.
+  const lanes: Array<Racer | undefined> = []
+  const unplaced: Array<Racer> = []
+  for (const racer of [me, ...rivals]) {
+    const lane = laneOf(racer.id)
+    if (Number.isFinite(lane) && !lanes[lane]) lanes[lane] = racer
+    else unplaced.push(racer)
+  }
+  const seatCount = Math.max(mp.maxPlayers || 5, lanes.length + unplaced.length)
+  const racers: Array<Racer> = []
+  for (let seat = 0; seat < seatCount; seat++) {
+    racers.push(
+      lanes[seat] ??
+        unplaced.shift() ?? {
+          id: `empty-${seat}`,
+          name: '',
+          progress: 0,
+          wpm: 0,
+          empty: true,
+        },
+    )
   }
 
   return (
@@ -439,7 +411,9 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
             {/* What just happened, up in the sky over the track — never over your words. */}
             {mp.reconnecting ? (
               <div className="pointer-events-none absolute top-2 right-3 z-10">
-                <span className="race-announcer race-waiting">Reconnecting</span>
+                <span className="race-announcer race-waiting">
+                  Reconnecting
+                </span>
               </div>
             ) : (
               eventText &&
@@ -465,7 +439,7 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
               typed={mp.typed}
               activeWordIndex={mp.activeWordIndex}
               finished={mp.finished}
-              locked={mp.phase !== 'racing' || mp.disqualified !== null}
+              locked={mp.phase !== 'racing'}
               errorSeq={mp.errorSeq}
               onInputChange={mp.handleInputChange}
               inputRef={inputRef}
@@ -476,12 +450,6 @@ function RaceView({ mp, onLeave }: { mp: Mp; onLeave: () => void }) {
                 // has nothing to do with OUR rank.
                 <>
                   {inLobby && <LobbyCard mp={mp} />}
-                  {mp.disqualified !== null && !mp.myResult && (
-                    <DisqualifiedCard
-                      reason={mp.disqualified}
-                      onLeave={onLeave}
-                    />
-                  )}
                   {mp.myResult && (
                     <RaceResults
                       place={mp.myResult.rank}

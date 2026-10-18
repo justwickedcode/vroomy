@@ -25,7 +25,12 @@ func TestGhost_FillsALoneRoom(t *testing.T) {
 	closed := false
 	r.onClosed = func() { closed = true }
 	r.loadGhosts = func(exclude string, n int) ([]ghostRun, error) {
-		return []ghostRun{{name: "Ada", passageLen: 18, events: [][3]int{{1000, 18, 0}}}}, nil
+		return []ghostRun{{
+			name:       "Ada",
+			look:       carLook{Car: "lambo", Glow: "#ff00aa", Trail: "comet"},
+			passageLen: 18,
+			events:     [][3]int{{1000, 18, 0}},
+		}}, nil
 	}
 	a := testClient("a")
 	r.addClient(a)
@@ -43,8 +48,14 @@ func TestGhost_FillsALoneRoom(t *testing.T) {
 		t.Fatalf("waiting = %+v, want %d players and a start time", msg, 1+maxGhosts)
 	}
 	var names []string
-	for _, p := range msg.Players {
+	for i, p := range msg.Players {
 		names = append(names, p.Name)
+		if p.Lane != i {
+			t.Errorf("%s is in lane %d, want %d", p.Name, p.Lane, i)
+		}
+		if p.Name == "Ada's ghost" && (p.Car != "lambo" || p.Glow != "#ff00aa" || p.Trail != "comet") {
+			t.Errorf("Ada's ghost = %+v, want Ada's own lambo", p)
+		}
 	}
 	if joined := strings.Join(names, ","); !strings.Contains(joined, "Ada's ghost") || !strings.Contains(joined, "Pace car") {
 		t.Errorf("players = %v, want Ada's ghost and pace cars", names)

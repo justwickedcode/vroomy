@@ -203,6 +203,7 @@ func TestRoom_DisconnectDuringRaceCountsAsUnfinished(t *testing.T) {
 		return ok
 	})
 
+	r.handleMessage(a, clientMessage{Type: "progress", WordIndex: 5})
 	r.handleMessage(a, clientMessage{Type: "finish", ElapsedMs: 10000})
 	r.removeClient(b) // b disconnects instead of finishing
 
@@ -443,40 +444,8 @@ func raceOf(t *testing.T) (*Room, *Client, *Client) {
 	return r, a, b
 }
 
-// Anti-cheat: finishing straight after GO, without having typed anything, is disqualified.
-func TestAntiCheat_InstantFinishDisqualified(t *testing.T) {
-	r, a, _ := raceOf(t)
-	r.handleMessage(a, clientMessage{Type: "finish", ElapsedMs: 1})
-
-	r.mu.Lock()
-	dq, rank := r.players[a].disqualified, r.players[a].rank
-	r.mu.Unlock()
-	if !dq || rank != 0 {
-		t.Errorf("disqualified=%v rank=%d, want disqualified with no rank", dq, rank)
-	}
-	if msg, ok := lastOfType(drain(t, a), "error"); !ok || !strings.HasPrefix(msg.Message, "Disqualified") {
-		t.Errorf("a got %+v, want a disqualification", msg)
-	}
-}
-
-// Anti-cheat: jumping to the end of an 80-word passage a moment after GO is disqualified.
-func TestAntiCheat_ImpossibleProgressDisqualified(t *testing.T) {
-	r, a, b := raceOf(t)
-	r.handleMessage(a, clientMessage{Type: "progress", WordIndex: 79})
-
-	r.mu.Lock()
-	dq := r.players[a].disqualified
-	r.mu.Unlock()
-	if !dq {
-		t.Error("an impossible jump wasn't disqualified")
-	}
-	if _, ok := lastOfType(drain(t, b), "player_progress"); ok {
-		t.Error("the impossible progress was still shown to the other racer")
-	}
-}
-
-// Anti-cheat: progress never goes backwards.
-func TestAntiCheat_ProgressOnlyForward(t *testing.T) {
+// Progress never goes backwards.
+func TestRace_ProgressOnlyForward(t *testing.T) {
 	r, a, _ := raceOf(t)
 	r.handleMessage(a, clientMessage{Type: "progress", WordIndex: 3})
 	r.handleMessage(a, clientMessage{Type: "progress", WordIndex: 1})
@@ -488,46 +457,6 @@ func TestAntiCheat_ProgressOnlyForward(t *testing.T) {
 	}
 }
 
-// Words an ability skipped are allowed on top of the human ceiling.
-func TestAntiCheat_AbilitySkipsAllowed(t *testing.T) {
-	r, a, _ := raceOf(t)
-	r.mu.Lock()
-	r.mode = modePowerups
-	r.mu.Unlock()
-	base := func() int {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		return r.maxHonestWordsLocked(progressSlack, 0)
-	}()
-	r.handlePowerup(a, "slipstream")
-	r.handleMessage(a, clientMessage{Type: "progress", WordIndex: base + 4})
-	r.mu.Lock()
-	dq := r.players[a].disqualified
-	r.mu.Unlock()
-	if dq {
-		t.Error("words skipped by an ability were treated as cheating")
-	}
-}
-
-// Anti-cheat: waiting at the line and then pasting most of the passage stays under the average
-// pace since GO, but not under the burst check.
-func TestAntiCheat_BurstAfterIdlingDisqualified(t *testing.T) {
-	r, a, _ := raceOf(t)
-	r.mu.Lock()
-	r.startedAt = time.Now().Add(-8 * time.Second)
-	r.mu.Unlock()
-	for w := 1; w <= 30; w++ {
-		r.handleMessage(a, clientMessage{Type: "progress", WordIndex: w})
-	}
-
-	r.mu.Lock()
-	dq := r.players[a].disqualified
-	r.mu.Unlock()
-	if !dq {
-		t.Error("30 words in an instant after idling 8s was accepted")
-	}
-}
-
 // A finisher gets a receipt carrying the server's own result, before their player_finished.
 func TestRace_FinisherGetsReceipt(t *testing.T) {
 	r, a, _ := raceOf(t)
@@ -536,12 +465,7 @@ func TestRace_FinisherGetsReceipt(t *testing.T) {
 	r.mu.Lock()
 	r.startedAt = time.Now().Add(-time.Minute)
 	r.mu.Unlock()
-	for w := 10; w <= 80; w += 10 {
-		r.mu.Lock()
-		r.players[a].pace = nil // spread out over the minute, as far as the burst check knows
-		r.mu.Unlock()
-		r.handleMessage(a, clientMessage{Type: "progress", WordIndex: w})
-	}
+	r.handleMessage(a, clientMessage{Type: "progress", WordIndex: 80})
 	r.handleMessage(a, clientMessage{Type: "finish", ElapsedMs: 60000})
 
 	msgs := drain(t, a)

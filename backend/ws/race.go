@@ -72,14 +72,11 @@ type playerState struct {
 	elapsedMs int64
 	wpm       float64
 	rank      int
-	// skippedWords is how many words this player's abilities could have carried them forward,
-	// and disqualified marks a run the anti-cheat rejected (see anticheat.go).
-	skippedWords int
-	disqualified bool
-	// pace is this player's recent progress, for the burst check.
-	pace []pacePoint
 	// seat is the token that lets this player back into the race after dropping out (rejoin.go).
 	seat string
+	// lane is this player's lane on everyone's track, fixed while they're in the room (see
+	// freeLaneLocked) so every client draws the same grid.
+	lane int
 	// ghost marks a ghost (ghosts.go): a stored race replayed (ghostRun), or a pace car driving at
 	// ghostWPM.
 	ghost    bool
@@ -172,6 +169,8 @@ func (r *Room) addClient(c *Client) {
 	// joining again (a new tab, or coming back after leaving before the old connection has gone)
 	// takes over the old seat — the newest tab wins. A seat that has already disconnected never
 	// counts. Only a race already underway with the old tab still in it turns the newcomer away.
+	// The new tab takes over the old one's lane, so nobody's car jumps.
+	lane := -1
 	if c.racer != "" {
 		for other, state := range r.players {
 			if other.racer != c.racer || !state.connected {
@@ -183,6 +182,7 @@ func (r *Room) addClient(c *Client) {
 				c.closeSend()
 				return
 			}
+			lane = state.lane
 			delete(r.players, other)
 			if r.host == other {
 				r.host = c
@@ -191,7 +191,10 @@ func (r *Room) addClient(c *Client) {
 			other.closeSend()
 		}
 	}
-	r.players[c] = &playerState{client: c, connected: true}
+	if lane < 0 {
+		lane = r.freeLaneLocked()
+	}
+	r.players[c] = &playerState{client: c, connected: true, lane: lane}
 	count := len(r.players)
 	// Public rooms: alone for ghostWait, and the ghosts come out (ghosts.go); company first, and
 	// they don't.
@@ -297,15 +300,36 @@ func (r *Room) removeClient(c *Client) {
 	r.broadcast(waiting)
 }
 
-// playerListLocked lists every player in the room, ordered by id so every client gets the same
-// order. Caller must hold r.mu.
+// playerListLocked lists every player in the room in lane order, so every client lays out the
+// same grid. Caller must hold r.mu.
 func (r *Room) playerListLocked() []playerInfo {
 	list := make([]playerInfo, 0, len(r.players))
-	for c := range r.players {
-		list = append(list, playerInfo{PlayerID: c.id, Name: c.name})
+	for c, state := range r.players {
+		list = append(list, playerInfo{
+			PlayerID: c.id,
+			Name:     c.name,
+			Lane:     state.lane,
+			Car:      c.look.Car,
+			Glow:     c.look.Glow,
+			Trail:    c.look.Trail,
+		})
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].PlayerID < list[j].PlayerID })
+	sort.Slice(list, func(i, j int) bool { return list[i].Lane < list[j].Lane })
 	return list
+}
+
+// freeLaneLocked is the lowest lane nobody in the room holds: a newcomer fills the gap someone
+// left in the lobby rather than shuffling everyone else's lanes. Caller must hold r.mu.
+func (r *Room) freeLaneLocked() int {
+	taken := make(map[int]bool, len(r.players))
+	for _, state := range r.players {
+		taken[state.lane] = true
+	}
+	lane := 0
+	for taken[lane] {
+		lane++
+	}
+	return lane
 }
 
 // closeToNewJoiners stops this room from accepting more players (whether because it's about to
@@ -440,16 +464,6 @@ func (r *Room) handleProgress(c *Client, wordIndex int) {
 	if wordIndex > r.wordCount {
 		wordIndex = r.wordCount
 	}
-	if r.outpacedLocked(state, wordIndex, time.Now()) {
-		r.disqualifyLocked(state)
-		allDone := r.allFinishedLocked()
-		r.mu.Unlock()
-		r.announceDisqualified(c)
-		if allDone {
-			r.finishRace()
-		}
-		return
-	}
 	state.wordIndex = wordIndex
 	r.mu.Unlock()
 
@@ -473,18 +487,6 @@ func (r *Room) handleFinish(c *Client, clientElapsedMs int64) {
 	elapsed := time.Since(r.startedAt)
 	if client := time.Duration(clientElapsedMs) * time.Millisecond; client > elapsed {
 		elapsed = client
-	}
-	// Finishing means having typed up to the last word, at a pace a person could manage.
-	if state.wordIndex < r.wordCount-1 ||
-		r.wordCount > r.maxHonestWordsLocked(elapsed, state.skippedWords) {
-		r.disqualifyLocked(state)
-		allDone := r.allFinishedLocked()
-		r.mu.Unlock()
-		r.announceDisqualified(c)
-		if allDone {
-			r.finishRace()
-		}
-		return
 	}
 	elapsedMs := elapsed.Milliseconds()
 
@@ -558,7 +560,7 @@ func (r *Room) finishRace() {
 	unfinished := make([]playerResult, 0)
 	for c, state := range r.players {
 		res := playerResult{PlayerID: c.id, Rank: state.rank, ElapsedMs: state.elapsedMs, WPM: roundTo2(state.wpm)}
-		if state.finished && !state.disqualified {
+		if state.finished {
 			results = append(results, res)
 		} else {
 			unfinished = append(unfinished, res)

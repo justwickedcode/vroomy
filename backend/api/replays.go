@@ -75,7 +75,7 @@ type Replay struct {
 	Events      []replayEvent `json:"events"`
 	DisplayName string        `json:"displayName"`
 	AvatarURL   string        `json:"avatarUrl,omitempty"`
-	CarModel    string        `json:"carModel"`
+	CarLook
 }
 
 // handleGetReplay serves GET /api/replays/{id}. Public on purpose: leaderboard rows link to the
@@ -94,12 +94,14 @@ func handleGetReplay(pool *pgxpool.Pool) http.HandlerFunc {
 		var rawEvents []byte
 		err = pool.QueryRow(r.Context(), `
 			SELECT r.id, r.created_at, r.mode, r.wpm, r.accuracy, r.placement, r.racer_count,
-			       r.passage, r.replay, u.display_name, COALESCE(u.avatar_url, ''), u.car_model
+			       r.passage, r.replay, u.display_name, COALESCE(u.avatar_url, ''),
+			       `+carLookColumns+`
 			FROM race_results r
 			JOIN users u ON u.id = r.user_id
 			WHERE r.id = $1 AND r.replay IS NOT NULL
 		`, id).Scan(&rep.ID, &createdAt, &rep.Mode, &rep.WPM, &rep.Accuracy, &rep.Placement,
-			&rep.RacerCount, &rep.Passage, &rawEvents, &rep.DisplayName, &rep.AvatarURL, &rep.CarModel)
+			&rep.RacerCount, &rep.Passage, &rawEvents, &rep.DisplayName, &rep.AvatarURL, &rep.CarModel,
+			&rep.Underglow, &rep.UnderglowColor, &rep.Trail)
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "replay not found")
 			return

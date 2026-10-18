@@ -18,7 +18,8 @@ import { getLocalReplay } from '#/lib/replay/localReplays'
 import { useProfile } from '#/lib/profile/useProfile'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
 import { ordinal } from '#/lib/utils'
-import type { CarModel } from '#/components/typing/CarIcon'
+import { lookFromApi } from '#/lib/carLook'
+import type { CarLook } from '#/lib/carLook'
 import type { RaceMode, ReplayData } from '#/lib/api/types'
 
 export const Route = createFileRoute('/replays/$replayId')({
@@ -29,7 +30,8 @@ interface LoadedReplay {
   replay: ReplayData
   driverName: string
   avatarUrl?: string
-  carModel?: CarModel
+  // The driver's car as they had it dressed — yours for your own local replays.
+  look: CarLook
   mine: boolean
   date: string
   mode: RaceMode
@@ -81,7 +83,12 @@ function useReplay(replayId: string): {
         ? {
             replay,
             driverName: 'You',
-            carModel: profile.carModel,
+            look: {
+              model: profile.carModel,
+              underglow: profile.underglow,
+              underglowColor: profile.underglowColor,
+              trail: profile.trail,
+            },
             mine: true,
             date: race.date,
             mode: race.mode ?? 'solo',
@@ -92,7 +99,15 @@ function useReplay(replayId: string): {
           }
         : null,
     )
-  }, [replayId, profile.hydrated, race, profile.carModel])
+  }, [
+    replayId,
+    profile.hydrated,
+    race,
+    profile.carModel,
+    profile.underglow,
+    profile.underglowColor,
+    profile.trail,
+  ])
 
   if (!isServerId(replayId)) return { data: local, isError: false }
   if (server.isError) return { data: undefined, isError: true }
@@ -104,7 +119,7 @@ function useReplay(replayId: string): {
       replay: { passage: r.passage, events: r.events },
       driverName: r.displayName || 'Racer',
       avatarUrl: r.avatarUrl,
-      carModel: r.carModel,
+      look: lookFromApi(r),
       // Matched by id against the player's own synced history — the replay response itself
       // doesn't expose whose account it belongs to.
       mine: user !== null && profile.races.some((own) => own.id === replayId),
@@ -196,7 +211,7 @@ function ReplayPage() {
                 key={replayId}
                 replay={data.replay}
                 driverName={data.mine ? 'You' : data.driverName}
-                carModel={data.carModel}
+                look={data.look}
                 finalAccuracy={data.accuracy}
               />
             )}

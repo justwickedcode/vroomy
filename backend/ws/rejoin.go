@@ -81,7 +81,7 @@ func (r *Room) dropSeatsLocked() {
 }
 
 // resume seats c in the place its seat token holds, if that player dropped out of this race and
-// it's still running (and they hadn't finished or been disqualified). It reports whether it did;
+// it's still running (and they hadn't finished). It reports whether it did;
 // if not, c is untouched and should join the normal way.
 func (r *Room) resume(c *Client, seat string) bool {
 	r.mu.Lock()
@@ -97,14 +97,14 @@ func (r *Room) resume(c *Client, seat string) bool {
 			break
 		}
 	}
-	if state == nil || state.connected || state.finished || state.disqualified {
+	if state == nil || state.connected || state.finished {
 		r.mu.Unlock()
 		return false
 	}
 
 	// Take over the old connection's place, under its id, so opponents keep tracking the same car.
 	delete(r.players, old)
-	c.id, c.name, c.racer = old.id, old.name, old.racer
+	c.id, c.name, c.racer, c.look = old.id, old.name, old.racer, old.look
 	c.room = r
 	state.client = c
 	state.connected = true
@@ -133,10 +133,10 @@ func (r *Room) resume(c *Client, seat string) bool {
 	for oc, s := range r.players {
 		switch {
 		case oc == c:
-		case s.finished && !s.disqualified:
+		case s.finished:
 			catchUp = append(catchUp, serverMessage{Type: "player_finished", PlayerID: oc.id,
 				Rank: s.rank, ElapsedMs: s.elapsedMs, WPM: roundTo2(s.wpm)})
-		case !s.connected || s.disqualified:
+		case !s.connected:
 			catchUp = append(catchUp, serverMessage{Type: "player_left", PlayerID: oc.id})
 		default:
 			catchUp = append(catchUp, serverMessage{Type: "player_progress", PlayerID: oc.id, WordIndex: s.wordIndex})

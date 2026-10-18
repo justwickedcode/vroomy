@@ -119,7 +119,6 @@ A race body:
 - `mode` is `solo`, `multiplayer` or `daily`.
 - `ticket` is required: the race ticket it's saved against, once (`tickets.go`). A solo or daily race asks for one when its passage appears; the race is refused if it's for another passage, mode or day, more than 2 hours old, or if the replay says the race took longer than the time since the ticket was issued (a replay made up after the fact). A multiplayer race's ticket is the `receipt` the ws server sends the finisher; it carries the server's own WPM, placement and racer count, which replace whatever the browser sent.
 - `replay` is required (except for a multiplayer race, where the server measured the result). Each event is `[msSinceStart, typedLength, rejected]`. The game only accepts correct characters, so what the player had typed at any moment is `passage[:typedLength]`, which keeps a whole race to a few KB. `rejected` is `1` for a keystroke the game refused (a typo). The server checks that timestamps never go backwards, lengths stay inside the passage, and the timeline ends on the last character (`replays.go`).
-- The replay has to back the score up (`anticheat.go`): the WPM must match it, hand-typed speed stays under 300 WPM (and 30 characters in any one second), text that appeared in jumps is limited to what abilities could skip, and machine-regular keystroke timing is refused.
 - `dailyDate` (with `mode: "daily"`) also records the run as that day's daily-challenge result, in the same transaction, keeping only the player's best run per day.
 
 ### Coins and the garage shop

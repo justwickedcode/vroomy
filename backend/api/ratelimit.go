@@ -103,7 +103,7 @@ func withRateLimit(next http.Handler) http.Handler {
 }
 
 // Saving races and asking for tickets: one per race, and a race takes a good few seconds, so a
-// player never gets near this — a script flooding the anti-cheat with attempts does.
+// player never gets near this — a script flooding them does.
 const (
 	raceWritesPerMinute = 12
 	raceWritesBurst     = 6

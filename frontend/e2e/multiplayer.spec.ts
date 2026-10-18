@@ -5,7 +5,6 @@ import {
   livePassage,
   placeText,
   typeLikeAPerson,
-  typeLikeAScript,
 } from './helpers'
 
 // Quick match: the page waits in the lobby, a scripted racer joins, the race starts on its own.
@@ -25,23 +24,6 @@ test('quick match: a race against another player', async ({ page }) => {
     await expect(placeText(page)).toHaveText('1st')
     const finished = await rival.waitFor('player_finished')
     expect(finished.rank).toBe(1)
-  } finally {
-    rival.close()
-  }
-})
-
-test('quick match: pasting the passage gets you disqualified', async ({
-  page,
-}) => {
-  const rival = await quickMatchWithARacer(page)
-  try {
-    const passage = await livePassage(page)
-    await typeLikeAScript(page, passage)
-    await expect(page.getByText('Out', { exact: true })).toBeVisible()
-    await expect(
-      page.getByText("That pace isn't humanly possible.", { exact: false }),
-    ).toBeVisible()
-    await rival.waitFor('player_left')
   } finally {
     rival.close()
   }

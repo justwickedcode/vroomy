@@ -61,9 +61,9 @@ All three are WebSocket upgrades and speak the same protocol from there on. Each
 
 `wpm` is always computed server-side, from the passage and the server's own clock since `go` (the client's `elapsedMs` only counts when it's slower) — never trusted as a value the client sends directly.
 
-## Anti-cheat
+## Results
 
-`anticheat.go`: progress only moves forward and never faster than 300 WPM, measured from `go` and over every stretch of the last 5 seconds (words an ability skipped don't count); finishing needs the last word. A player who breaks either rule is disqualified: an `error` starting `Disqualified:` to them, `player_left` to the others, and no rank.
+Progress only moves forward. There's no anti-cheat beyond that (it's a game among friends): a `finish` is taken at its word, timed by the server's own clock.
 
 When a player finishes, the server writes their result (WPM, placement, racer count) as a race ticket in `race_tickets` and sends them its id as a `receipt`. Their browser saves the race to their account against it, and `backend/api` takes the result from the ticket rather than from the browser.
 

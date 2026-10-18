@@ -493,6 +493,8 @@ function GaragePage() {
                         <Trail variant={option.id} model={carModel} />
                         <CarIcon
                           model={carModel}
+                          underglow={underglow}
+                          underglowColor={underglowColor}
                           className="race-car-svg w-20"
                         />
                       </span>

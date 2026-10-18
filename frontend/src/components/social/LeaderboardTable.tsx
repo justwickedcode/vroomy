@@ -102,7 +102,12 @@ function Row({
         )}
       </span>
       {!compact && (
-        <CarIcon model={entry.carModel} className="hidden w-12 sm:flex" />
+        <CarIcon
+          model={entry.carModel}
+          underglow={entry.underglow}
+          underglowColor={entry.underglowColor}
+          className="hidden w-12 sm:flex"
+        />
       )}
       <span className="stat-figure text-right whitespace-nowrap">
         {entry.wpm} wpm
