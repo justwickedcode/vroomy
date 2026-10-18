@@ -15,19 +15,11 @@ export async function livePassage(page: Page): Promise<string> {
   return text.replace(/\s+/g, ' ').trim()
 }
 
-// Types like a quick person (~120 WPM): fast enough to win against the slow bots, slow enough
-// that the anti-cheat lets it through.
+// Types like a quick person (~120 WPM): fast enough to win against the slow bots.
 export async function typeLikeAPerson(page: Page, text: string) {
   await page
     .getByLabel('Type the passage')
     .pressSequentially(text, { delay: 100 })
-}
-
-// Types like a script: the whole passage at once.
-export async function typeLikeAScript(page: Page, text: string) {
-  await page
-    .getByLabel('Type the passage')
-    .pressSequentially(text, { delay: 0 })
 }
 
 // The place on the finish screen ("1st", "2nd"...).

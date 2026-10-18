@@ -90,10 +90,18 @@ export default function TypingRace({
   // begin. Simulated here with a short "waiting for race" delay before the
   // countdown fires automatically, for every fresh sentence while a
   // opponent is chosen (initial race, "Race Again", and "New Sentence").
-  useEffect(() => {
+  //
+  // Back to 'waiting' in the same render the new sentence arrives in, not an effect after it —
+  // otherwise the new grid would show for a frame before its cars drive in.
+  const [phaseText, setPhaseText] = useState(text)
+  if (phaseText !== text) {
+    setPhaseText(text)
     setPhase('waiting')
     setCountdown(RACE_COUNTDOWN_START)
-    const t = setTimeout(() => setPhase('counting'), 600)
+  }
+  useEffect(() => {
+    // Long enough for the grid to form (RaceTrack's `arrive`) before the lights come on.
+    const t = setTimeout(() => setPhase('counting'), 1200)
     return () => clearTimeout(t)
   }, [text])
 
@@ -242,6 +250,9 @@ export default function TypingRace({
           countdown={countdown}
           phase={phase}
           epic
+          // Every race starts with the grid forming: the cars drive in one by one before GO.
+          arrive={phase !== 'ready'}
+          arriveKey={text}
           effect={powers.effect}
           className="flex-shrink-0"
         />

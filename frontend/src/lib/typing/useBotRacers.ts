@@ -107,10 +107,17 @@ export function useBotRacers({
   // Accumulated time penalty per bot, in ms — see BotRacersResult.hitBot above.
   const penaltyRef = useRef<Record<string, number>>({})
 
-  useEffect(() => {
-    setNow(null)
+  // A new race forgets the last one's finishes right away, in this render — not in an effect
+  // after it, which left one frame of every bot still parked over the line: the track would then
+  // glide them all the way back to the start, right to left, instead of lining them up on it.
+  const raceKeyRef = useRef(raceKey)
+  if (raceKeyRef.current !== raceKey) {
+    raceKeyRef.current = raceKey
     finishedRef.current = {}
     penaltyRef.current = {}
+  }
+  useEffect(() => {
+    setNow(null)
   }, [raceKey])
 
   const hitBot = useCallback(

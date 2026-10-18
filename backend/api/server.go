@@ -40,8 +40,8 @@ func newServer(pool *pgxpool.Pool, allowedOrigin string) http.Handler {
 	mux.Handle("GET /api/leaderboards", withRateLimit(handleLeaderboard(pool)))
 	mux.Handle("GET /api/replays/{id}", withRateLimit(handleGetReplay(pool)))
 	mux.HandleFunc("GET /health", handleHealth(pool))
-	// Everything that earns coins or a leaderboard spot is rate-limited per player, so the
-	// anti-cheat can't be probed by brute force. The rest needs a verified identity (see
+	// Everything that earns coins or a leaderboard spot is rate-limited per player, so a script
+	// can't flood it. The rest needs a verified identity (see
 	// withIdentity in users.go) and has nothing to gain from being hammered.
 	mux.Handle("POST /api/users/me/race-tickets", withUserRateLimit(handlePostRaceTicket(pool)))
 	mux.Handle("POST /api/users/me/races", withUserRateLimit(handlePostRace(pool)))

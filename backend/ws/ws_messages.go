@@ -13,6 +13,7 @@ package main
 //	← welcome        {playerId}                                   sent once, right after connecting
 //	← host_assigned  {}                                            sent once, only to a private room's creator
 //	← waiting        {code, playersInRoom, minPlayers, maxPlayers, players} lobby changed (code empty for public rooms)
+//	                                                               players: [{playerId, name, lane, car, glow, trail}]
 //	→ start          {}                                            private-room host only: skip the wait, start now
 //	← race_start     {quote, wordCount, startsInMs, players}       quote chosen, countdown begins
 //	← seat           {seat}                                        to each player alone, with race_start: their token to rejoin with
@@ -78,10 +79,16 @@ type serverMessage struct {
 
 // playerInfo identifies one player in a room. Name is whatever the client asked to be called
 // when it connected (see sanitizeName) — unverified, since ws has no login of its own, so it's
-// a display label only and never used to attribute results to an account.
+// a display label only and never used to attribute results to an account. Lane is where their
+// car sits on everyone's track; Car, Glow and Trail are how it's dressed (see carLook), empty
+// for the defaults.
 type playerInfo struct {
 	PlayerID string `json:"playerId"`
 	Name     string `json:"name,omitempty"`
+	Lane     int    `json:"lane"`
+	Car      string `json:"car,omitempty"`
+	Glow     string `json:"glow,omitempty"`
+	Trail    string `json:"trail,omitempty"`
 }
 
 // playerResult is one player's line in a race_end message's final standings.

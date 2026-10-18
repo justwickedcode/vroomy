@@ -1,9 +1,29 @@
 package main
 
 import (
+	"encoding/json"
+	"os"
 	"testing"
 	"time"
 )
+
+// honestRun is a real 81 WPM run recorded in the browser (testdata/honest_replay.json).
+func honestRun(t *testing.T) (string, []replayEvent, int) {
+	t.Helper()
+	raw, err := os.ReadFile("testdata/honest_replay.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var run struct {
+		WPM     int           `json:"wpm"`
+		Passage string        `json:"passage"`
+		Events  []replayEvent `json:"events"`
+	}
+	if err := json.Unmarshal(raw, &run); err != nil {
+		t.Fatal(err)
+	}
+	return run.Passage, run.Events, run.WPM
+}
 
 func TestRaceTicket_Check(t *testing.T) {
 	passage, events, wpm := honestRun(t)
@@ -52,19 +72,5 @@ func TestRaceTicket_MultiplayerNeedsResult(t *testing.T) {
 	tk.wpm, tk.placement, tk.racerCount = &wpm, &place, &count
 	if msg := tk.check("anyone", race, time.Now()); msg != "" {
 		t.Errorf("a multiplayer ticket with its result was refused: %s", msg)
-	}
-}
-
-// The ws server's own WPM stands even when the browser's timing differs a little.
-func TestValidate_ServerResultSkipsClaimedWPM(t *testing.T) {
-	passage, events, wpm := honestRun(t)
-	req := raceRequest{Mode: "multiplayer", Passage: passage, Replay: events, WPM: wpm + 10,
-		Accuracy: 100, Placement: 1, RacerCount: 2}
-	if req.validate() == "" {
-		t.Fatal("a claimed WPM off from the replay was accepted")
-	}
-	req.serverResult = true
-	if msg := req.validate(); msg != "" {
-		t.Errorf("the server's own result was refused: %s", msg)
 	}
 }

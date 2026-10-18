@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { computeWordSpans } from '#/lib/typing/useTypingRace'
 import { useReplayRecorder } from '#/lib/replay/recorder'
 import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import { useProfile } from '#/lib/profile/useProfile'
 import {
   ABILITY_RECHARGE_MS,
   OVERDRIVE_MAX_WORDS,
@@ -87,12 +88,23 @@ interface ServerMessage {
   wpm?: number
   results?: Array<RaceResult>
   message?: string
-  players?: Array<{ playerId: string; name?: string }>
+  players?: Array<RoomPlayer>
   mode?: LobbyMode
   powerup?: PowerupKind
   targets?: Array<string>
   ticket?: string
   seat?: string
+}
+
+// One player in the room (backend/ws's playerInfo): their lane on everyone's track, and how their
+// car is dressed — glow is the underglow colour, empty for none.
+export interface RoomPlayer {
+  playerId: string
+  name?: string
+  lane: number
+  car?: string
+  glow?: string
+  trail?: string
 }
 
 const GUEST_RACER_KEY = 'vroomy:racer-id:v1'
@@ -152,9 +164,15 @@ function saveSeat(seat: string | null) {
 }
 
 function namesFrom(
-  players: Array<{ playerId: string; name?: string }>,
+  players: Array<RoomPlayer>,
 ): Record<string, string | undefined> {
   return Object.fromEntries(players.map((p) => [p.playerId, p.name]))
+}
+
+function seatsFrom(
+  players: Array<RoomPlayer>,
+): Record<string, RoomPlayer | undefined> {
+  return Object.fromEntries(players.map((p) => [p.playerId, p]))
 }
 
 // useMultiplayerRace mirrors useTypingRace's word-lock input model (reject-wrong-chars,
@@ -174,6 +192,11 @@ export function useMultiplayerRace() {
   // racing the first): the account id, or for a guest an id saved in this browser.
   const racerRef = useRef(user?.id)
   racerRef.current = user?.id
+  // Sent as ?car=, ?glow= and ?trail= so everyone else sees the car we actually drive. The route
+  // gates wait for the profile to load before connecting, so this is the real one.
+  const profile = useProfile()
+  const lookRef = useRef(profile)
+  lookRef.current = profile
 
   const [phase, setPhase] = useState<MultiplayerPhase>('connecting')
   const [myId, setMyId] = useState<string | null>(null)
@@ -197,6 +220,8 @@ export function useMultiplayerRace() {
   const [results, setResults] = useState<Array<RaceResult> | null>(null)
   // playerId → display name, for every player who connected with one.
   const [names, setNames] = useState<Record<string, string | undefined>>({})
+  // playerId → their lane and car, for everyone in the room (us included).
+  const [seats, setSeats] = useState<Record<string, RoomPlayer | undefined>>({})
   // How many players the race started with — the "of N" in a recorded placement. Fixed at
   // race_start, unlike playersInRoom, so a mid-race disconnect doesn't change it.
   const [racerCount, setRacerCount] = useState(0)
@@ -213,9 +238,6 @@ export function useMultiplayerRace() {
   // because someone else is still typing.
   const [myResult, setMyResult] = useState<RaceResult | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  // Why the anti-cheat took us out of this race (backend/ws's anticheat.go), if it did: the race
-  // carries on around us, our car pulled over.
-  const [disqualified, setDisqualified] = useState<string | null>(null)
   // Trying to get back into the race after the connection dropped.
   const [reconnecting, setReconnecting] = useState(false)
   // Bumped each time we're back in, so progress and the finish get re-sent on the new socket.
@@ -283,7 +305,7 @@ export function useMultiplayerRace() {
   }, [typed, text, spans, activeWordIndex, finished])
 
   function handleInputChange(value: string) {
-    if (finished || disqualified || phase !== 'racing') return
+    if (finished || phase !== 'racing') return
     const raceStart = startedAt ?? Date.now()
     if (!startedAt) setStartedAt(raceStart)
 
@@ -433,6 +455,7 @@ export function useMultiplayerRace() {
     setStartsInMs(0)
     setOpponents({})
     setNames({})
+    setSeats({})
     setRacerCount(0)
     setMode('classic')
     setPowerupUsedAt(null)
@@ -442,7 +465,6 @@ export function useMultiplayerRace() {
     setMyResult(null)
     receiptRef.current = undefined
     setErrorMessage(null)
-    setDisqualified(null)
     setReconnecting(false)
     reconnectTriesRef.current = 0
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
@@ -473,6 +495,10 @@ export function useMultiplayerRace() {
       const target = new URL(`${WS_URL}${path}`)
       if (nameRef.current) target.searchParams.set('name', nameRef.current)
       target.searchParams.set('racer', racerRef.current ?? guestRacerId())
+      const look = lookRef.current
+      target.searchParams.set('car', look.carModel)
+      if (look.underglow) target.searchParams.set('glow', look.underglowColor)
+      target.searchParams.set('trail', look.trail)
       // A race of ours still running (a dropped connection, or a reload): straight back into it.
       const seat = savedSeat()
       if (seat) target.searchParams.set('seat', seat)
@@ -535,7 +561,10 @@ export function useMultiplayerRace() {
             setIsHost(true)
             break
           case 'waiting':
-            if (msg.players) setNames(namesFrom(msg.players))
+            if (msg.players) {
+              setNames(namesFrom(msg.players))
+              setSeats(seatsFrom(msg.players))
+            }
             // A public room with two or more in it starts on its own at this moment.
             setLobbyStartsAt(
               msg.startsInMs ? Date.now() + msg.startsInMs : null,
@@ -550,6 +579,7 @@ export function useMultiplayerRace() {
             if (msg.players) {
               const players = msg.players
               setNames(namesFrom(players))
+              setSeats(seatsFrom(players))
               setRacerCount(players.length)
               // Everyone in the room gets a car on the grid now, at the line, before the quote
               // shows — not only once their first progress update arrives.
@@ -589,6 +619,7 @@ export function useMultiplayerRace() {
               // Back after a reload: rebuild the race from what the server kept.
               const players = msg.players ?? []
               setNames(namesFrom(players))
+              setSeats(seatsFrom(players))
               setRacerCount(players.length)
               setOpponents(
                 Object.fromEntries(
@@ -736,10 +767,6 @@ export function useMultiplayerRace() {
             break
           case 'error':
             saveSeat(null)
-            if (msg.message?.startsWith('Disqualified:')) {
-              setDisqualified(msg.message.slice('Disqualified:'.length).trim())
-              break
-            }
             setErrorMessage(msg.message ?? 'Something went wrong.')
             setPhase('error')
             break
@@ -841,10 +868,13 @@ export function useMultiplayerRace() {
   // is committed, so a ref (not state) guards against a stray extra render sending it twice.
   useEffect(() => {
     if (phase === 'racing' && finished && !finishSentRef.current) {
+      // Over the line first: an ability that carries us across skips the last words without
+      // ever moving activeWordIndex onto them, so the progress effect above never reports them.
+      send({ type: 'progress', wordIndex: wordCount })
       // Only once it's actually out — if the connection is down, it goes once we're back in.
       finishSentRef.current = send({ type: 'finish', elapsedMs })
     }
-  }, [phase, finished, elapsedMs, send, connection])
+  }, [phase, finished, elapsedMs, wordCount, send, connection])
 
   useEffect(() => {
     return () => {
@@ -874,6 +904,7 @@ export function useMultiplayerRace() {
     results,
     myResult,
     names,
+    seats,
     racerCount,
     mode,
     powerupReady,
@@ -883,7 +914,6 @@ export function useMultiplayerRace() {
     lastPowerup,
     firePowerup,
     errorMessage,
-    disqualified,
     reconnecting,
     quickMatch,
     createRoom,

@@ -6,7 +6,7 @@ import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 import MultiplayerRace from '#/components/typing/MultiplayerRace'
 import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
 import { useIsDesktopViewport } from '#/lib/layout/useIsDesktopViewport'
-import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import { useProfile } from '#/lib/profile/useProfile'
 
 // ?mode= picks the lobby; without it the page asks first. Kept in the URL so "race again" and
 // a refresh go straight back into the same kind of lobby.
@@ -24,8 +24,9 @@ export const Route = createFileRoute('/race/multiplayer')({
 // result — so the WebSocket connect below never fires on mobile at all, not even briefly.
 function QuickMatchGate() {
   const isDesktop = useIsDesktopViewport()
-  // Waits for the login check too, so the connection carries the player's name.
-  const { loaded } = useCurrentUser()
+  // Waits for the login check and the profile too, so the connection carries the player's name
+  // and the car they actually drive.
+  const { hydrated: loaded } = useProfile()
 
   if (isDesktop === false) return <DesktopOnlyRace />
   if (isDesktop === null || !loaded) return null

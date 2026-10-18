@@ -26,8 +26,6 @@ export interface Racer {
   overdrive?: boolean
   // A seat nobody filled: the lane stays, with no car in it.
   empty?: boolean
-  // Disqualified: the car pulls over onto the shoulder, greyed out, and stays there.
-  out?: boolean
 }
 
 // One-shot ability effect (see useSoloPowerups / MultiplayerRace) — `key` changes on every use,
@@ -56,6 +54,8 @@ const GATE_LEAD = 30
 // together: a rival a fifth of the race ahead has driven out of sight, and a car that's finished
 // stays parked on the line, sliding past exactly as fast as the road.
 const CAMERA_X = 26
+// Arriving cars (RaceTrack's `arrive`) roll onto the grid one after another, this far apart.
+const ARRIVAL_GAP_MS = 350
 const CAMERA_SCALE = 400
 
 // How stiff the chase camera's and the rivals' springs are (higher follows tighter).
@@ -363,17 +363,20 @@ function Lane({
   effect,
   camera,
   arrive,
+  arrivalDelay,
 }: {
   racer: Racer
   trailVariant: TrailVariant
   effect?: RaceEffect | null
   camera: number | null
   arrive: boolean
+  // How long this car waits for the ones ahead of it in the queue before driving in (ms).
+  arrivalDelay: number
 }) {
   const left = carLeft(racer, camera)
   const follow = camera !== null && !racer.isYou && !racer.empty
   if (racer.empty) return <div className="race-lane" />
-  const racing = racer.progress > 0 && !racer.finished && !racer.out
+  const racing = racer.progress > 0 && !racer.finished
 
   // An ability plays on whoever used it: its icon pops over the car, with an exhaust burst for
   // the ones that move it forward. Narrowed into {kind, key} pairs up front so the JSX below
@@ -406,11 +409,15 @@ function Lane({
           'race-car-wrap',
           racer.overdrive && 'race-car-wrap--overdrive',
           racer.isYou && 'race-car-wrap--you',
-          racer.out && 'race-car-wrap--out',
           arrive && 'race-car-wrap--arrive',
           follow && 'race-follow',
         )}
-        style={follow ? undefined : { left: `${left}%` }}
+        style={
+          {
+            ...(follow ? {} : { left: `${left}%` }),
+            '--arrive-delay': `${arrivalDelay}ms`,
+          } as CSSProperties
+        }
       >
         <span
           className={cn('race-name-tag', racer.isYou && 'race-name-tag--you')}
@@ -475,6 +482,7 @@ export default function RaceTrack({
   epic = false,
   showcase = false,
   arrive = false,
+  arriveKey = '',
   lights = 3,
   className,
 }: {
@@ -490,8 +498,12 @@ export default function RaceTrack({
   // The dashboard's title screen on top of that: a taller skyline, bigger cars on taller lanes,
   // no WPM readouts, and the world running three times faster.
   showcase?: boolean
-  // A lobby: each car drives in from the left as it appears, and parks on the start line.
+  // A lobby, or a solo grid forming: each car drives in from the left as it appears, one after
+  // another, and parks on the start line.
   arrive?: boolean
+  // Changes for every new race on the same track (solo's "race again"): the grid empties and
+  // the cars drive in all over again.
+  arriveKey?: string
   // How many start lights the countdown gantry has (one per second of the countdown).
   lights?: number
   className?: string
@@ -506,6 +518,30 @@ export default function RaceTrack({
   // Only your own finish stops the world: while bots are done and you're still typing, the
   // road, city and lights keep rolling at your pace.
   const showFinish = finishLine && Boolean(player.finished)
+
+  // The arrival queue: each car that shows up waits for the one before it, so a whole grid
+  // arriving at once still rolls in one by one, and a player joining later just gets in line.
+  // Keyed by racer, so re-rendering never re-queues anyone.
+  const arrivalsRef = useRef({
+    key: arriveKey,
+    next: 0,
+    delays: new Map<string, number>(),
+  })
+  if (arrivalsRef.current.key !== arriveKey) {
+    arrivalsRef.current = { key: arriveKey, next: 0, delays: new Map() }
+  }
+  function arrivalDelay(id: string) {
+    if (!arrive) return 0
+    const queue = arrivalsRef.current
+    const known = queue.delays.get(id)
+    if (known !== undefined) return known
+    const now = performance.now()
+    const at = Math.max(now, queue.next)
+    queue.next = at + ARRIVAL_GAP_MS
+    const delay = Math.round(at - now)
+    queue.delays.set(id, delay)
+    return delay
+  }
 
   const trackRef = useRef<HTMLDivElement>(null)
   const brakingRef = useRef(false)
@@ -577,6 +613,12 @@ export default function RaceTrack({
           if (racer.isYou) continue
           const goal = racer.finished ? 1 : clamp01(racer.progress)
           const state = rivals.get(racer.id) ?? { x: goal, v: 0 }
+          // On the grid (you and they are both at the start): parked on the line, never
+          // gliding there from wherever the last race left them.
+          if (target < 0.001 && goal < 0.001) {
+            state.x = 0
+            state.v = 0
+          }
           state.v = spring(state.x, state.v, goal, RIVAL_STIFFNESS, dt)
           state.x += state.v * dt
           rivals.set(racer.id, state)
@@ -674,7 +716,8 @@ export default function RaceTrack({
             <Lane
               camera={camera}
               arrive={arrive}
-              key={racer.id}
+              arrivalDelay={racer.empty ? 0 : arrivalDelay(racer.id)}
+              key={`${arriveKey}:${racer.id}`}
               racer={racer}
               trailVariant={trailVariant}
               effect={effect}

@@ -401,8 +401,8 @@ async function importGuestData(userId: string, queryClient: QueryClient) {
         replay: replay?.events,
       } satisfies ApiRaceInput
     })
-    // The server keeps only races whose replay holds up (its anti-cheat), and quietly leaves
-    // the rest — an old race saved before replays existed, say — behind.
+    // The server keeps only races with a well-formed replay, and quietly leaves the rest — an
+    // old race saved before replays existed, say — behind.
     if (races.length > 0) await importRacesFn({ data: races })
 
     const daily = Object.entries(readLocalDaily())

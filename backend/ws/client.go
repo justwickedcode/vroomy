@@ -53,9 +53,12 @@ type Client struct {
 	// account id or a saved guest id — see sanitizeRacerID): one person can't take two seats in
 	// the same room, e.g. from a second tab.
 	racer string
-	conn  *websocket.Conn
-	send  chan []byte
-	room  *Room
+	// look is how this player's car is dressed (?car=, ?glow=, ?trail=, see sanitizeLook) —
+	// passed along to everyone else so they see the car this player actually drives.
+	look carLook
+	conn *websocket.Conn
+	send chan []byte
+	room *Room
 
 	// sendMu guards closed and send together. A sync.Once around just the close() would still
 	// let sendJSON race a concurrent closeSend: it could pass a "not closed yet" check and then
@@ -106,6 +109,48 @@ func sanitizeRacerID(raw string) string {
 		}
 	}
 	return raw
+}
+
+// carLook is a player's car as the others see it: the model, the underglow colour ("" for none)
+// and the trail. Like the name it's the client's own say-so and only ever displayed; the
+// frontend falls back to defaults for anything it doesn't recognise.
+type carLook struct {
+	Car   string
+	Glow  string
+	Trail string
+}
+
+// maxLookIDLen bounds a car or trail id (the users table's own VARCHAR(32)).
+const maxLookIDLen = 32
+
+// sanitizeLook keeps car and trail to short lowercase [a-z0-9-] ids and glow to a #rrggbb
+// colour; anything else is dropped ("" — the default).
+func sanitizeLook(car, glow, trail string) carLook {
+	return carLook{Car: sanitizeLookID(car), Glow: sanitizeColor(glow), Trail: sanitizeLookID(trail)}
+}
+
+func sanitizeLookID(raw string) string {
+	if len(raw) == 0 || len(raw) > maxLookIDLen {
+		return ""
+	}
+	for _, ch := range raw {
+		if ch != '-' && (ch < '0' || ch > '9') && (ch < 'a' || ch > 'z') {
+			return ""
+		}
+	}
+	return raw
+}
+
+func sanitizeColor(raw string) string {
+	if len(raw) != 7 || raw[0] != '#' {
+		return ""
+	}
+	for _, ch := range raw[1:] {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') && (ch < 'A' || ch > 'F') {
+			return ""
+		}
+	}
+	return strings.ToLower(raw)
 }
 
 // maxNameRunes keeps a display name to something that fits a lane label.

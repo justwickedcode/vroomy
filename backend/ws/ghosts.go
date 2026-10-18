@@ -30,6 +30,7 @@ const (
 // ([ms, typedLength, rejected], see backend/api's replays.go).
 type ghostRun struct {
 	name       string
+	look       carLook
 	passageLen int
 	events     [][3]int
 }
@@ -97,8 +98,10 @@ func loadGhostsFrom(pool *pgxpool.Pool) func(exclude string, n int) ([]ghostRun,
 		// One race per player, verified ones only (backend/api's race_results.verified), never the
 		// player's own.
 		rows, err := pool.Query(ctx, `
-			SELECT name, passage, replay FROM (
-				SELECT DISTINCT ON (r.user_id) u.display_name AS name, r.passage, r.replay
+			SELECT name, car, glow, trail, passage, replay FROM (
+				SELECT DISTINCT ON (r.user_id) u.display_name AS name, u.car_model AS car,
+					CASE WHEN u.underglow THEN u.underglow_color ELSE '' END AS glow, u.trail,
+					r.passage, r.replay
 				FROM race_results r JOIN users u ON u.id = r.user_id
 				WHERE r.verified AND r.replay IS NOT NULL AND r.user_id <> $1
 					AND r.wpm BETWEEN $2 AND $3
@@ -112,17 +115,22 @@ func loadGhostsFrom(pool *pgxpool.Pool) func(exclude string, n int) ([]ghostRun,
 		var runs []ghostRun
 		for rows.Next() {
 			var (
-				name, passage string
-				raw           []byte
+				name, car, glow, trail, passage string
+				raw                             []byte
 			)
-			if err := rows.Scan(&name, &passage, &raw); err != nil {
+			if err := rows.Scan(&name, &car, &glow, &trail, &passage, &raw); err != nil {
 				return nil, err
 			}
 			var events [][3]int
 			if json.Unmarshal(raw, &events) != nil || len(passage) == 0 {
 				continue
 			}
-			runs = append(runs, ghostRun{name: name, passageLen: len(passage), events: events})
+			runs = append(runs, ghostRun{
+				name:       name,
+				look:       sanitizeLook(car, glow, trail),
+				passageLen: len(passage),
+				events:     events,
+			})
 		}
 		return runs, rows.Err()
 	}
@@ -159,9 +167,11 @@ func (r *Room) fillWithGhosts() {
 	}
 	for i := 0; i < maxGhosts; i++ {
 		g := &Client{id: newClientID(), send: make(chan []byte), closed: true}
-		state := &playerState{client: g, connected: true, ghost: true}
+		state := &playerState{client: g, connected: true, ghost: true, lane: r.freeLaneLocked()}
 		if i < len(runs) {
+			// A ghost drives the car its player does.
 			g.name = sanitizeName(runs[i].name + "'s ghost")
+			g.look = runs[i].look
 			state.ghostRun = &runs[i]
 		} else {
 			g.name = "Pace car"

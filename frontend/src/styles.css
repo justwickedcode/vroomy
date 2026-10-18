@@ -885,16 +885,6 @@ body::before {
 }
 
 /* Your exhaust burns as hard as you're driving: no flames while you're parked. */
-.race-car-wrap--out {
-  filter: grayscale(1) brightness(0.7);
-  opacity: 0.55;
-  translate: 0 38%;
-  transition:
-    translate 600ms ease-out,
-    opacity 600ms ease-out,
-    filter 600ms ease-out;
-}
-
 .race-car-wrap--you .trail {
   opacity: clamp(0, var(--speed, 1) * 1.6, 1);
 }
@@ -2534,17 +2524,6 @@ button:not(:disabled):hover .race-itembox--ready {
 
 /* ── Abilities: item box extras ──────────────────────────────────── */
 
-.race-itembox {
-  overflow: hidden;
-}
-
-.race-itembox-q {
-  font-family: var(--font-display);
-  font-size: 1.6rem;
-  line-height: 1;
-  color: #8a7ca3;
-}
-
 /* Chaos recharge: the empty box fills up from the bottom. */
 .race-itembox-charge {
   position: absolute;
@@ -2555,21 +2534,6 @@ button:not(:disabled):hover .race-itembox--ready {
   );
   transition: height 100ms linear;
   pointer-events: none;
-}
-
-/* The roulette: faces flick past under a strobing frame. */
-.race-itembox--rolling {
-  animation: race-itembox 0.3s steps(1) infinite;
-}
-
-.race-itembox--rolling svg {
-  animation: race-itembox-flick 0.1s steps(1) infinite;
-}
-
-@keyframes race-itembox-flick {
-  50% {
-    transform: translateY(-2px);
-  }
 }
 
 /* ── Abilities on the track ──────────────────────────────────────── */
@@ -3207,10 +3171,11 @@ input[type='range'].replay-scrub::-moz-range-thumb {
   box-shadow: inset 0 -3px 0 #8a7ca3;
 }
 
-/* A lobby's cars (RaceTrack's `arrive`): each one drives in from off the left edge when its
-   player joins, slowing as it rolls up to the start line. */
+/* A lobby's or a forming grid's cars (RaceTrack's `arrive`): each one drives in from off the left
+   edge in its turn (--arrive-delay), slowing as it rolls up to the start line. */
 .race-car-wrap--arrive {
-  animation: race-arrive 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  animation: race-arrive 2.2s cubic-bezier(0.2, 0.8, 0.3, 1)
+    var(--arrive-delay, 0s) both;
 }
 
 @keyframes race-arrive {
@@ -3224,7 +3189,7 @@ input[type='range'].replay-scrub::-moz-range-thumb {
 
 /* …with its exhaust lit on the way in, dying out as it parks. */
 .race-car-wrap--arrive .trail {
-  animation: race-arrive-exhaust 2.2s steps(6) forwards;
+  animation: race-arrive-exhaust 2.2s steps(6) var(--arrive-delay, 0s) both;
 }
 
 @keyframes race-arrive-exhaust {

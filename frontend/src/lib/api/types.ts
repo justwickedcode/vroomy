@@ -87,13 +87,21 @@ export interface ApiDailyResult {
   accuracy: number
 }
 
+// users.go CarLook: how someone's car is dressed, on every response that shows another player's
+// car (see lookFromApi in #/lib/carLook).
+export interface ApiCarLook {
+  carModel: string
+  underglow: boolean
+  underglowColor: string
+  trail: string
+}
+
 // leaderboard.go LeaderboardEntry / Leaderboard
-export interface LeaderboardEntry {
+export interface LeaderboardEntry extends ApiCarLook {
   rank: number
   userId: string
   displayName: string
   avatarUrl?: string
-  carModel: string
   wpm: number
   accuracy: number
   replayId: number | null
@@ -119,11 +127,10 @@ export interface LeaderboardQuery {
 // friends.go Friend / FriendsResponse
 export type FriendStatus = 'none' | 'friends' | 'incoming' | 'outgoing'
 
-export interface Friend {
+export interface Friend extends ApiCarLook {
   id: string
   displayName: string
   avatarUrl?: string
-  carModel: string
   bestWpm: number
   racesPlayed: number
   status: FriendStatus
@@ -136,7 +143,7 @@ export interface FriendsResponse {
 }
 
 // replays.go Replay
-export interface ApiReplay extends ReplayData {
+export interface ApiReplay extends ReplayData, ApiCarLook {
   id: number
   date: string
   mode: RaceMode
@@ -146,5 +153,4 @@ export interface ApiReplay extends ReplayData {
   racerCount: number
   displayName: string
   avatarUrl?: string
-  carModel: string
 }

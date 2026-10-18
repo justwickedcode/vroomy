@@ -28,11 +28,11 @@ type LeaderboardEntry struct {
 	UserID      string `json:"userId"`
 	DisplayName string `json:"displayName"`
 	AvatarURL   string `json:"avatarUrl,omitempty"`
-	CarModel    string `json:"carModel"`
-	WPM         int    `json:"wpm"`
-	Accuracy    int    `json:"accuracy"`
-	ReplayID    *int64 `json:"replayId"`
-	IsMe        bool   `json:"isMe"`
+	CarLook
+	WPM      int    `json:"wpm"`
+	Accuracy int    `json:"accuracy"`
+	ReplayID *int64 `json:"replayId"`
+	IsMe     bool   `json:"isMe"`
 }
 
 // Leaderboard is the GET /api/leaderboards response. Me is the caller's own row when they're
@@ -54,7 +54,7 @@ func scopeFilter(col string) string {
 
 // Both boards rank with RANK() so tied players share a place, and select the top
 // leaderboardSize plus the caller's own row ($3) wherever it falls. Only verified results are
-// ranked: races saved against a race ticket (tickets.go) whose replay held up (anticheat.go), and
+// ranked: races saved against a race ticket (tickets.go), and
 // daily results backed by one of those races — an imported result still counts toward the
 // player's own history, just not the boards.
 var (
@@ -70,7 +70,7 @@ var (
 		), ranked AS (
 			SELECT best.*, RANK() OVER (ORDER BY wpm DESC, accuracy DESC)::int AS rank FROM best
 		)
-		SELECT ranked.rank, u.id, u.display_name, COALESCE(u.avatar_url, ''), u.car_model,
+		SELECT ranked.rank, u.id, u.display_name, COALESCE(u.avatar_url, ''), ` + carLookColumns + `,
 		       ranked.wpm, ranked.accuracy, CASE WHEN ranked.has_replay THEN ranked.id END
 		FROM ranked JOIN users u ON u.id = ranked.user_id
 		WHERE ranked.rank <= $4 OR ranked.user_id = $3
@@ -84,7 +84,7 @@ var (
 			JOIN race_results vr ON vr.id = d.race_id AND vr.verified
 			WHERE d.day = $1::date AND ` + scopeFilter("d.user_id") + `
 		)
-		SELECT ranked.rank, u.id, u.display_name, COALESCE(u.avatar_url, ''), u.car_model,
+		SELECT ranked.rank, u.id, u.display_name, COALESCE(u.avatar_url, ''), ` + carLookColumns + `,
 		       ranked.wpm, ranked.accuracy,
 		       (SELECT r.id FROM race_results r WHERE r.id = ranked.race_id AND r.replay IS NOT NULL)
 		FROM ranked JOIN users u ON u.id = ranked.user_id
@@ -99,7 +99,7 @@ func queryLeaderboard(ctx context.Context, pool *pgxpool.Pool, query string, fil
 	}
 	entries, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (LeaderboardEntry, error) {
 		var e LeaderboardEntry
-		err := row.Scan(&e.Rank, &e.UserID, &e.DisplayName, &e.AvatarURL, &e.CarModel, &e.WPM, &e.Accuracy, &e.ReplayID)
+		err := row.Scan(&e.Rank, &e.UserID, &e.DisplayName, &e.AvatarURL, &e.CarModel, &e.Underglow, &e.UnderglowColor, &e.Trail, &e.WPM, &e.Accuracy, &e.ReplayID)
 		e.IsMe = me != "" && e.UserID == me
 		return e, err
 	})

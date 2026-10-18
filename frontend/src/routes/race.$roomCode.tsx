@@ -5,7 +5,7 @@ import type { LobbyMode } from '#/lib/multiplayer/useMultiplayerRace'
 import MultiplayerRace from '#/components/typing/MultiplayerRace'
 import DesktopOnlyRace from '#/components/typing/DesktopOnlyRace'
 import { useIsDesktopViewport } from '#/lib/layout/useIsDesktopViewport'
-import { useCurrentUser } from '#/lib/auth/useCurrentUser'
+import { useProfile } from '#/lib/profile/useProfile'
 
 // "new" is a reserved sentinel roomCode meaning "mint one" rather than "join this one" — real
 // codes are always exactly 6 characters from backend/ws's codeAlphabet (see private.go), so
@@ -25,8 +25,9 @@ export const Route = createFileRoute('/race/$roomCode')({
 // result — so the create/join WebSocket connect below never fires on mobile at all.
 function RoomGate() {
   const isDesktop = useIsDesktopViewport()
-  // Waits for the login check too, so the connection carries the player's name.
-  const { loaded } = useCurrentUser()
+  // Waits for the login check and the profile too, so the connection carries the player's name
+  // and the car they actually drive.
+  const { hydrated: loaded } = useProfile()
 
   if (isDesktop === false) return <DesktopOnlyRace />
   if (isDesktop === null || !loaded) return null

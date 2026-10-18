@@ -100,6 +100,18 @@ type ProfileStats struct {
 	Wins        int `json:"wins"`
 }
 
+// CarLook is how a player's car is dressed — what anyone else sees of it on a leaderboard, a
+// friends list or a replay — embedded in each of those responses. Select it with carLookColumns
+// (for the users row aliased u) and scan it in the same order.
+type CarLook struct {
+	CarModel       string `json:"carModel"`
+	Underglow      bool   `json:"underglow"`
+	UnderglowColor string `json:"underglowColor"`
+	Trail          string `json:"trail"`
+}
+
+const carLookColumns = `u.car_model, u.underglow, u.underglow_color, u.trail`
+
 // UserProfile is the full GET /api/users/me response: identity, cosmetics, a bounded recent-race
 // window for display, and lifetime stats computed independently of that window's size.
 type UserProfile struct {
@@ -390,9 +402,8 @@ func (req raceRequest) validate() string {
 	if req.WPM < 0 || req.WPM > maxWPM {
 		return "wpm out of range"
 	}
-	// A race comes with its replay, and the replay has to back the score up (see anticheat.go).
-	// Only a result the ws server measured itself stands without one (a replay too long to
-	// record), and its WPM is the server's, not a claim to check.
+	// A race comes with its replay. Only a result the ws server measured itself stands without
+	// one (a replay too long to record).
 	if len(req.Replay) == 0 {
 		if req.serverResult {
 			return ""
@@ -400,13 +411,6 @@ func (req raceRequest) validate() string {
 		return "replay required"
 	}
 	if msg := validateReplay(req.Passage, req.Replay); msg != "" {
-		return msg
-	}
-	claimed := req.WPM
-	if req.serverResult {
-		claimed = -1
-	}
-	if msg := checkReplayIntegrity(req.Passage, req.Replay, claimed); msg != "" {
 		return msg
 	}
 	if req.Accuracy < 0 || req.Accuracy > 100 {

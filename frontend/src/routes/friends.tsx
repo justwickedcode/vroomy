@@ -63,7 +63,12 @@ function FriendRow({
             : 'No races yet'}
         </p>
       </div>
-      <CarIcon model={friend.carModel} className="hidden w-14 sm:flex" />
+      <CarIcon
+        model={friend.carModel}
+        underglow={friend.underglow}
+        underglowColor={friend.underglowColor}
+        className="hidden w-14 sm:flex"
+      />
       <div className="flex shrink-0 gap-1.5">{actions}</div>
     </div>
   )

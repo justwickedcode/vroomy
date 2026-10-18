@@ -91,8 +91,10 @@ func upgradeWS(w http.ResponseWriter, r *http.Request, conns *ipConnCounter, ass
 		id:    newClientID(),
 		name:  sanitizeName(r.URL.Query().Get("name")),
 		racer: sanitizeRacerID(r.URL.Query().Get("racer")),
-		conn:  conn,
-		send:  make(chan []byte, sendBufferSize),
+		look: sanitizeLook(r.URL.Query().Get("car"), r.URL.Query().Get("glow"),
+			r.URL.Query().Get("trail")),
+		conn: conn,
+		send: make(chan []byte, sendBufferSize),
 	}
 	// Back into a running race with a seat token (rejoin.go), or in the normal way.
 	resumed := false

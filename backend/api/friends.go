@@ -23,7 +23,7 @@ type Friend struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"displayName"`
 	AvatarURL   string `json:"avatarUrl,omitempty"`
-	CarModel    string `json:"carModel"`
+	CarLook
 	BestWPM     int    `json:"bestWpm"`
 	RacesPlayed int    `json:"racesPlayed"`
 	Status      string `json:"status"`
@@ -40,7 +40,7 @@ type FriendsResponse struct {
 // friendColumns selects a Friend for the user aliased u. $1 is always the caller's id, and f is
 // the friendship row between the caller and u (NULL in search results with no relationship).
 const friendColumns = `
-	u.id, u.display_name, COALESCE(u.avatar_url, ''), u.car_model,
+	u.id, u.display_name, COALESCE(u.avatar_url, ''), ` + carLookColumns + `,
 	COALESCE((SELECT MAX(wpm) FROM race_results WHERE user_id = u.id), 0)::int,
 	(SELECT COUNT(*) FROM race_results WHERE user_id = u.id)::int,
 	CASE
@@ -55,7 +55,7 @@ func scanFriends(rows pgx.Rows) ([]Friend, error) {
 	out := []Friend{}
 	for rows.Next() {
 		var f Friend
-		if err := rows.Scan(&f.ID, &f.DisplayName, &f.AvatarURL, &f.CarModel, &f.BestWPM, &f.RacesPlayed, &f.Status); err != nil {
+		if err := rows.Scan(&f.ID, &f.DisplayName, &f.AvatarURL, &f.CarModel, &f.Underglow, &f.UnderglowColor, &f.Trail, &f.BestWPM, &f.RacesPlayed, &f.Status); err != nil {
 			return nil, err
 		}
 		out = append(out, f)
