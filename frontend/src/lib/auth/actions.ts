@@ -18,22 +18,34 @@ import {
   setSessionUser,
 } from '#/lib/auth/session'
 
-const STATE_COOKIE = 'vroomy_oauth_state'
+// One cookie per login attempt (vroomy_oauth_state_<state>) rather than a single shared one, so
+// starting a second login — another tab, a reload of /login — doesn't overwrite the first
+// attempt's state and strand whichever Keycloak page is still open.
+const STATE_COOKIE_PREFIX = 'vroomy_oauth_state_'
+// Long enough for someone to wander off from the Keycloak page and come back; the code Keycloak
+// hands back is single-use and short-lived on its own, so this isn't the replay protection.
+const STATE_MAX_AGE = 15 * 60
+// Set when a failed state check silently restarts the login, so a browser that never keeps the
+// state cookie gets the error instead of bouncing between /login and Keycloak forever.
+const RETRY_COOKIE = 'vroomy_oauth_retry'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+const cookieOptions = (maxAge: number) => ({
+  httpOnly: true,
+  secure: true,
+  sameSite: 'lax' as const,
+  maxAge,
+  path: '/',
+})
 
 // startLogin generates a fresh CSRF state value, stashes it in a short-lived plain cookie (not
-// part of the sealed session — this only needs to survive the few seconds of the identity
-// provider round trip), and sends the browser to its hosted login page. Verified on the way
-// back in completeLogin below.
+// part of the sealed session — this only needs to survive the identity provider round trip),
+// and sends the browser to its hosted login page. Verified on the way back in completeLogin
+// below.
 export const startLogin = createServerFn({ method: 'GET' }).handler(
   async () => {
     const state = crypto.randomUUID()
-    setCookie(STATE_COOKIE, state, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      maxAge: 300,
-      path: '/',
-    })
+    setCookie(STATE_COOKIE_PREFIX + state, '1', cookieOptions(STATE_MAX_AGE))
     throw redirect({ href: await buildAuthorizeUrl(state) })
   },
 )
@@ -45,16 +57,35 @@ export const startLogin = createServerFn({ method: 'GET' }).handler(
 export const completeLogin = createServerFn({ method: 'GET' }).handler(
   async () => {
     const url = getRequestUrl()
-    const code = url.searchParams.get('code')
-    const state = url.searchParams.get('state')
-    const expectedState = getCookie(STATE_COOKIE)
-    deleteCookie(STATE_COOKIE, { path: '/' })
-
-    if (!code || !state || !expectedState || state !== expectedState) {
+    const providerError = url.searchParams.get('error')
+    if (providerError) {
+      const description = url.searchParams.get('error_description')
       throw new Error(
-        'Login failed: missing or mismatched state (possibly an expired or replayed login attempt)',
+        `Login failed: ${description ? `${providerError} (${description})` : providerError}`,
       )
     }
+
+    const code = url.searchParams.get('code')
+    const state = url.searchParams.get('state')
+    // UUID check first — state ends up in a cookie name, so never trust it as-is.
+    const stateCookie =
+      state && UUID_RE.test(state) ? STATE_COOKIE_PREFIX + state : undefined
+    const stateValid = !!stateCookie && getCookie(stateCookie) === '1'
+    if (stateCookie) deleteCookie(stateCookie, { path: '/' })
+
+    if (!code || !stateValid) {
+      // An expired or replayed (reload / "Try again") attempt. Starting over puts the user back
+      // on the Keycloak sign-in page — far better than a crash screen. Only once, though.
+      if (getCookie(RETRY_COOKIE)) {
+        deleteCookie(RETRY_COOKIE, { path: '/' })
+        throw new Error(
+          'Login failed: missing or mismatched state (possibly an expired or replayed login attempt)',
+        )
+      }
+      setCookie(RETRY_COOKIE, '1', cookieOptions(60))
+      throw redirect({ to: '/login' })
+    }
+    deleteCookie(RETRY_COOKIE, { path: '/' })
 
     const { idToken, accessToken } = await exchangeCodeForTokens(code)
     const claims = await verifyIdToken(idToken)
