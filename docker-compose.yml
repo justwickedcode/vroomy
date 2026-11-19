@@ -4,7 +4,7 @@
 # that database is filled by the separate quotes-crawler project; the shared DATABASE_URL is the
 # only coupling between the two. This
 # bundling is required, not just convenient: it's the minimum needed for frontend to reach api by
-# plain internal DNS (http://api:8080). See the README's "Deployment" section
+# plain internal DNS (http://vroomy-api:8080). See the README's "Deployment" section
 # for why api and frontend specifically must be deployed together — Dokploy only gives automatic
 # service-name networking to services deployed together this way; separate Applications each get
 # an isolated network with no way to resolve each other by name
@@ -50,6 +50,13 @@ services:
   api:
     build: ./backend/api
     restart: unless-stopped
+    # Reached as vroomy-api, never plain `api`: this project's network is Dokploy's shared one,
+    # where other apps' services are called `api` too (Gainsley's is). Plain `api` resolved to
+    # either container, so some of the frontend's calls landed on Gainsley's API.
+    networks:
+      default:
+        aliases:
+          - vroomy-api
     logging: *default-logging
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -93,9 +100,9 @@ services:
       api:
         condition: service_healthy
     environment:
-      # Plain service-name DNS, only reachable because frontend and api are in this same compose
-      # project. Not VITE_-prefixed on purpose — see frontend/src/lib/typing/sentences.ts.
-      API_INTERNAL_URL: http://api:8080
+      # The api's own alias (see the api service): plain `api` can be another app's on the shared
+      # network. Not VITE_-prefixed on purpose — see frontend/src/lib/typing/sentences.ts.
+      API_INTERNAL_URL: http://vroomy-api:8080
       VITE_WS_URL: ${VITE_WS_URL}
       PUBLIC_URL: ${PUBLIC_URL}
       OIDC_ISSUER: ${OIDC_ISSUER}
@@ -121,6 +128,9 @@ services:
 # Pointing this project's implicit "default" network at that same external network instead of
 # letting Compose create its own fixes it, while still giving api/ws/frontend
 # service-name DNS between each other (they're still all on one shared network together).
+# Because that network is shared by every app on the server, a plain service name (`api`, `ws`,
+# `frontend`) can resolve to another app's container: always reach a service by a
+# `vroomy-` alias.
 networks:
   default:
     name: dokploy-network
