@@ -20,6 +20,12 @@ Tests: `go test ./...` in `backend/api` and `backend/ws`. Browser tests of the m
 
 `docker compose up -d` with the variables listed at the top of `docker-compose.yml`.
 
+On Dokploy every service here is on the shared `dokploy-network`, together with other apps'
+containers. A plain service name like `api` can resolve to another app's service with the same
+name (it did: the frontend's `http://api:8080` reached Gainsley's API part of the time). So
+services reach each other only by a `vroomy-` alias (`vroomy-api`); give any new service one
+too and use it in URLs.
+
 ## Layout
 
 - `frontend/` — TanStack Start app
